@@ -1,6 +1,11 @@
 import * as THREE from 'three';
 import { defineHouse, type HouseDefinition } from 'husjs';
-import type { CameraPresetDefinition, SceneBuilderContext, SceneZoneModule } from 'husjs/viewer';
+import {
+  PropertyScene,
+  type CameraPresetDefinition,
+  type SceneBuilderContext,
+  type SceneZoneModule,
+} from 'husjs/viewer';
 import {
   STAHL_DOOR_POLICY,
   STAHL_ELECTRICAL,
@@ -10,7 +15,10 @@ import {
   STAHL_ROOM_ZONES,
 } from './electrical-and-rooms.ts';
 import { buildStahlInteriors } from './interiors.ts';
-import { buildStahlPoolAndGrounds } from './pool-and-grounds.ts';
+import {
+  buildStahlPoolAndGrounds,
+  syncStahlCityLightsFromSky,
+} from './pool-and-grounds.ts';
 import { buildStahlStructure, createStahlMaterials } from './structure.ts';
 import {
   POOL_MAX_X,
@@ -38,6 +46,15 @@ const STAHL_CAMERA_PRESETS: readonly CameraPresetDefinition[] = [
     target: new THREE.Vector3(4.6, 1.22, 8.2),
   },
   {
+    id: 'pool',
+    label: 'Pool Terrace & VKG Loungers',
+    buildingId: 'mainHouse',
+    zoneId: 'stahlPoolTerrace',
+    floorViewMode: 'all',
+    pos: new THREE.Vector3(-13.1, 1.78, 8.15),
+    target: new THREE.Vector3(-1.2, 0.88, 3.85),
+  },
+  {
     id: 'livingRoom',
     label: '270° Cantilevered Living',
     buildingId: 'mainHouse',
@@ -47,6 +64,15 @@ const STAHL_CAMERA_PRESETS: readonly CameraPresetDefinition[] = [
     target: new THREE.Vector3(4.8, 1.15, 10.6),
   },
   {
+    id: 'shulmanView',
+    label: 'SE Overlook & LA Grid',
+    buildingId: 'mainHouse',
+    zoneId: 'stahlLivingDining',
+    floorViewMode: 'all',
+    pos: new THREE.Vector3(-4.6, 2.05, 8.85),
+    target: new THREE.Vector3(7.5, 0.55, 11.4),
+  },
+  {
     id: 'kitchen',
     label: 'Luminous Ceiling Kitchen',
     buildingId: 'mainHouse',
@@ -54,6 +80,15 @@ const STAHL_CAMERA_PRESETS: readonly CameraPresetDefinition[] = [
     floorViewMode: 'ground',
     pos: new THREE.Vector3(1.6, 1.62, 1.2),
     target: new THREE.Vector3(3.2, 1.28, -4.4),
+  },
+  {
+    id: 'carport',
+    label: '1635 Woods Drive Carport',
+    buildingId: 'mainHouse',
+    zoneId: 'stahlCarport',
+    floorViewMode: 'all',
+    pos: new THREE.Vector3(-21.8, 1.68, -1.55),
+    target: new THREE.Vector3(-13.4, 1.05, -3.95),
   },
   {
     id: 'courtyard',
@@ -155,6 +190,21 @@ export const stahlHouse: HouseDefinition = defineHouse({
     enabledTrades: ['owner', 'architect', 'electrician'],
     defaultTrade: 'owner',
   },
+  createScene(canvas, onObjectInteraction, profile) {
+    const scene = new PropertyScene(canvas, onObjectInteraction, profile);
+    // Extend perspective & orthographic far clip plane to 4.8 km so the distant LA Basin
+    // street-lights grid below the 240 m Hollywood Hills bluff renders all the way to the horizon.
+    scene.camera.rig.perspCamera.far = 4800;
+    scene.camera.rig.perspCamera.updateProjectionMatrix();
+    scene.camera.rig.orthoCamera.far = 4800;
+    scene.camera.rig.orthoCamera.updateProjectionMatrix();
+
+    syncStahlCityLightsFromSky(scene.scene, scene.getSkyWeatherSnapshot());
+    scene.onSkyWeatherChanged((snap) => {
+      syncStahlCityLightsFromSky(scene.scene, snap);
+    });
+    return scene;
+  },
 });
 
 export {
@@ -163,5 +213,6 @@ export {
   STAHL_ROOM_ZONES,
   STAHL_TERRAIN_CONFIG,
   stahlTerrainSampler,
+  syncStahlCityLightsFromSky,
 };
 export default stahlHouse;
