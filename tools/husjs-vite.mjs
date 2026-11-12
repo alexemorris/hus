@@ -135,6 +135,10 @@ export function husVitePlugin(options = {}) {
       name: 'husjs-vite-plugin',
       config() {
         return {
+          esbuild: {
+            jsx: 'automatic',
+            jsxImportSource: 'preact',
+          },
           optimizeDeps: {
             exclude: ['husjs'],
             include: ['three', 'three/examples/jsm/loaders/HDRLoader.js', 'preact', '@preact/signals'],
