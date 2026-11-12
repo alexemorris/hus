@@ -15,6 +15,7 @@ import {
   createGeorgianSashWindow,
   createHerringboneTerracottaQuarryTileTextures,
   createHippedRoof,
+  createCorniceRun,
   createParisianManoirCabochonTextures,
   createSkirtingRun,
   createTumbledLimestoneFlagstoneTextures,
@@ -27,7 +28,6 @@ import {
 } from 'husjs/objects';
 import {
   buildChequerboardMarbleFloor,
-  buildGeorgianCeilingCornice,
   buildGeorgianCeilingPanelMoulding,
   buildGeorgianCeilingRose,
   buildGeorgianFacadeDressings,
@@ -1480,28 +1480,26 @@ export function buildSimpleHouseArchitecture(
 
   // --- Skirting, cornices, ceiling roses & panel mouldings -------------------------------------
   const pFace = HALL_PARTITION_X + INT_WALL_T * 0.5;
+  const hFace = HALL_PARTITION_X - INT_WALL_T * 0.5;
   const b = DRAWING_BREAST;
-  const drawingPath: [number, number][] = [
+
+  const hallPath: [number, number][] = [
+    [-hFace, IN_Z],
+    [hFace, IN_Z],
+    [hFace, -1.53],
+    [-hFace, -1.53],
+  ];
+  const drawingRectPath: [number, number][] = [
     [-IN_X, IN_Z],
     [-pFace, IN_Z],
     [-pFace, -IN_Z],
     [-IN_X, -IN_Z],
-    [-IN_X, b.minZ],
+  ];
+  const drawingBreastPath: [number, number][] = [
+    [-IN_X + 0.118, b.minZ],
     [b.maxX, b.minZ],
     [b.maxX, b.maxZ],
-    [-IN_X, b.maxZ],
-  ];
-  const principalPath: [number, number][] = [
-    [-IN_X, IN_Z],
-    [-pFace, IN_Z],
-    [-pFace, -1.65],
-    [-IN_X, -1.65],
-  ];
-  const guestPath: [number, number][] = [
-    [pFace, IN_Z],
-    [IN_X, IN_Z],
-    [IN_X, -0.1],
-    [pFace, -0.1],
+    [-IN_X + 0.118, b.maxZ],
   ];
   const kitchenPath: [number, number][] = [
     [pFace, IN_Z],
@@ -1509,77 +1507,463 @@ export function buildSimpleHouseArchitecture(
     [IN_X, -IN_Z],
     [pFace, -IN_Z],
   ];
-  const doorGap = (id: string, faceX: number) => {
+  const kitchenBreastPath: [number, number][] = [
+    [IN_X - 0.118, -0.82],
+    [4.752, -0.82],
+    [4.752, -2.46],
+    [IN_X - 0.118, -2.46],
+  ];
+  const bootLobbyPath: [number, number][] = [
+    [-hFace, -1.65],
+    [-0.06, -1.65],
+    [-0.06, -IN_Z],
+    [-hFace, -IN_Z],
+  ];
+  const cloakroomPath: [number, number][] = [
+    [0.06, -1.65],
+    [hFace, -1.65],
+    [hFace, -IN_Z],
+    [0.06, -IN_Z],
+  ];
+  const principalPath: [number, number][] = [
+    [-IN_X, IN_Z],
+    [-pFace, IN_Z],
+    [-pFace, -1.65],
+    [-IN_X, -1.65],
+  ];
+  const dressingPath: [number, number][] = [
+    [-IN_X, -1.77],
+    [-3.59, -1.77],
+    [-3.59, -IN_Z],
+    [-IN_X, -IN_Z],
+  ];
+  const ensuitePath: [number, number][] = [
+    [-3.47, -1.77],
+    [-pFace, -1.77],
+    [-pFace, -IN_Z],
+    [-3.47, -IN_Z],
+  ];
+  const guestPath: [number, number][] = [
+    [pFace, IN_Z],
+    [IN_X, IN_Z],
+    [IN_X, -0.1],
+    [pFace, -0.1],
+  ];
+  const studyPath: [number, number][] = [
+    [pFace, -0.22],
+    [IN_X, -0.22],
+    [IN_X, -IN_Z],
+    [2.47, -IN_Z],
+    [2.47, -1.53],
+    [pFace, -1.53],
+  ];
+  const bathroomPath: [number, number][] = [
+    [-hFace, -1.65],
+    [1.33, -1.65],
+    [1.33, -2.45],
+    [2.35, -2.45],
+    [2.35, -IN_Z],
+    [-hFace, -IN_Z],
+  ];
+
+  const doorGap = (id: string, faceCoord: number) => {
     const d = DOORS.find((spec) => spec.id === id)!;
-    return { at: [d.plane === 'x' ? faceX : d.at[0], d.at[1]] as [number, number], width: 1.02 };
+    const width = (d.clearWidth ?? DOOR_CLEAR_W) + 0.14;
+    return {
+      at: [d.plane === 'x' ? faceCoord : d.at[0], d.plane === 'z' ? faceCoord : d.at[1]] as [number, number],
+      width,
+      cap: 'selfReturn' as const,
+    };
   };
 
-  const skirting = (
-    name: string,
-    floor: FloorId,
-    zone: string,
-    path: [number, number][],
-    closed: boolean,
-    material: THREE.Material,
-    gaps: { at: [number, number]; width: number }[]
-  ) => {
+  const addSkirting = (opts: {
+    name: string;
+    floor: FloorId;
+    zone: string;
+    path: [number, number][];
+    closed?: boolean;
+    material: THREE.Material;
+    height?: number;
+    thickness?: number;
+    gaps?: NonNullable<Parameters<typeof createSkirtingRun>[0]['gaps']>;
+    forceCutaway?: CutawayWallDescriptor;
+  }) => {
     const run = createSkirtingRun({
-      path,
-      closed,
+      path: opts.path,
+      closed: opts.closed ?? true,
       roomSide: 'left',
-      elevationY: floorY[floor] + 0.001,
+      elevationY: floorY[opts.floor] + 0.001,
       profile: 'ogee',
-      height: 0.17,
-      thickness: 0.02,
-      material,
-      gaps,
-      cutawayWalls: (floor === 'ground' ? groundNet : firstNet).cutaways,
-      floor,
-      zone,
-      name,
+      height: opts.height ?? (opts.floor === 'ground' ? 0.165 : 0.142),
+      thickness: opts.thickness ?? 0.018,
+      material: opts.material,
+      gaps: opts.gaps ?? [],
+      cutawayWalls: opts.forceCutaway ? [] : (opts.floor === 'ground' ? groundNet : firstNet).cutaways,
+      floor: opts.floor,
+      zone: opts.zone,
+      name: opts.name,
     });
-    floorGroups[floor].add(run);
+    if (opts.forceCutaway) {
+      tagCutaway(run, opts.forceCutaway);
+    }
+    floorGroups[opts.floor].add(run);
   };
-  skirting('simpleHouse.skirting.drawing', 'ground', 'houseDrawing', drawingPath, true, schemes.houseDrawing.trim, [
-    doorGap('hallDrawing', -pFace),
-    { at: [b.maxX, 0], width: 1.62 },
-    { at: [-IN_X, 2.585], width: 3.27 },
-    { at: [-IN_X, -2.585], width: 3.27 },
-  ]);
-  skirting(
-    'simpleHouse.skirting.dining',
-    'ground',
-    'houseKitchenDiner',
-    [
-      [pFace + 0.6, IN_Z],
-      [IN_X, IN_Z],
-      [IN_X, 0.4],
-    ],
-    false,
-    schemes.houseKitchenDiner.trim,
-    []
-  );
-  skirting('simpleHouse.skirting.guest', 'first', 'houseBedroom2', guestPath, true, schemes.houseBedroom2.trim, [
-    doorGap('landingGuest', pFace),
-  ]);
 
-  const cornice = (name: string, floor: FloorId, zone: string, path: [number, number][]) => {
-    const group = buildGeorgianCeilingCornice({
-      name,
-      path,
-      closed: true,
+  const addCornice = (opts: {
+    name: string;
+    floor: FloorId;
+    zone: string;
+    path: [number, number][];
+    closed?: boolean;
+    profile?: 'georgian-cyma' | 'georgian-dentil' | 'cove' | 'stepped';
+    height?: number;
+    projection?: number;
+    material: THREE.Material;
+    gaps?: NonNullable<Parameters<typeof createCorniceRun>[0]['gaps']>;
+    forceCutaway?: CutawayWallDescriptor;
+  }) => {
+    const group = createCorniceRun({
+      name: opts.name,
+      path: opts.path,
+      closed: opts.closed ?? true,
       roomSide: 'left',
-      ceilingY: floor === 'ground' ? GROUND_CEILING_SOFFIT_Y : FIRST_CEILING_SOFFIT_Y,
-      cutawayWalls: (floor === 'ground' ? groundNet : firstNet).cutaways,
-      floor,
-      zone,
+      ceilingY: opts.floor === 'ground' ? GROUND_CEILING_SOFFIT_Y : FIRST_CEILING_SOFFIT_Y,
+      profile: opts.profile ?? 'georgian-cyma',
+      height: opts.height ?? 0.115,
+      projection: opts.projection ?? 0.11,
+      material: opts.material,
+      gaps: opts.gaps ?? [],
+      cutawayWalls: opts.forceCutaway ? [] : (opts.floor === 'ground' ? groundNet : firstNet).cutaways,
+      floor: opts.floor,
+      zone: opts.zone,
     });
-    (floor === 'ground' ? groundCeilingGroup : firstCeilingGroup).add(group);
+    if (opts.forceCutaway) {
+      tagCutaway(group, opts.forceCutaway);
+    }
+    (opts.floor === 'ground' ? groundCeilingGroup : firstCeilingGroup).add(group);
   };
-  cornice('simpleHouse.cornice.drawing', 'ground', 'houseDrawing', drawingPath);
-  cornice('simpleHouse.cornice.kitchen', 'ground', 'houseKitchenDiner', kitchenPath);
-  cornice('simpleHouse.cornice.principal', 'first', 'housePrincipalBed', principalPath);
-  cornice('simpleHouse.cornice.guest', 'first', 'houseBedroom2', guestPath);
+
+  // Ground-floor skirtings (all 5 ground-floor rooms)
+  addSkirting({
+    name: 'simpleHouse.skirting.hall',
+    floor: 'ground',
+    zone: 'houseHall',
+    path: hallPath,
+    material: schemes.houseHall.trim,
+    gaps: [
+      { box: { minX: -0.58, maxX: 0.58, minZ: 4.1, maxZ: 4.35 }, cap: 'selfReturn' },
+      { box: { minX: 1.05, maxX: 1.25, minZ: -0.72, maxZ: 3.95 }, cap: 'selfReturn' },
+      doorGap('hallBoot', -1.53),
+      doorGap('hallDrawing', -hFace),
+    ],
+  });
+  addSkirting({
+    name: 'simpleHouse.skirting.drawing',
+    floor: 'ground',
+    zone: 'houseDrawing',
+    path: drawingRectPath,
+    height: 0.17,
+    thickness: 0.02,
+    material: schemes.houseDrawing.trim,
+    gaps: [
+      doorGap('hallDrawing', -pFace),
+      { box: { minX: -5.5, maxX: -5.3, minZ: -4.23, maxZ: 4.23 } },
+    ],
+  });
+  addSkirting({
+    name: 'simpleHouse.skirting.drawingBreast',
+    floor: 'ground',
+    zone: 'houseDrawing',
+    path: drawingBreastPath,
+    closed: false,
+    height: 0.17,
+    thickness: 0.02,
+    material: schemes.houseDrawing.trim,
+    gaps: [{ at: [b.maxX, 0], width: 1.62, cap: 'selfReturn' }],
+    forceCutaway: cut('west', 'ground'),
+  });
+  addSkirting({
+    name: 'simpleHouse.skirting.kitchenDiner',
+    floor: 'ground',
+    zone: 'houseKitchenDiner',
+    path: kitchenPath,
+    height: 0.142,
+    thickness: 0.018,
+    material: schemes.houseKitchenDiner.trim,
+    gaps: [
+      { box: { minX: 5.3, maxX: 5.5, minZ: -3.5, maxZ: 1.38 }, cap: 'selfReturn' },
+      { box: { minX: 1.95, maxX: 5.02, minZ: -4.32, maxZ: -4.12 }, cap: 'selfReturn' },
+      { box: { minX: 1.18, maxX: 1.36, minZ: -3.2, maxZ: -1.9 }, cap: 'selfReturn' },
+      { box: { minX: 1.18, maxX: 1.36, minZ: 1.15, maxZ: 2.55 }, cap: 'selfReturn' },
+      doorGap('hallKitchen', pFace),
+    ],
+  });
+  addSkirting({
+    name: 'simpleHouse.skirting.bootLobby',
+    floor: 'ground',
+    zone: 'houseCloakroom',
+    path: [
+      [-1.12, -1.65],
+      [-0.06, -1.65],
+      [-0.06, -4.185],
+    ],
+    closed: false,
+    height: 0.135,
+    thickness: 0.018,
+    material: schemes.houseBootLobby.trim,
+    gaps: [doorGap('hallBoot', -1.65), doorGap('bootWc', -0.06)],
+  });
+  addSkirting({
+    name: 'simpleHouse.skirting.cloakroom',
+    floor: 'ground',
+    zone: 'houseCloakroom',
+    path: cloakroomPath,
+    height: 0.135,
+    thickness: 0.018,
+    material: schemes.houseCloakroom.trim,
+    gaps: [doorGap('bootWc', 0.06)],
+  });
+
+  // First-floor skirtings (all 7 first-floor rooms/spaces)
+  addSkirting({
+    name: 'simpleHouse.skirting.landing',
+    floor: 'first',
+    zone: 'houseLanding',
+    path: hallPath,
+    material: schemes.houseLanding.trim,
+    gaps: [
+      doorGap('landingGuest', hFace),
+      { box: { minX: 1.05, maxX: 1.25, minZ: -1.37, maxZ: 2.675 }, cap: 'selfReturn' },
+      doorGap('landingBathroom', -1.53),
+      doorGap('landingPrincipal', -hFace),
+    ],
+  });
+  addSkirting({
+    name: 'simpleHouse.skirting.principal',
+    floor: 'first',
+    zone: 'housePrincipalBed',
+    path: principalPath,
+    material: schemes.housePrincipalBed.trim,
+    gaps: [doorGap('landingPrincipal', -pFace), doorGap('principalDressing', -1.65)],
+  });
+  addSkirting({
+    name: 'simpleHouse.skirting.dressing',
+    floor: 'first',
+    zone: 'housePrincipalBed',
+    path: dressingPath,
+    thickness: 0.016,
+    material: schemes.housePrincipalDressing.trim,
+    gaps: [
+      doorGap('principalDressing', -1.77),
+      doorGap('dressingEnsuite', -3.59),
+      { box: { minX: -5.5, maxX: -5.32, minZ: -4.17, maxZ: -1.85 }, cap: 'selfReturn' },
+    ],
+  });
+  addSkirting({
+    name: 'simpleHouse.skirting.ensuite',
+    floor: 'first',
+    zone: 'housePrincipalEnsuite',
+    path: ensuitePath,
+    height: 0.125,
+    thickness: 0.016,
+    material: schemes.housePrincipalEnsuite.trim,
+    gaps: [
+      { box: { minX: -2.75, maxX: -1.49, minZ: -1.86, maxZ: -1.68 }, cap: 'selfReturn' },
+      { box: { minX: -1.36, maxX: -1.18, minZ: -3.36, maxZ: -2.88 }, cap: 'selfReturn' },
+      { box: { minX: -3.55, maxX: -2.18, minZ: -4.3, maxZ: -2.64 }, cap: 'selfReturn' },
+      doorGap('dressingEnsuite', -3.47),
+    ],
+  });
+  addSkirting({
+    name: 'simpleHouse.skirting.guest',
+    floor: 'first',
+    zone: 'houseBedroom2',
+    path: guestPath,
+    thickness: 0.012,
+    material: schemes.houseBedroom2.trim,
+    gaps: [doorGap('landingGuest', pFace)],
+  });
+  addSkirting({
+    name: 'simpleHouse.skirting.study',
+    floor: 'first',
+    zone: 'houseStudy',
+    path: studyPath,
+    thickness: 0.014,
+    material: schemes.houseStudy.trim,
+    gaps: [doorGap('landingStudy', pFace), doorGap('airingCupboard', -1.53)],
+  });
+  addSkirting({
+    name: 'simpleHouse.skirting.bathroom',
+    floor: 'first',
+    zone: 'houseBathroom',
+    path: [
+      [1.33, -1.69],
+      [1.33, -2.45],
+    ],
+    closed: false,
+    height: 0.135,
+    thickness: 0.016,
+    material: schemes.houseBathroom.trim,
+    gaps: [{ box: { minX: 1.24, maxX: 1.42, minZ: -2.26, maxZ: -1.78 }, cap: 'selfReturn' }],
+  });
+  addSkirting({
+    name: 'simpleHouse.skirting.bathroomNorth',
+    floor: 'first',
+    zone: 'houseBathroom',
+    path: [
+      [1.44, -IN_Z],
+      [-1.11, -IN_Z],
+    ],
+    closed: false,
+    height: 0.135,
+    thickness: 0.016,
+    material: schemes.houseBathroom.trim,
+  });
+
+  // Ground-floor ceiling cornices (all 5 ground-floor rooms)
+  addCornice({
+    name: 'simpleHouse.cornice.hall',
+    floor: 'ground',
+    zone: 'houseHall',
+    path: hallPath,
+    profile: 'georgian-cyma',
+    material: schemes.houseHall.trim,
+    gaps: [{ box: { minX: 1.02, maxX: 1.25, minZ: -0.72, maxZ: 2.6 }, cap: 'selfReturn' }],
+  });
+  addCornice({
+    name: 'simpleHouse.cornice.drawing',
+    floor: 'ground',
+    zone: 'houseDrawing',
+    path: drawingRectPath,
+    profile: 'georgian-dentil',
+    height: 0.12,
+    projection: 0.115,
+    material: schemes.houseDrawing.trim,
+    gaps: [{ box: { minX: -5.5, maxX: -5.3, minZ: b.minZ - 0.003, maxZ: b.maxZ + 0.003 } }],
+  });
+  addCornice({
+    name: 'simpleHouse.cornice.drawingBreast',
+    floor: 'ground',
+    zone: 'houseDrawing',
+    path: drawingBreastPath,
+    closed: false,
+    profile: 'georgian-dentil',
+    height: 0.12,
+    projection: 0.115,
+    material: schemes.houseDrawing.trim,
+    forceCutaway: cut('west', 'ground'),
+  });
+  addCornice({
+    name: 'simpleHouse.cornice.kitchen',
+    floor: 'ground',
+    zone: 'houseKitchenDiner',
+    path: kitchenPath,
+    profile: 'georgian-cyma',
+    height: 0.12,
+    projection: 0.115,
+    material: schemes.houseKitchenDiner.trim,
+    gaps: [{ box: { minX: 5.3, maxX: 5.5, minZ: -2.463, maxZ: -0.817 } }],
+  });
+  addCornice({
+    name: 'simpleHouse.cornice.kitchenBreast',
+    floor: 'ground',
+    zone: 'houseKitchenDiner',
+    path: kitchenBreastPath,
+    closed: false,
+    profile: 'georgian-cyma',
+    height: 0.12,
+    projection: 0.115,
+    material: schemes.houseKitchenDiner.trim,
+    forceCutaway: cut('east', 'ground'),
+  });
+  addCornice({
+    name: 'simpleHouse.cornice.bootLobby',
+    floor: 'ground',
+    zone: 'houseCloakroom',
+    path: bootLobbyPath,
+    profile: 'cove',
+    height: 0.095,
+    projection: 0.09,
+    material: schemes.houseBootLobby.trim,
+  });
+  addCornice({
+    name: 'simpleHouse.cornice.cloakroom',
+    floor: 'ground',
+    zone: 'houseCloakroom',
+    path: cloakroomPath,
+    profile: 'cove',
+    height: 0.095,
+    projection: 0.09,
+    material: schemes.houseCloakroom.trim,
+  });
+
+  // First-floor ceiling cornices (all 7 first-floor rooms/spaces)
+  addCornice({
+    name: 'simpleHouse.cornice.landing',
+    floor: 'first',
+    zone: 'houseLanding',
+    path: hallPath,
+    profile: 'georgian-cyma',
+    material: schemes.houseLanding.trim,
+  });
+  addCornice({
+    name: 'simpleHouse.cornice.principal',
+    floor: 'first',
+    zone: 'housePrincipalBed',
+    path: principalPath,
+    profile: 'georgian-dentil',
+    height: 0.12,
+    projection: 0.115,
+    material: schemes.housePrincipalBed.trim,
+  });
+  addCornice({
+    name: 'simpleHouse.cornice.dressing',
+    floor: 'first',
+    zone: 'housePrincipalBed',
+    path: dressingPath,
+    profile: 'georgian-cyma',
+    height: 0.11,
+    projection: 0.105,
+    material: schemes.housePrincipalDressing.trim,
+  });
+  addCornice({
+    name: 'simpleHouse.cornice.ensuite',
+    floor: 'first',
+    zone: 'housePrincipalEnsuite',
+    path: ensuitePath,
+    profile: 'cove',
+    height: 0.095,
+    projection: 0.09,
+    material: schemes.housePrincipalEnsuite.trim,
+  });
+  addCornice({
+    name: 'simpleHouse.cornice.guest',
+    floor: 'first',
+    zone: 'houseBedroom2',
+    path: guestPath,
+    profile: 'georgian-cyma',
+    material: schemes.houseBedroom2.trim,
+  });
+  addCornice({
+    name: 'simpleHouse.cornice.study',
+    floor: 'first',
+    zone: 'houseStudy',
+    path: studyPath,
+    profile: 'georgian-cyma',
+    height: 0.11,
+    projection: 0.105,
+    material: schemes.houseStudy.trim,
+  });
+  addCornice({
+    name: 'simpleHouse.cornice.bathroom',
+    floor: 'first',
+    zone: 'houseBathroom',
+    path: bathroomPath,
+    profile: 'cove',
+    height: 0.095,
+    projection: 0.09,
+    material: schemes.houseBathroom.trim,
+  });
 
   const roses: readonly { id: string; floor: FloorId; xz: readonly [number, number] }[] = [
     { id: 'drawing', floor: 'ground', xz: [-3.345, 0] },

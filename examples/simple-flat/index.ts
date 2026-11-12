@@ -17,6 +17,7 @@ import {
   buildCorstonToggleSwitch,
   buildHollowCabinetCarcass,
   buildHollowWardrobeInterior,
+  createCorniceRun,
   createEngineeredOakFloorTextures,
   createSkirtingRun,
   extrudePlanarSolidWithHoles,
@@ -210,7 +211,7 @@ const SIMPLE_FLAT_MODULE: SceneZoneModule = {
   interiorBounds: Object.values(ROOM_ZONES).map((r) => r.bounds),
   cameraPresets: [
     { id: 'overview', label: 'Apartment Cutaway', buildingId: 'mainHouse', floorViewMode: 'level-0', pos: new THREE.Vector3(7.4, 7.6, 8.6), target: new THREE.Vector3(0.2, 1.0, 0.0) },
-    { id: 'livingRoom', label: 'Living & Kitchen', buildingId: 'mainHouse', zoneId: 'flatLivingKitchen', floorViewMode: 'level-0', pos: new THREE.Vector3(0.2, 1.65, 2.7), target: new THREE.Vector3(2.4, 1.1, -1.6) },
+    { id: 'livingRoom', label: 'Living & Kitchen', buildingId: 'mainHouse', zoneId: 'flatLivingKitchen', floorViewMode: 'level-0', pos: new THREE.Vector3(0.2, 1.65, 2.7), target: new THREE.Vector3(2.2, 1.15, -0.9) },
     { id: 'mainBedroom', label: 'Bedroom', buildingId: 'mainHouse', zoneId: 'flatBedroom', floorViewMode: 'level-0', pos: new THREE.Vector3(-1.1, 1.6, 0.6), target: new THREE.Vector3(-3.1, 0.95, -2.0) },
   ] satisfies readonly CameraPresetDefinition[],
   build(ctx: SceneBuilderContext) {
@@ -389,27 +390,172 @@ const SIMPLE_FLAT_MODULE: SceneZoneModule = {
     spine.castShadow = bedPart.castShadow = bathPart.castShadow = true;
     root.add(spine, bedPart, bathPart);
 
-    const skirting = createSkirtingRun({
-      name: 'flat.living.skirting',
-      zone: 'flatLivingKitchen',
-      path: mouldingPath
-        .startAt(-0.6 + INT_T / 2, -3.4, { y: 0, roomSide: 'right' })
+    const livingPath = () =>
+      mouldingPath
+        .startAt(-0.6 + INT_T / 2, -3.4, { y: 0.001, roomSide: 'right' })
         .lineTo(4.2, -3.4)
         .lineTo(4.2, 3.4)
         .lineTo(-0.6 + INT_T / 2, 3.4)
-        .close(),
-      profile: 'chamfered',
-      height: 0.11,
-      thickness: 0.018,
-      material: trimMat,
-      gaps: [
-        { box: { minX: 0.84, maxX: 2.66, minZ: 3.3, maxZ: 3.5 }, cap: 'selfReturn' },
-        { box: { minX: -0.64, maxX: -0.44, minZ: 1.44, maxZ: 2.46 }, cap: 'selfReturn' },
-      ],
-      cutawayWalls: [northCut, eastCut, southCut],
-      floor: 'level-0',
-    });
-    root.add(skirting);
+        .close();
+    const hallPts: readonly (readonly [number, number])[] = [
+      [-2.2 + INT_T / 2, 1.1 + INT_T / 2],
+      [-0.6 - INT_T / 2, 1.1 + INT_T / 2],
+      [-0.6 - INT_T / 2, 3.4],
+      [-2.2 + INT_T / 2, 3.4],
+    ];
+    const bedroomPts: readonly (readonly [number, number])[] = [
+      [-4.2, -3.4],
+      [-0.6 - INT_T / 2, -3.4],
+      [-0.6 - INT_T / 2, 1.1 - INT_T / 2],
+      [-4.2, 1.1 - INT_T / 2],
+    ];
+    const bathroomPts: readonly (readonly [number, number])[] = [
+      [-4.2, 1.1 + INT_T / 2],
+      [-2.2 - INT_T / 2, 1.1 + INT_T / 2],
+      [-2.2 - INT_T / 2, 3.4],
+      [-4.2, 3.4],
+    ];
+
+    root.add(
+      createSkirtingRun({
+        name: 'flat.living.skirting',
+        zone: 'flatLivingKitchen',
+        path: livingPath(),
+        profile: 'chamfered',
+        height: 0.105,
+        thickness: 0.018,
+        material: trimMat,
+        gaps: [
+          { box: { minX: -0.16, maxX: 3.67, minZ: -3.5, maxZ: -3.3 }, cap: 'selfReturn' },
+          { box: { minX: 0.83, maxX: 2.67, minZ: 3.3, maxZ: 3.5 }, cap: 'selfReturn' },
+          { box: { minX: -0.64, maxX: -0.44, minZ: 1.43, maxZ: 2.47 }, cap: 'selfReturn' },
+        ],
+        cutawayWalls: [northCut, eastCut, southCut],
+        floor: 'level-0',
+      }),
+      createSkirtingRun({
+        name: 'flat.hall.skirting',
+        zone: 'flatHall',
+        points: hallPts,
+        closed: true,
+        roomSide: 'right',
+        elevationY: 0.001,
+        profile: 'chamfered',
+        height: 0.105,
+        thickness: 0.016,
+        material: trimMat,
+        gaps: [
+          { box: { minX: -1.78, maxX: -0.88, minZ: 1.06, maxZ: 1.24 }, cap: 'selfReturn' },
+          { box: { minX: -0.74, maxX: -0.58, minZ: 1.43, maxZ: 2.47 }, cap: 'selfReturn' },
+          { box: { minX: -1.97, maxX: -0.98, minZ: 3.3, maxZ: 3.5 }, cap: 'selfReturn' },
+          { box: { minX: -2.22, maxX: -2.06, minZ: 1.42, maxZ: 2.23 }, cap: 'selfReturn' },
+        ],
+        cutawayWalls: [southCut],
+        floor: 'level-0',
+      }),
+      createSkirtingRun({
+        name: 'flat.bedroom.skirting',
+        zone: 'flatBedroom',
+        points: bedroomPts,
+        closed: true,
+        roomSide: 'right',
+        elevationY: 0.001,
+        profile: 'chamfered',
+        height: 0.105,
+        thickness: 0.018,
+        material: trimMat,
+        gaps: [
+          { box: { minX: -3.92, maxX: -2.28, minZ: -3.5, maxZ: -3.3 }, cap: 'selfReturn' },
+          { box: { minX: -1.78, maxX: -0.88, minZ: 0.96, maxZ: 1.12 }, cap: 'selfReturn' },
+        ],
+        cutawayWalls: [northCut, westCut],
+        floor: 'level-0',
+      }),
+      createSkirtingRun({
+        name: 'flat.bathroom.skirting',
+        zone: 'flatBathroom',
+        points: bathroomPts,
+        closed: true,
+        roomSide: 'right',
+        elevationY: 0.001,
+        profile: 'chamfered',
+        height: 0.095,
+        thickness: 0.015,
+        material: trimMat,
+        gaps: [
+          { box: { minX: -4.28, maxX: -2.95, minZ: 1.08, maxZ: 1.95 }, cap: 'selfReturn' },
+          { box: { minX: -2.34, maxX: -2.18, minZ: 1.42, maxZ: 2.23 }, cap: 'selfReturn' },
+          { box: { minX: -3.76, maxX: -3.34, minZ: 3.3, maxZ: 3.5 }, cap: 'selfReturn' },
+          { box: { minX: -4.28, maxX: -4.1, minZ: 2.13, maxZ: 2.77 }, cap: 'selfReturn' },
+        ],
+        cutawayWalls: [southCut, westCut],
+        floor: 'level-0',
+      })
+    );
+
+    ctx.ceilingMeshGroup.add(
+      createCorniceRun({
+        name: 'flat.living.cornice',
+        zone: 'flatLivingKitchen',
+        points: [
+          [-0.6 + INT_T / 2, -3.4],
+          [4.2, -3.4],
+          [4.2, 3.4],
+          [-0.6 + INT_T / 2, 3.4],
+        ],
+        closed: true,
+        roomSide: 'right',
+        ceilingY: WALL_H,
+        profile: 'georgian-cyma',
+        height: 0.095,
+        projection: 0.09,
+        material: trimMat,
+        cutawayWalls: [northCut, eastCut, southCut],
+        floor: 'level-0',
+      }),
+      createCorniceRun({
+        name: 'flat.hall.cornice',
+        zone: 'flatHall',
+        points: hallPts,
+        closed: true,
+        roomSide: 'right',
+        ceilingY: WALL_H,
+        profile: 'cove',
+        height: 0.085,
+        projection: 0.08,
+        material: trimMat,
+        cutawayWalls: [southCut],
+        floor: 'level-0',
+      }),
+      createCorniceRun({
+        name: 'flat.bedroom.cornice',
+        zone: 'flatBedroom',
+        points: bedroomPts,
+        closed: true,
+        roomSide: 'right',
+        ceilingY: WALL_H,
+        profile: 'georgian-cyma',
+        height: 0.09,
+        projection: 0.085,
+        material: trimMat,
+        cutawayWalls: [northCut, westCut],
+        floor: 'level-0',
+      }),
+      createCorniceRun({
+        name: 'flat.bathroom.cornice',
+        zone: 'flatBathroom',
+        points: bathroomPts,
+        closed: true,
+        roomSide: 'right',
+        ceilingY: WALL_H,
+        profile: 'cove',
+        height: 0.08,
+        projection: 0.075,
+        material: trimMat,
+        cutawayWalls: [southCut, westCut],
+        floor: 'level-0',
+      })
+    );
 
     const bedDoor = new THREE.Mesh(prepGeo(new THREE.BoxGeometry(0.83, 2.08, 0.042)), trimMat);
     bedDoor.name = 'flatBedroomDoor';

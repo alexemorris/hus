@@ -23,7 +23,7 @@ if (typeof globalThis.document === 'undefined') {
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { CircuitBus } from 'husjs';
-import { assertNoZFighting } from 'husjs/testing';
+import { assertNoZFighting, runArchitecturalAudit } from 'husjs/testing';
 import {
   buildPropertySceneContent,
   createPropertySceneLayers,
@@ -400,4 +400,103 @@ describe('Stages 4.3, 4.4, 4.5 & 4.10b — husjs Example & Showcase Homes', () =
       });
     }
   });
+  it('builds complete per-room skirtings and ceiling cornices across simple-house and simple-flat with 0 architectural audit errors', () => {
+    const checkTrimMeshes = (scene: THREE.Scene, names: readonly string[]) => {
+      for (const name of names) {
+        const obj = scene.getObjectByName(name);
+        expect(obj, `Missing trim group ${name}`).toBeDefined();
+        let meshCount = 0;
+        obj!.traverse((child) => {
+          if (child instanceof THREE.Mesh && child.geometry.attributes.position.count > 0) {
+            meshCount++;
+          }
+        });
+        expect(meshCount, `Expected non-empty mesh geometry under ${name}`).toBeGreaterThan(0);
+      }
+    };
+
+    const flatProfile = simpleFlat.createSceneProfile();
+    const flatRegistry = flatProfile.createZoneRegistry();
+    const flatScene = new THREE.Scene();
+    const flatLayers = createPropertySceneLayers(flatScene, flatProfile.floors);
+    const flatLod = new RoomLodController(flatProfile.lodRegistrations);
+    const flatBuilt = buildPropertySceneContent(flatLayers, {
+      profile: flatProfile,
+      registry: flatRegistry,
+      lodController: flatLod,
+      ceilingCutaway: false,
+    });
+    checkTrimMeshes(flatScene, [
+      'flat.living.skirting',
+      'flat.hall.skirting',
+      'flat.bedroom.skirting',
+      'flat.bathroom.skirting',
+      'flat.living.cornice',
+      'flat.hall.cornice',
+      'flat.bedroom.cornice',
+      'flat.bathroom.cornice',
+    ]);
+    const flatAudit = runArchitecturalAudit(flatScene, {
+      floors: flatProfile.floors,
+      roomZones: flatProfile.lodRegistrations,
+      interactions: flatBuilt.interactions,
+      doorPolicy: flatProfile.doorPolicy,
+      terrainSampler: flatProfile.terrainSampler?.sampleTerrainY,
+    });
+    expect(flatAudit.errorCount).toBe(0);
+    expect(flatAudit.warningCount).toBe(0);
+
+    const houseProfile = simpleHouse.createSceneProfile();
+    const houseRegistry = houseProfile.createZoneRegistry();
+    const houseScene = new THREE.Scene();
+    const houseLayers = createPropertySceneLayers(houseScene, houseProfile.floors);
+    const houseLod = new RoomLodController(houseProfile.lodRegistrations);
+    const houseBuilt = buildPropertySceneContent(houseLayers, {
+      profile: houseProfile,
+      registry: houseRegistry,
+      lodController: houseLod,
+      ceilingCutaway: false,
+    });
+    checkTrimMeshes(houseScene, [
+      'simpleHouse.skirting.hall',
+      'simpleHouse.skirting.drawing',
+      'simpleHouse.skirting.drawingBreast',
+      'simpleHouse.skirting.kitchenDiner',
+      'simpleHouse.skirting.bootLobby',
+      'simpleHouse.skirting.cloakroom',
+      'simpleHouse.skirting.landing',
+      'simpleHouse.skirting.principal',
+      'simpleHouse.skirting.dressing',
+      'simpleHouse.skirting.ensuite',
+      'simpleHouse.skirting.guest',
+      'simpleHouse.skirting.study',
+      'simpleHouse.skirting.bathroom',
+      'simpleHouse.skirting.bathroomNorth',
+      'simpleHouse.cornice.hall',
+      'simpleHouse.cornice.drawing',
+      'simpleHouse.cornice.drawingBreast',
+      'simpleHouse.cornice.kitchen',
+      'simpleHouse.cornice.kitchenBreast',
+      'simpleHouse.cornice.bootLobby',
+      'simpleHouse.cornice.cloakroom',
+      'simpleHouse.cornice.landing',
+      'simpleHouse.cornice.principal',
+      'simpleHouse.cornice.dressing',
+      'simpleHouse.cornice.ensuite',
+      'simpleHouse.cornice.guest',
+      'simpleHouse.cornice.study',
+      'simpleHouse.cornice.bathroom',
+    ]);
+    const houseSpawns = simpleHouse.walkthrough?.spawns ?? [];
+    const houseAudit = runArchitecturalAudit(houseScene, {
+      floors: houseProfile.floors,
+      roomZones: houseProfile.lodRegistrations,
+      interactions: houseBuilt.interactions,
+      doorPolicy: houseProfile.doorPolicy,
+      terrainSampler: houseProfile.terrainSampler?.sampleTerrainY,
+      ...(houseSpawns[0] ? { entryPosition: houseSpawns[0].position, entryZoneId: houseSpawns[0].zoneId } : {}),
+    });
+    expect(houseAudit.errorCount).toBe(0);
+    expect(houseAudit.warningCount).toBe(0);
+  }, 20000);
 });
