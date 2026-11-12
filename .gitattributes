@@ -1,0 +1,11 @@
+* text=auto eol=lf
+*.hdr binary
+*.webp binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.glb binary
+*.blend binary
+*.ico binary
+*.woff binary
+*.woff2 binary

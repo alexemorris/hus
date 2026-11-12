@@ -1,0 +1,500 @@
+/* ============================================================================
+   Single Toggle Rocker & Segmented Controls
+   ============================================================================ */
+
+.hud-rocker-btn {
+  width: 100%;
+  background: #2b2b2b;
+  border: 1px solid #121212;
+  box-shadow: inset 0 1px 0 #3d3d3d;
+  border-radius: 3px;
+  padding: 6px 8px 4px;
+  color: #e4e4e4;
+  cursor: pointer;
+  text-align: left;
+  margin-bottom: 6px;
+}
+
+.hud-rocker-btn:hover {
+  background: #323232;
+}
+
+.hud-rocker-btn.pressed {
+  background: #1c1c1c;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.7);
+}
+
+.hud-rocker-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.hud-two-way-box {
+  margin-bottom: 6px;
+}
+
+.hud-two-way-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-bottom: 3px;
+}
+
+.hud-two-way-btn {
+  margin-bottom: 0;
+  padding: 5px 7px 4px;
+}
+
+.hud-two-way-sub {
+  font-size: 8.8px;
+  color: #8c8c8c;
+  white-space: nowrap;
+}
+
+.hud-utility-rocker {
+  margin-top: 6px;
+  margin-bottom: 0;
+  padding: 5px 8px;
+}
+
+.hud-utility-main {
+  margin-bottom: 0;
+}
+
+.hud-rocker-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #d6983a;
+  flex-shrink: 0;
+}
+
+.hud-rocker-dot.off-state {
+  background: #484848;
+}
+
+.hud-rocker-dot.night-dim-state {
+  background: #6a9bc2;
+  box-shadow: 0 0 5px rgba(106, 155, 194, 0.7);
+}
+
+.hud-rocker-dot.hold-triggered {
+  background: #c94a4a;
+}
+
+.hud-sensor-subhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 7px;
+  margin-bottom: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #828282;
+}
+
+.hud-sensor-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+
+.hud-sensor-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: #252525;
+  border: 1px solid #121212;
+  box-shadow: inset 0 1px 0 #343434;
+  border-radius: 3px;
+  padding: 4px 6px;
+  color: #b4b4b4;
+  font-size: 9.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.hud-sensor-btn:hover {
+  background: #2e2e2e;
+  color: #e4e4e4;
+}
+
+.hud-sensor-btn.is-occupied {
+  color: #e6e6e6;
+  background: #29302b;
+  border-color: #16241a;
+}
+
+.hud-sensor-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #4a4a4a;
+  flex-shrink: 0;
+}
+
+.hud-sensor-btn.is-occupied .hud-sensor-dot {
+  background: #46c96e;
+  box-shadow: 0 0 4px rgba(70, 201, 110, 0.65);
+}
+
+.hud-sublabel-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #7c7c7c;
+  margin-bottom: 3px;
+}
+
+.hud-sublabel-ext {
+  margin-top: 5px;
+  color: #79a6c4;
+}
+
+.scene-pill-ext.active {
+  background: #2e4a5e;
+  color: #eaf4fc;
+}
+
+.hud-tv-art-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  margin-top: 4px;
+  background: #232323;
+  border: 1px solid #121212;
+  box-shadow: inset 0 1px 0 #323232;
+  border-radius: 3px;
+  padding: 4px 7px;
+  color: #9e9e9e;
+  font-size: 9.5px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.hud-tv-art-btn:hover {
+  background: #2b2b2b;
+  color: #e4e4e4;
+}
+
+.hud-tv-art-btn.is-art-on {
+  background: #292722;
+  border-color: #262015;
+  color: #dcd4c4;
+}
+
+.hud-tv-art-btn.is-art-on .hud-sensor-dot {
+  background: #d6983a;
+  box-shadow: 0 0 4px rgba(214, 152, 58, 0.65);
+}
+
+.hud-tv-art-title {
+  font-weight: 600;
+  color: #a8a8a8;
+}
+
+.hud-tv-art-value {
+  margin-left: auto;
+  font-weight: 600;
+  color: #e2c084;
+}
+
+.hud-tv-art-btn:not(.is-art-on) .hud-tv-art-value {
+  color: #777777;
+}
+
+
+/* ============================================================================
+   Compact Channel Sliders
+   ============================================================================ */
+
+.hud-sliders {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hud-channel-row {
+  display: grid;
+  grid-template-columns: 14px 86px 1fr 30px;
+  align-items: center;
+  gap: 5px;
+  height: 19px;
+}
+
+.hud-ch-power {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  border: 1px solid #111;
+  background: #2c2c2c;
+  cursor: pointer;
+  padding: 0;
+}
+
+.hud-channel-row.is-on .hud-ch-power {
+  background: #c88f36;
+}
+
+.hud-ch-name {
+  font-size: 10.5px;
+  color: #c8c8c8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hud-ch-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  background: #151515;
+  border: 1px solid #0e0e0e;
+  border-radius: 2px;
+  outline: none;
+  cursor: ew-resize;
+}
+
+.hud-ch-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 9px;
+  height: 11px;
+  background: #b8b8b8;
+  border: 1px solid #0d0d0d;
+  border-radius: 1px;
+  cursor: ew-resize;
+}
+
+.hud-ch-slider::-webkit-slider-thumb:hover {
+  background: #ffffff;
+}
+
+.hud-ch-val {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 9.5px;
+  color: #9e9e9e;
+  text-align: right;
+}
+
+/* ============================================================================
+   Environment Row & Inline Buttons
+   ============================================================================ */
+
+.hud-env-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 5px;
+}
+
+.hud-tod-group {
+  flex: 1.15;
+}
+
+.hud-toggle-btn,
+.hud-action-btn,
+.hud-inline-btn {
+  background: #2a2a2a;
+  border: 1px solid #121212;
+  box-shadow: inset 0 1px 0 #383838;
+  border-radius: 3px;
+  color: #c4c4c4;
+  font-size: 9.5px;
+  padding: 3px 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.hud-toggle-btn:hover,
+.hud-action-btn:hover,
+.hud-inline-btn:hover {
+  background: #343434;
+  color: #ffffff;
+}
+
+.hud-inline-btn {
+  padding: 1px 5px;
+  font-size: 9px;
+}
+
+
+/* Underfloor Heating (UFH) Layer & Red/Blue Zone Controls */
+.hud-ufh-bar {
+  display: flex;
+  margin-bottom: 4px;
+}
+
+.hud-ufh-layer-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 5px 8px;
+}
+
+.hud-ufh-layer-btn.is-ufh-active {
+  background: #36221c;
+  border-color: #c9462c;
+  box-shadow: inset 0 1px 0 #5e3126;
+  color: #ffe2db;
+}
+
+.hud-ufh-zone-row {
+  margin-bottom: 5px;
+}
+
+.ufh-zone-btn.is-ufh-on {
+  background: #421d18;
+  border-color: #d63522;
+  box-shadow: inset 0 1px 0 #6b2a22;
+  color: #ffd8d1;
+}
+
+.ufh-zone-btn.is-ufh-on:hover {
+  background: #52241e;
+}
+
+.ufh-zone-btn.is-ufh-off {
+  background: #152942;
+  border-color: #1f6feb;
+  box-shadow: inset 0 1px 0 #21426b;
+  color: #cfe4ff;
+}
+
+.ufh-zone-btn.is-ufh-off:hover {
+  background: #1b3454;
+}
+
+.hud-rocker-dot.ufh-red-dot {
+  background: #ff3b24;
+  box-shadow: 0 0 6px rgba(255, 59, 36, 0.9);
+}
+
+.hud-rocker-dot.ufh-blue-dot {
+  background: #2b88ff;
+  box-shadow: 0 0 6px rgba(43, 136, 255, 0.85);
+}
+
+/* 17th-C Farmhouse Thermal & Warm-Up Estimator */
+.hud-ufh-env-controls {
+  display: grid;
+  grid-template-columns: 3fr 2fr;
+  gap: 4px;
+  margin-bottom: 5px;
+}
+
+.hud-ufh-warmup-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.hud-ufh-warmup-card {
+  background: #1a1b1e;
+  border: 1px solid #2b2e35;
+  border-radius: 3px;
+  padding: 4px 6px;
+}
+
+.hud-ufh-warmup-card.is-on {
+  background: #231917;
+  border-color: #5c2a21;
+}
+
+.hud-ufh-warmup-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  margin-bottom: 2px;
+}
+
+.hud-ufh-warmup-zone {
+  font-size: 9px;
+  font-weight: 600;
+  color: #dcdcdc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hud-ufh-warmup-time {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.hud-ufh-warmup-time.is-fast {
+  background: #3d2814;
+  border: 1px solid #8c5822;
+  color: #ffcc80;
+}
+
+.hud-ufh-warmup-time.is-screed {
+  background: #3b1c17;
+  border: 1px solid #8f3526;
+  color: #ffb8a8;
+}
+
+.hud-ufh-warmup-meta {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 8px;
+  color: #9e9e9e;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+
+/* ==========================================================================
+   First-Person Walkthrough HUD & Crosshair Reticle
+   ========================================================================== */
+
+.hud-walkthrough-bar {
+  margin-top: 5px;
+}
+
+.hud-walkthrough-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 5px 8px;
+  font-weight: 600;
+  background: #1d2722;
+  border-color: #2c4237;
+  color: #d7f3e3;
+}
+
+.hud-walkthrough-btn:hover {
+  background: #24332c;
+  border-color: #3c5c4c;
+  color: #ffffff;
+}
+
+.hud-walkthrough-btn.is-walkthrough-active {
+  background: #183d2c;
+  border-color: #2ea86f;
+  box-shadow: inset 0 1px 0 #38c182, 0 0 10px rgba(46, 168, 111, 0.25);
+  color: #ecfdf5;
+}
+
+.walkthrough-green-dot {
+  background: #34d399;
+  box-shadow: 0 0 6px #34d399;
+}

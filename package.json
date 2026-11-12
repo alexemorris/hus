@@ -1,0 +1,174 @@
+{
+  "name": "husjs",
+  "version": "1.0.0",
+  "license": "MIT",
+  "description": "3D home and architectural models in TypeScript and Three.js",
+  "homepage": "https://alexemorris.github.io/hus/",
+  "keywords": [
+    "threejs",
+    "webgpu",
+    "architecture",
+    "3d",
+    "typescript",
+    "cad",
+    "digital-twin",
+    "smart-home"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alexemorris/hus.git"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "./src/husjs/index.ts",
+  "types": "./src/husjs/index.ts",
+  "exports": {
+    ".": "./src/husjs/index.ts",
+    "./viewer": "./src/husjs/viewer.ts",
+    "./objects": "./src/husjs/objects.ts",
+    "./materials": "./src/husjs/materials.ts",
+    "./audio": "./src/husjs/audio.ts",
+    "./knx": "./src/husjs/knx.ts",
+    "./unifi": "./src/husjs/unifi.ts",
+    "./ui": "./src/husjs/ui.ts",
+    "./testing": "./src/husjs/testing.ts",
+    "./catalog/appliances": "./src/husjs/catalog/appliances.ts",
+    "./catalog/architectural": "./src/husjs/catalog/architectural.ts",
+    "./catalog/bathroom": "./src/husjs/catalog/bathroom.ts",
+    "./catalog/devices": "./src/husjs/catalog/devices.ts",
+    "./catalog/electrical": "./src/husjs/catalog/electrical.ts",
+    "./catalog/electronics": "./src/husjs/catalog/electronics.ts",
+    "./catalog/furniture": "./src/husjs/catalog/furniture.ts",
+    "./catalog/garden": "./src/husjs/catalog/garden.ts",
+    "./catalog/hardware": "./src/husjs/catalog/hardware.ts",
+    "./catalog/homewares": "./src/husjs/catalog/homewares.ts",
+    "./catalog/joinery": "./src/husjs/catalog/joinery.ts",
+    "./catalog/kitchen": "./src/husjs/catalog/kitchen.ts",
+    "./catalog/lighting": "./src/husjs/catalog/lighting.ts",
+    "./catalog/radiators": "./src/husjs/catalog/radiators.ts",
+    "./catalog/sanitaryware": "./src/husjs/catalog/sanitaryware.ts",
+    "./catalog/soft-furnishings": "./src/husjs/catalog/soft-furnishings.ts",
+    "./catalog/vehicles": "./src/husjs/catalog/vehicles.ts",
+    "./styles.css": "./src/style.css",
+    "./vite": {
+      "types": "./tools/husjs-vite.d.mts",
+      "default": "./tools/husjs-vite.mjs"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "viewer": [
+        "./src/husjs/viewer.ts"
+      ],
+      "objects": [
+        "./src/husjs/objects.ts"
+      ],
+      "materials": [
+        "./src/husjs/materials.ts"
+      ],
+      "audio": [
+        "./src/husjs/audio.ts"
+      ],
+      "knx": [
+        "./src/husjs/knx.ts"
+      ],
+      "unifi": [
+        "./src/husjs/unifi.ts"
+      ],
+      "ui": [
+        "./src/husjs/ui.ts"
+      ],
+      "testing": [
+        "./src/husjs/testing.ts"
+      ],
+      "catalog/appliances": [
+        "./src/husjs/catalog/appliances.ts"
+      ],
+      "catalog/architectural": [
+        "./src/husjs/catalog/architectural.ts"
+      ],
+      "catalog/bathroom": [
+        "./src/husjs/catalog/bathroom.ts"
+      ],
+      "catalog/devices": [
+        "./src/husjs/catalog/devices.ts"
+      ],
+      "catalog/electrical": [
+        "./src/husjs/catalog/electrical.ts"
+      ],
+      "catalog/electronics": [
+        "./src/husjs/catalog/electronics.ts"
+      ],
+      "catalog/furniture": [
+        "./src/husjs/catalog/furniture.ts"
+      ],
+      "catalog/garden": [
+        "./src/husjs/catalog/garden.ts"
+      ],
+      "catalog/hardware": [
+        "./src/husjs/catalog/hardware.ts"
+      ],
+      "catalog/homewares": [
+        "./src/husjs/catalog/homewares.ts"
+      ],
+      "catalog/joinery": [
+        "./src/husjs/catalog/joinery.ts"
+      ],
+      "catalog/kitchen": [
+        "./src/husjs/catalog/kitchen.ts"
+      ],
+      "catalog/lighting": [
+        "./src/husjs/catalog/lighting.ts"
+      ],
+      "catalog/radiators": [
+        "./src/husjs/catalog/radiators.ts"
+      ],
+      "catalog/sanitaryware": [
+        "./src/husjs/catalog/sanitaryware.ts"
+      ],
+      "catalog/soft-furnishings": [
+        "./src/husjs/catalog/soft-furnishings.ts"
+      ],
+      "catalog/vehicles": [
+        "./src/husjs/catalog/vehicles.ts"
+      ],
+      "vite": [
+        "./tools/husjs-vite.d.mts"
+      ]
+    }
+  },
+  "bin": {
+    "husjs": "./bin/husjs.mjs"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check:boundaries": "node tools/check-boundaries.mjs",
+    "verify": "npm run typecheck && npm run check:boundaries && npm test && node bin/husjs.mjs audit --all-examples && vite build",
+    "husjs:terrain": "node bin/husjs.mjs terrain",
+    "husjs:export": "node bin/husjs.mjs export",
+    "husjs:zfight": "node bin/husjs.mjs zfight",
+    "husjs:audit": "node bin/husjs.mjs audit",
+    "husjs:hdri": "node ./bin/husjs.mjs hdri",
+    "husjs:schedule": "node ./bin/husjs.mjs schedule"
+  },
+  "dependencies": {
+    "@preact/signals": "^2.11.3",
+    "preact": "^11.0.0",
+    "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "@types/three": "^0.180.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.8.0",
+    "vite": "^6.0.0",
+    "vitest": "^3.2.7"
+  }
+}

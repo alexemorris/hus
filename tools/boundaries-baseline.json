@@ -1,0 +1,4 @@
+{
+  "comment": "Known layer violations tolerated by tools/check-boundaries. Empty since the knx-lighting merge made src/integrations/knx a generic KNX stack. Only remove entries; never add new ones without coordinator sign-off.",
+  "violations": []
+}

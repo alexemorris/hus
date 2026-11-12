@@ -1,0 +1,62 @@
+/* ============================================================================
+   Design Tokens & Base Viewport Reset
+   ============================================================================ */
+
+:root {
+  --hud-bg: rgba(32, 32, 32, 0.94);
+  --hud-titlebar-bg: #1a1a1a;
+  --hud-border-outer: #0c0c0c;
+  --hud-border-inner: #3a3a3a;
+  --hud-text-primary: #dcdcdc;
+  --hud-text-muted: #8c8c8c;
+  --hud-accent-gold: #e8c27a;
+  --hud-accent-green: #34d399;
+  --hud-accent-blue: #38bdf8;
+  --hud-font-sans: -apple-system, BlinkMacSystemFont, "Lucida Grande", "Helvetica Neue", Arial, sans-serif;
+  --hud-font-mono: "SFMono-Regular", Consolas, monospace;
+}
+
+/* ============================================================================
+   Hus — Floating HUD Palette
+   Matte dark charcoal utility inspector, zero fancy gradients, 100% viewport
+   ============================================================================ */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+html,
+body,
+#app {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  touch-action: none;
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+  background: #111317;
+  font-family: -apple-system, BlinkMacSystemFont, "Lucida Grande", "Helvetica Neue", Arial, sans-serif;
+  font-size: 11px;
+  line-height: 1.3;
+  color: #dcdcdc;
+  -webkit-font-smoothing: antialiased;
+}
+
+#three-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  cursor: grab;
+}
+
+#three-canvas:active {
+  cursor: grabbing;
+}
+

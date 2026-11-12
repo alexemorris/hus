@@ -1,0 +1,81 @@
+{
+  "id": "./",
+  "name": "Georgian House — 3D Digital Twin",
+  "short_name": "Georgian House",
+  "description": "Interactive 3D architectural & smart-home digital twin of a Georgian Double-Fronted Country House: rooms, heritage lighting, trade views, and 1PV walkthrough.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": [
+    "window-controls-overlay",
+    "standalone"
+  ],
+  "orientation": "any",
+  "background_color": "#11151c",
+  "theme_color": "#14181f",
+  "categories": [
+    "lifestyle",
+    "utilities",
+    "productivity"
+  ],
+  "icons": [
+    {
+      "src": "./icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "./icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "3D Overview",
+      "short_name": "3D View",
+      "description": "Open Georgian House in 3D dollhouse orbit view",
+      "url": "./",
+      "icons": [
+        {
+          "src": "./icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Developer Tools",
+      "short_name": "Dev Tools",
+      "description": "Open with KNX bus diagnostics and developer tools enabled",
+      "url": "./?dev=1",
+      "icons": [
+        {
+          "src": "./icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ]
+}

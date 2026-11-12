@@ -1,0 +1,11 @@
+node_modules/
+dist/
+shots/
+codemod/
+*.actual
+
+# Build outputs of the esbuild-bundled CLIs and local snapshot artifacts
+# (the committed golden is .snapshots/scene.snap).
+.snapshots/*.mjs
+.snapshots/*.actual
+.snapshots/scene.golden.snap

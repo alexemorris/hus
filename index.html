@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="robots" content="noindex,nofollow" />
+  <meta name="theme-color" content="#121419" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Hus" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+  <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="description" content="Hus 3D architectural digital twin: rooms, heritage lighting, spatial annotations & interactive interiors" />
+  <title>Georgian Country House — Hus</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <div id="app">
+    <div id="loading-screen" class="loading-screen" role="status" aria-live="polite" data-preboot-house="simple-house">
+      <div class="loading-card">
+        <div class="loading-mark" aria-hidden="true">
+          <svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 64 64"><defs><linearGradient id="g" gradientUnits="userSpaceOnUse"/><linearGradient id="r" x1="22" y1="6" x2="58" y2="36" href="#g"><stop stop-color="#FFB482"/><stop offset=".38" stop-color="#F25A2E"/><stop offset="1" stop-color="#B8260B"/></linearGradient><linearGradient id="w" x1="40" y1="26" x2="58" y2="56" href="#g"><stop stop-color="#9E220B"/><stop offset="1" stop-color="#611003"/></linearGradient><linearGradient id="i" x1="10" y1="18" x2="36" y2="52" href="#g"><stop stop-color="#C43B14"/><stop offset="1" stop-color="#7D1906"/></linearGradient><linearGradient id="l" x1="18" y1="40" x2="52" y2="56" href="#g"><stop stop-color="#FFE694"/><stop offset="1" stop-color="#EB8123"/></linearGradient><linearGradient id="f" x1="6" y1="14" x2="46" y2="58" href="#g"><stop stop-color="#FFD688"/><stop offset=".52" stop-color="#F59438"/><stop offset="1" stop-color="#DB5B1C"/></linearGradient></defs><path d="M9.5 55.7L9.5 34.9A3.9 3.9 0 0 1 10.6 32.2L22.3 20.5L37.1 11.9L25.4 23.6A3.9 3.9 0 0 0 24.2 26.4L24.2 47.2Z" fill="url(#i)"/><path d="M36.1 53L18.6 53L33.4 44.5L50.8 44.5Z" fill="url(#l)"/><path d="M44.9 32.6A9.4 9.4 0 0 1 45.2 34.9L45.2 49.3A9.2 9.2 0 0 1 40.6 57.2L55.4 48.7A9.2 9.2 0 0 0 60 40.8L60 26.4A9.4 9.4 0 0 0 59.7 24.1Z" fill="url(#w)" stroke="url(#w)" stroke-width=".2"/><path d="M20.2 15.2A8.7 8.7 0 0 1 30.8 16.6L42.5 28.3A9.4 9.4 0 0 1 44.9 32.6L59.7 24.1A9.4 9.4 0 0 0 57.3 19.8L45.6 8.1A8.7 8.7 0 0 0 35 6.7Z" fill="url(#r)"/><path d="M5 55.7A1 1 0 0 1 4 54.7L4 34.9A9.4 9.4 0 0 1 6.7 28.3L18.4 16.6A8.7 8.7 0 0 1 30.8 16.6L42.5 28.3A9.4 9.4 0 0 1 45.2 34.9L45.2 49.3A9.2 9.2 0 0 1 36.1 58.5L19.6 58.5A1 1 0 0 1 18.6 57.5L18.6 54A1 1 0 0 1 19.6 53L36.1 53A3.7 3.7 0 0 0 39.8 49.3L39.8 34.9A3.9 3.9 0 0 0 38.6 32.2L26.9 20.5A3.3 3.3 0 0 0 22.3 20.5L10.6 32.2A3.9 3.9 0 0 0 9.5 34.9L9.5 54.7A1 1 0 0 1 8.5 55.7Z" fill="url(#f)"/></svg>
+        </div>
+        <div class="loading-eyebrow">HUS · ARCHITECTURAL TWIN</div>
+        <div id="loading-title" class="loading-title">Georgian Country House</div>
+        <div id="loading-label" class="loading-label">
+          <span class="loading-stage">Preparing architectural scene</span><span class="loading-sep" aria-hidden="true"> · </span><span class="loading-pct">0%</span>
+        </div>
+        <div class="loading-bar" aria-hidden="true"><div id="loading-bar-fill" class="loading-bar-fill"></div></div>
+      </div>
+    </div>
+    <script>
+      (function () {
+        var titles = {
+          'stahl-house': 'Stahl House — Case Study #22',
+          'simple-flat': 'pied-à-terre Apartment',
+          'simple-house': 'Georgian Country House'
+        };
+        var raw = '';
+        try {
+          raw = (new URLSearchParams(window.location.search).get('house') || '').trim().toLowerCase();
+        } catch (_e) {}
+        var key = Object.prototype.hasOwnProperty.call(titles, raw) ? raw : 'simple-house';
+        var title = titles[key];
+        var screenEl = document.getElementById('loading-screen');
+        if (screenEl) screenEl.setAttribute('data-preboot-house', key);
+        var titleEl = document.getElementById('loading-title');
+        if (titleEl) titleEl.textContent = title;
+        document.title = title + ' — Hus';
+      })();
+    </script>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

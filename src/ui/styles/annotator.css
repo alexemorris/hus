@@ -1,0 +1,641 @@
+/* ============================================================================
+   3D Issue Annotator (docked inspector; see shell.css .shell-inspector)
+   ============================================================================ */
+
+.annotator-body {
+  max-height: calc(100vh - 60px);
+}
+
+.annotator-top-row {
+  margin-bottom: 5px;
+}
+
+.annotator-mode-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 0;
+  padding: 5px 8px;
+}
+
+.annotator-mode-btn.is-active-mode {
+  background: #3b201e;
+  border-color: #82332c;
+  box-shadow: inset 0 1px 0 #592e2a;
+}
+
+.annotator-mode-btn.is-active-mode .hud-rocker-dot {
+  background: #ff5c4d;
+  box-shadow: 0 0 6px rgba(255, 92, 77, 0.85);
+}
+
+/* Annotator Sub-Tool Selector Bar (Pin / Move / Rotate / Measure) */
+.annotator-tools-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 3px;
+  margin-bottom: 5px;
+}
+
+.annotator-tool-btn {
+  background: #232323;
+  border: 1px solid #121212;
+  border-radius: 3px;
+  box-shadow: inset 0 1px 0 #333;
+  color: #bbb;
+  font-size: 9px;
+  font-weight: 600;
+  padding: 4px 3px;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.annotator-tool-btn:hover {
+  background: #2d2d2d;
+  color: #eee;
+}
+
+#annotator-tool-pin.is-active,
+.annotator-tool-btn.kind-pin.is-active {
+  background: #42221f;
+  border-color: #9e3d35;
+  box-shadow: inset 0 1px 0 #663430;
+  color: #ffd9d5;
+}
+
+#annotator-tool-move.is-active,
+#annotator-tool-rotate.is-active,
+.annotator-tool-btn.kind-move.is-active,
+.annotator-tool-btn.kind-rotate.is-active {
+  background: #2c2046;
+  border-color: #7c56cc;
+  box-shadow: inset 0 1px 0 #4c3778;
+  color: #eadfff;
+}
+
+#annotator-tool-measure.is-active,
+.annotator-tool-btn.kind-measure.is-active {
+  background: #173444;
+  border-color: #2c88b8;
+  box-shadow: inset 0 1px 0 #265973;
+  color: #d4f2ff;
+}
+
+.annotator-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.annotator-copy-btn {
+  background: #2b4458;
+  border-color: #14222e;
+  box-shadow: inset 0 1px 0 #3f617c;
+  color: #edf5fc;
+}
+
+.annotator-copy-btn:hover {
+  background: #36556e;
+}
+
+/* Sub-Boxes for Move/Rotate & Measure Span */
+.annotator-sub-box {
+  background: #17191e;
+  border: 1px solid #2b313b;
+  border-radius: 3px;
+  padding: 6px;
+  margin-bottom: 6px;
+}
+
+.annotator-sub-box[hidden] {
+  display: none;
+}
+
+.annotator-move-box {
+  border-color: #4b3975;
+  background: #181621;
+}
+
+.annotator-measure-box {
+  border-color: #265670;
+  background: #141c22;
+}
+
+.annotator-sub-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  margin-bottom: 5px;
+}
+
+.annotator-sub-title {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #dcdcdc;
+}
+
+.annotator-move-box .annotator-sub-title {
+  color: #c8b2ff;
+}
+
+.annotator-measure-box .annotator-sub-title {
+  color: #74d4ff;
+}
+
+.annotator-gizmo-switch {
+  display: flex;
+  gap: 3px;
+}
+
+.annotator-gizmo-switch .hud-inline-btn.is-active {
+  background: #533b85;
+  border-color: #8c6be0;
+  color: #fff;
+}
+
+.annotator-sub-hint {
+  font-size: 9px;
+  color: #9e9e9e;
+  line-height: 1.35;
+}
+
+.annotator-move-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 5px;
+}
+
+.annotator-field-label {
+  font-size: 8.5px;
+  font-weight: 600;
+  color: #aaa;
+  white-space: nowrap;
+}
+
+.annotator-move-select {
+  flex: 1;
+  min-width: 0;
+  background: #121216;
+  color: #e4e4e4;
+  border: 1px solid #353046;
+  border-radius: 2px;
+  font-size: 9px;
+  padding: 2px 4px;
+}
+
+.annotator-move-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  margin-bottom: 5px;
+}
+
+.annotator-num-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.annotator-num-field span {
+  font-size: 8px;
+  color: #9d94b8;
+  font-family: "SFMono-Regular", Consolas, monospace;
+}
+
+.annotator-num-field input {
+  width: 100%;
+  background: #111015;
+  border: 1px solid #352f47;
+  border-radius: 2px;
+  color: #f0ecff;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 9px;
+  padding: 2px 3px;
+}
+
+.annotator-rot-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 5px;
+}
+
+.annotator-rot-slider {
+  flex: 1;
+  height: 4px;
+  accent-color: #9b72f2;
+  cursor: pointer;
+}
+
+.annotator-rot-readout {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 8.5px;
+  color: #d8c7ff;
+  min-width: 34px;
+  text-align: right;
+}
+
+.annotator-nudge-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-bottom: 4px;
+}
+
+.annotator-nudge-bar .hud-inline-btn {
+  padding: 2px 4px;
+  font-size: 8.5px;
+  flex: 1 0 auto;
+  text-align: center;
+}
+
+.annotator-reset-btn {
+  background: #3d2222;
+  border-color: #6b3232;
+  color: #ffcccc;
+}
+
+.annotator-reset-btn:hover {
+  background: #572b2b;
+}
+
+/* Measure Span Controls */
+.annotator-measure-opts {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.annotator-snap-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 8.5px;
+  color: #a8d4ea;
+  cursor: pointer;
+}
+
+.annotator-snap-label input {
+  margin: 0;
+}
+
+.annotator-measure-status {
+  font-size: 9px;
+  color: #b4cad6;
+  line-height: 1.35;
+  margin-bottom: 4px;
+}
+
+.annotator-measure-readout {
+  background: #0f161b;
+  border: 1px solid #23475c;
+  border-radius: 3px;
+  padding: 4px 6px;
+  margin-bottom: 5px;
+}
+
+.annotator-measure-readout[hidden],
+.annotator-measure-target-row[hidden],
+#annotator-move-controls[hidden],
+#annotator-move-empty[hidden] {
+  display: none;
+}
+
+.annotator-measure-primary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+
+.annotator-measure-val {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: #4dd2ff;
+}
+
+.annotator-measure-sub {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 9px;
+  color: #9ec6e8;
+}
+
+.annotator-measure-target-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.annotator-target-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.annotator-editor-box {
+  background: #181a1f;
+  border: 1px solid #2b313b;
+  border-radius: 3px;
+  padding: 6px;
+  margin-bottom: 6px;
+}
+
+.annotator-editor-box[hidden] {
+  display: none;
+}
+
+.annotator-editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 3px;
+}
+
+.annotator-editor-title {
+  font-size: 9.5px;
+  font-weight: 700;
+  color: #ffc44d;
+  letter-spacing: 0.03em;
+}
+
+.annotator-editor-coords {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 9px;
+  color: #9ec6e8;
+}
+
+.annotator-editor-meta {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 8.5px;
+  color: #9a9a9a;
+  margin-bottom: 5px;
+  word-break: break-all;
+}
+
+.annotator-note-input {
+  width: 100%;
+}
+
+.annotator-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 250px;
+  overflow-y: auto;
+}
+
+.annotator-empty {
+  font-size: 9.5px;
+  color: #8e8e8e;
+  line-height: 1.35;
+  background: #181818;
+  border: 1px solid #111;
+  border-radius: 3px;
+  padding: 6px 7px;
+}
+
+.annotator-item {
+  background: #1b1b1b;
+  border: 1px solid #111;
+  border-radius: 3px;
+  padding: 5px 6px;
+  cursor: pointer;
+}
+
+.annotator-item:hover {
+  background: #232323;
+}
+
+.annotator-item.is-selected {
+  background: #24211b;
+  border-color: #6b5322;
+}
+
+.annotator-item-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 3px;
+}
+
+.annotator-item-badge {
+  background: #eb4d3d;
+  color: #fff;
+  font-weight: 700;
+  font-size: 8.5px;
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+
+.annotator-item-badge.kind-move {
+  background: #7c56cc;
+  color: #fff;
+}
+
+.annotator-item-badge.kind-measure {
+  background: #1f8fb8;
+  color: #fff;
+}
+
+.annotator-item.is-selected .annotator-item-badge {
+  background: #ffc44d;
+  color: #181818;
+}
+
+.annotator-item-room {
+  font-weight: 600;
+  font-size: 9.5px;
+  color: #dcdcdc;
+}
+
+.annotator-item-coords {
+  margin-left: auto;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 8.5px;
+  color: #8ab4d8;
+}
+
+.annotator-item-btn {
+  padding: 1px 4px;
+  font-size: 8.5px;
+}
+
+.annotator-del-btn:hover {
+  background: #6b2424;
+  color: #ffd6d6;
+}
+
+.annotator-item-note {
+  font-size: 9.8px;
+  color: #efefef;
+  margin-bottom: 2px;
+  word-break: break-word;
+}
+
+.annotator-item-meta {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 8px;
+  color: #808080;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+
+/* ============================================================================
+   60 Hz GPU-Composited Screen-Space Annotation Pin Overlay & Summary Pill
+   ============================================================================ */
+
+.annotator-summary-pill-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+  margin-bottom: 6px;
+  padding: 3px 6px;
+  background: #1a1d24;
+  border: 1px solid #262b36;
+  border-radius: 3px;
+  font-family: var(--hud-font-mono);
+  font-size: 8.5px;
+  color: #9ca3af;
+}
+
+.annotator-summary-counts {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.annotator-summary-tag {
+  padding: 1px 4px;
+  border-radius: 2px;
+  background: #252932;
+  color: #d1d5db;
+}
+
+.annotator-summary-tag.is-active {
+  background: rgba(56, 189, 248, 0.16);
+  color: #7dd3fc;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+}
+
+.annotator-pins-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 15;
+  overflow: hidden;
+}
+
+.annotator-screen-pin {
+  position: absolute;
+  top: 0;
+  left: 0;
+  will-change: transform;
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 5px;
+  margin-left: -14px;
+  margin-top: -26px;
+  border-radius: 999px;
+  background: rgba(24, 26, 32, 0.92);
+  border: 1.5px solid #eb4d3d;
+  color: #ffffff;
+  font-family: var(--hud-font-mono);
+  font-size: 8.5px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.65);
+}
+
+.annotator-screen-pin.kind-move {
+  border-color: #a855f7;
+}
+
+.annotator-screen-pin.kind-measure {
+  border-color: #0ea5e9;
+}
+
+.annotator-screen-pin.is-selected {
+  border-color: #ffc44d;
+  color: #ffd470;
+  background: rgba(29, 34, 43, 0.96);
+  z-index: 2;
+}
+
+/* ============================================================================
+   Terrain Sculpt Brush Inspector
+   ============================================================================ */
+
+.terrain-sculpt-modes {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.terrain-sculpt-mode-btn.mode-raise.is-active {
+  background: #143634;
+  border-color: #2dd4bf;
+  color: #ccfbf1;
+}
+
+.terrain-sculpt-mode-btn.mode-lower.is-active {
+  background: #3d2214;
+  border-color: #fb923c;
+  color: #ffedd5;
+}
+
+.terrain-sculpt-mode-btn.mode-smooth.is-active {
+  background: #172b46;
+  border-color: #60a5fa;
+  color: #dbeafe;
+}
+
+.terrain-sculpt-mode-btn.mode-flatten.is-active {
+  background: #3b3012;
+  border-color: #facc15;
+  color: #fef9c3;
+}
+
+.terrain-sculpt-sliders {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.terrain-sculpt-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.terrain-sculpt-slider-row .annotator-field-label {
+  min-width: 52px;
+}
+
+.terrain-sculpt-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.terrain-sculpt-export-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.terrain-sculpt-export-row .annotator-copy-btn {
+  flex: 1;
+}
