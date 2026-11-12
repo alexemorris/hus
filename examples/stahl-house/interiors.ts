@@ -1,27 +1,34 @@
 import * as THREE from 'three';
 import type { CutawayWallDescriptor } from 'husjs';
 import {
+  attachAssetMetadata,
   attachAudioEmitter,
   buildCorstonToggleSwitch,
   buildHallWoodBurningStoveFirebox,
-  buildHollowCabinetCarcass,
   extrudePlanarSolidWithHoles,
   prepGeo,
   registerHingedDoor,
+  tagCollisionRole,
+  tagCutaway,
 } from 'husjs/objects';
-import {
-  buildCoxDanicaBed,
-  createSculptedCushionGeometry,
-} from 'husjs/catalog/furniture';
-import {
-  buildArmstrongConcealedShowerSet,
-  buildLefroyBrooksCharterhouseWc,
-  buildLefroyBrooksLissaDoonWashstand,
-  wallFacingToRotY,
-} from 'husjs/catalog/sanitaryware';
 import type { LightCircuitGroup, SceneBuilderContext } from 'husjs/viewer';
+import { buildBreezewayAndCentralBathCore, buildStahlKitchenBay } from './kitchen-and-bath.ts';
+import {
+  buildFlorenceKnollCredenza,
+  buildMasterAndBedroom2Furnishings,
+} from './mcm-bedrooms.ts';
+import {
+  addSheerPinchPleatDraperyStack,
+  buildEamesLoungeAndOttoman,
+  buildFlorenceKnollSofa,
+  buildSaarinenDiningSetAndNelsonPendant,
+  buildTravertineCoffeeTable,
+  buildVkgSlingLoungeChair,
+  buildWalnutTripodFloorLamp,
+} from './mcm-furniture.ts';
+import { getMcmMaterials, metricBox } from './mcm-materials.ts';
 import type { StahlMaterials } from './structure.ts';
-import { CLEAR_CEILING_Y, X1, X2, X3, Z0, Z1, Z2 } from './terrain.ts';
+import { CLEAR_CEILING_Y, X1, X2, X3, X4, Z0, Z1, Z2, Z3 } from './terrain.ts';
 
 function addSpunAluminumCone(
   ctx: SceneBuilderContext,
@@ -66,45 +73,121 @@ function attachCircuitPointLight(
   if (grp) grp.lights.push(pl);
 }
 
+function addArchitecturalPotteryPlanter(
+  parent: THREE.Object3D,
+  x: number,
+  z: number,
+  porcelainMat: THREE.Material,
+  foliageMat: THREE.Material
+): void {
+  const g = new THREE.Group();
+  g.name = 'stahl.living.architecturalPotteryPlanter';
+  g.position.set(x, 0.0006, z);
+
+  const standLegGeo = prepGeo(new THREE.BoxGeometry(0.016, 0.26, 0.016));
+  for (const [lx, lz] of [[-0.16, 0], [0.16, 0], [0, -0.16], [0, 0.16]] as const) {
+    const leg = new THREE.Mesh(standLegGeo, new THREE.MeshStandardMaterial({ color: 0x262523, roughness: 0.45 }));
+    leg.position.set(lx, 0.13, lz);
+    g.add(leg);
+  }
+  const pot = new THREE.Mesh(prepGeo(new THREE.CylinderGeometry(0.18, 0.175, 0.34, 24)), porcelainMat);
+  pot.position.y = 0.23;
+  pot.castShadow = true;
+  g.add(pot);
+
+  // Sculptural Sansevieria / architectural agave blades
+  for (let i = 0; i < 7; i++) {
+    const a = (i * Math.PI * 2) / 7;
+    const h = 0.36 + (i % 3) * 0.08;
+    const blade = new THREE.Mesh(prepGeo(new THREE.ConeGeometry(0.032, h, 5)), foliageMat);
+    blade.scale.set(1, 1, 0.32);
+    blade.position.set(Math.cos(a) * 0.065, 0.38 + h * 0.45, Math.sin(a) * 0.065);
+    blade.rotation.y = -a;
+    blade.rotation.z = -0.11;
+    g.add(blade);
+  }
+
+  attachAssetMetadata(g, {
+    name: 'Architectural Pottery Model MP-17 Matte White Cylinder Planter & Stand',
+    brand: 'Architectural Pottery (Manhattan Beach, CA)',
+    collection: 'LaGardo Tackett / John Follis Case Study Series',
+    sku: 'AP-MP17-WHT',
+    finish: 'Matte Unglazed White Stoneware, Walnut/Steel Cradle & Sansevieria',
+    category: 'decor',
+    dimensionsMm: [360, 360, 780],
+  });
+
+  parent.add(g);
+}
+
 export function buildStahlInteriors(
   ctx: SceneBuilderContext,
   root: THREE.Group,
   mats: StahlMaterials,
   cuts: { readonly northWoodsCut: CutawayWallDescriptor; readonly westCarportCut: CutawayWallDescriptor }
 ): void {
-  // Koenig's Signature Double-Sided Suspended Sheet-Metal Fireplace (`X ~ 3.05, Z = Z2 = 6.096`)
+  const mcm = getMcmMaterials();
+  const ceilingTopY = CLEAR_CEILING_Y - 0.038;
+
+  const eastCliffCut: CutawayWallDescriptor = {
+    axis: 'x',
+    coord: X4,
+    minSpan: Z0,
+    maxSpan: Z3,
+    floor: 'ground',
+    outwardSide: 'east',
+  };
+  const southCliffCut: CutawayWallDescriptor = {
+    axis: 'z',
+    coord: Z3,
+    minSpan: X3,
+    maxSpan: X4,
+    floor: 'ground',
+    outwardSide: 'south',
+  };
+  const westPoolLivingCut: CutawayWallDescriptor = {
+    axis: 'x',
+    coord: X3,
+    minSpan: Z1,
+    maxSpan: Z3,
+    floor: 'ground',
+    outwardSide: 'west',
+  };
+
+  // =========================================================================
+  // 1. KOENIG 4-SIDED SUSPENDED SHEET-METAL FIREPLACE (`X = 2.95, Z = 6.096`)
+  // =========================================================================
   const fpGroup = new THREE.Group();
   fpGroup.name = 'stahl.living.fireplace';
   fpGroup.position.set(2.95, 0, Z2);
 
-  // Raised cast-concrete hearth plinth
-  const hearth = new THREE.Mesh(prepGeo(new THREE.BoxGeometry(2.15, 0.26, 0.96)), mats.concreteSlab);
-  hearth.position.y = 0.1306;
+  const hearth = new THREE.Mesh(metricBox(2.15, 0.28, 0.96, 0.9, 0.9), mcm.travertine);
+  hearth.position.y = 0.1406;
   hearth.castShadow = hearth.receiveShadow = true;
 
-  // Suspended matte-black rectangular sheet-metal hood & rectangular flue dropping below roof soffit ribs
-  const hoodTopY = CLEAR_CEILING_Y - 0.038;
-  const hoodBotY = 1.022;
+  const hoodTopY = ceilingTopY;
+  const hoodBotY = 1.04;
   const hoodH = hoodTopY - hoodBotY;
   const hood = new THREE.Mesh(prepGeo(new THREE.BoxGeometry(1.72, hoodH, 0.68)), mats.matteBlackHood);
   hood.position.y = (hoodTopY + hoodBotY) * 0.5;
   hood.castShadow = true;
-  // Twin corner tie rods framing the open 4-way/2-way fire opening (`0.26..1.02 m`)
-  for (const sx of [-0.8, 0.8]) {
-    for (const sz of [-0.28, 0.28]) {
-      const rod = new THREE.Mesh(prepGeo(new THREE.CylinderGeometry(0.014, 0.014, 0.76, 10)), mats.matteBlackHood);
-      rod.position.set(sx, 0.641, sz);
-      fpGroup.add(rod);
+
+  // 4-corner blackened steel L-angle verticals framing the 4-way open fire chamber
+  for (const sx of [-0.82, 0.82]) {
+    for (const sz of [-0.30, 0.30]) {
+      const post = new THREE.Mesh(prepGeo(new THREE.BoxGeometry(0.026, 0.76, 0.026)), mcm.blackenedSteel);
+      post.position.set(sx, 0.66, sz);
+      fpGroup.add(post);
     }
   }
   const fireInsert = new THREE.Group();
-  fireInsert.position.set(0, 0.06, 0);
+  fireInsert.position.set(0, 0.08, 0);
   buildHallWoodBurningStoveFirebox({
     stoveGroup: fireInsert,
     castIronMat: mats.matteBlackHood,
     namePrefix: 'stahlHearth',
     id: 'stahl-hearth-fire',
-    label: 'Koenig Suspended Fireplace',
+    label: 'Koenig 4-Sided Suspended Fireplace',
   });
   attachAudioEmitter(fpGroup, {
     id: 'stahl-fireplace-crackle',
@@ -117,119 +200,116 @@ export function buildStahlInteriors(
   fpGroup.add(hearth, hood, fireInsert);
   root.add(fpGroup);
 
-  // Julius Shulman 1960 Mid-Century Living & Dining Furnishings
-  // Low wool-tweed L-sectional sofa + travertine coffee table + ivory shag rug
-  const rug = new THREE.Mesh(
-    prepGeo(new THREE.BoxGeometry(3.9, 0.018, 3.5)),
-    new THREE.MeshStandardMaterial({ color: 0xe6e1d5, roughness: 0.95 })
-  );
-  rug.position.set(3.2, 0.0096, 9.2);
-  rug.receiveShadow = true;
-  root.add(rug);
+  // =========================================================================
+  // 2. PUBLIC WING — LIVING & DINING CANTILEVER (`X in [0, 6.096], Z in [0, 12.192]`)
+  // =========================================================================
+  // High-pile warm cream/ivory woven shag wool area rug (`2.5 mm` thick, `0.5 mm` above slab)
+  const livingRug = new THREE.Mesh(metricBox(4.15, 0.0025, 3.75, 0.75, 0.75), mcm.shagWool);
+  livingRug.name = 'stahl.living.ivoryShagRug';
+  livingRug.position.set(3.15, 0.00175, 9.55);
+  livingRug.receiveShadow = true;
+  tagCollisionRole(livingRug, 'ignore');
+  root.add(livingRug);
 
-  const tweedMat = new THREE.MeshStandardMaterial({ color: 0xb7ab95, roughness: 0.88 });
-  const sectional = new THREE.Group();
-  sectional.name = 'stahl.living.sectional';
-  const mainSeat = new THREE.Mesh(prepGeo(createSculptedCushionGeometry(2.65, 0.22, 0.86, 16, 8, 12, 0.45, 'standard')), tweedMat);
-  mainSeat.position.set(0, 0.31, 0);
-  const mainBack = new THREE.Mesh(prepGeo(createSculptedCushionGeometry(2.65, 0.36, 0.18, 16, 8, 8, 0.45, 'standard')), tweedMat);
-  mainBack.position.set(0, 0.56, -0.34);
-  const returnSeat = new THREE.Mesh(prepGeo(createSculptedCushionGeometry(0.86, 0.22, 1.55, 12, 8, 14, 0.45, 'standard')), tweedMat);
-  returnSeat.position.set(-0.89, 0.31, 1.2);
-  sectional.add(mainSeat, mainBack, returnSeat);
-  sectional.position.set(3.05, 0, 8.25);
-  root.add(sectional);
+  const rugTopY = 0.0036;
 
-  // Mid-century walnut & travertine low coffee table
-  const coffeeTop = new THREE.Mesh(prepGeo(new THREE.BoxGeometry(1.35, 0.032, 0.72)), mats.parchmentFormica);
-  coffeeTop.position.set(3.25, 0.36, 9.65);
-  coffeeTop.castShadow = true;
-  root.add(coffeeTop);
-
-  // Dining bay (`Z1..Z2`): White Saarinen/Burke pedestal round table + 4 sculpted shell chairs
-  const diningGroup = new THREE.Group();
-  diningGroup.name = 'stahl.dining.pedestalSet';
-  diningGroup.position.set(3.1, 0, 3.25);
-  const pedTop = new THREE.Mesh(prepGeo(new THREE.CylinderGeometry(0.68, 0.68, 0.028, 28)), mats.parchmentFormica);
-  pedTop.position.y = 0.74;
-  pedTop.castShadow = true;
-  const pedStem = new THREE.Mesh(prepGeo(new THREE.CylinderGeometry(0.06, 0.24, 0.7244, 20)), mats.parchmentFormica);
-  pedStem.position.y = 0.3628;
-  diningGroup.add(pedTop, pedStem);
-
-  const shellChairMat = new THREE.MeshStandardMaterial({ color: 0xd96b38, roughness: 0.52 });
-  for (let i = 0; i < 4; i++) {
-    const a = (i * Math.PI) / 2 + Math.PI / 4;
-    const ch = new THREE.Group();
-    ch.position.set(Math.cos(a) * 0.92, 0, Math.sin(a) * 0.92);
-    ch.rotation.y = -a - Math.PI / 2;
-    const seat = new THREE.Mesh(prepGeo(new THREE.BoxGeometry(0.46, 0.04, 0.44)), shellChairMat);
-    seat.position.y = 0.44;
-    const back = new THREE.Mesh(prepGeo(new THREE.BoxGeometry(0.44, 0.36, 0.04)), shellChairMat);
-    back.position.set(0, 0.641, -0.2);
-    const leg = new THREE.Mesh(prepGeo(new THREE.CylinderGeometry(0.03, 0.16, 0.4184, 14)), mats.anodizedAlum);
-    leg.position.y = 0.2098;
-    ch.add(seat, back, leg);
-    diningGroup.add(ch);
-  }
-  root.add(diningGroup);
-
-  // North Kitchen Bay (`X3..X4, Z0..Z1`): American black walnut cabinetry + parchment Formica counters + dropped luminous ceiling
-  const kitchenGroup = new THREE.Group();
-  kitchenGroup.name = 'stahl.kitchen.joinery';
-  buildHollowCabinetCarcass(kitchenGroup, 3.05, 0.45, Z0 + 0.5, 4.4, 0.9, 0.65, '+z', mats.walnutWood, {
-    plinthH: 0.1,
-    dividers: 4,
-    shelfCount: 1,
-    interiorStyle: 'oak',
-    populateItems: true,
+  // Tailored Florence Knoll tufted 3-seat bouclé sofa + perpendicular 2-seat lounge settee
+  buildFlorenceKnollSofa(ctx, root, mcm, {
+    name: 'stahl.living.knollSofaNorth',
+    seats: 3,
+    position: [3.10, rugTopY, 7.62],
+    rotationY: 0,
+    upholstery: 'ivory',
   });
-  const northCounter = new THREE.Mesh(prepGeo(new THREE.BoxGeometry(4.46, 0.038, 0.68)), mats.parchmentFormica);
-  northCounter.position.set(3.05, 0.920, Z0 + 0.5);
-  northCounter.castShadow = true;
-
-  // Walnut peninsula / prep island with parchment Formica bar counter & chrome stools
-  buildHollowCabinetCarcass(kitchenGroup, 3.05, 0.45, -1.85, 3.2, 0.9, 0.85, '+z', mats.walnutWood, {
-    plinthH: 0.1,
-    dividers: 3,
-    shelfCount: 1,
-    interiorStyle: 'oak',
-    populateItems: true,
+  buildFlorenceKnollSofa(ctx, root, mcm, {
+    name: 'stahl.living.knollSetteeEast',
+    seats: 2,
+    position: [4.96, rugTopY, 9.48],
+    rotationY: -Math.PI * 0.5,
+    upholstery: 'camel',
   });
-  const islandTop = new THREE.Mesh(prepGeo(new THREE.BoxGeometry(3.32, 0.04, 1.05)), mats.parchmentFormica);
-  islandTop.position.set(3.05, 0.921, -1.78);
-  islandTop.castShadow = true;
-  kitchenGroup.add(northCounter, islandTop);
 
-  // Dropped translucent luminous ceiling panel (`2.36 m` soffit) over the walnut prep island!
-  const lumMat = new THREE.MeshStandardMaterial({
-    color: 0xfffdf6,
-    emissive: new THREE.Color(0xfff1d0),
-    emissiveIntensity: 1.45,
-    roughness: 0.3,
+  // Low honed Roman travertine & American walnut-slat coffee table w/ Arts & Architecture June 1960
+  buildTravertineCoffeeTable(root, mcm, [3.12, rugTopY, 9.36]);
+
+  // Sculpted Eames Lounge Chair & Ottoman (Herman Miller 670/671) in Santos Palisander rosewood
+  buildEamesLoungeAndOttoman(ctx, root, mcm, {
+    name: 'stahl.living.eamesLounge670',
+    position: [1.38, rugTopY, 10.68],
+    rotationY: Math.PI * 0.74,
   });
-  const lumFrame = new THREE.Mesh(prepGeo(new THREE.BoxGeometry(3.42, 0.09, 1.82)), mats.walnutWood);
-  lumFrame.position.set(3.05, 2.42, -2.55);
-  const lumDiffuser = new THREE.Mesh(prepGeo(new THREE.BoxGeometry(3.26, 0.025, 1.66)), lumMat);
-  lumDiffuser.name = 'stahl.kitchen.luminousPanel';
-  lumDiffuser.position.set(3.05, 2.3615, -2.55);
-  kitchenGroup.add(lumFrame, lumDiffuser);
-  root.add(kitchenGroup);
 
-  const lumGroup = (ctx.lightGroups as Record<string, LightCircuitGroup>).stahlKitchenLuminous;
-  if (lumGroup) lumGroup.emissives.push(lumDiffuser.material as THREE.MeshStandardMaterial);
-  attachCircuitPointLight(ctx, root, 'stahlKitchenLuminous', [3.05, 2.15, -2.55], 0xfff0cc, 3.0, 9.0);
-  ctx.addGlowPool('stahlKitchenLuminous' as never, 3.05, 0.008, -2.55, 1.9, 0.25);
+  // Pair of Van Keppel-Green saddle-leather sling lounge chairs (conversational symmetry + SE Shulman corner!)
+  buildVkgSlingLoungeChair(ctx, root, mcm, {
+    name: 'stahl.living.vkgSlingChairSE',
+    position: [4.62, rugTopY, 11.16],
+    rotationY: -Math.PI * 0.78,
+  });
+  buildVkgSlingLoungeChair(ctx, root, mcm, {
+    name: 'stahl.living.vkgSlingChairWest',
+    position: [1.52, rugTopY, 8.72],
+    rotationY: Math.PI * 0.44,
+  });
 
-  // Private North/West Wing (`X1..X3, Z0..Z1`): Zero-corridor Central Bath/Dressing Core + Master Suite + Bedroom 2 / Den
+  // Architectural Pottery matte white cylinder planter at the SE glass apex + walnut/brass tripod floor lamp
+  addArchitecturalPotteryPlanter(root, 5.54, 11.58, mcm.porcelainWhite, mcm.throwOlive);
+  buildWalnutTripodFloorLamp(ctx, root, mcm, [4.76, rugTopY, 7.92]);
+
+  // Sheer floor-to-ceiling architectural pinch-pleat open casement drapery stacks parked at steel column piers
+  addSheerPinchPleatDraperyStack(root, mcm, {
+    name: 'stahl.living.draperyEastMid',
+    axis: 'z',
+    center: [5.95, 6.48],
+    widthM: 0.62,
+    ceilingTopY,
+    cutaway: eastCliffCut,
+  });
+  addSheerPinchPleatDraperyStack(root, mcm, {
+    name: 'stahl.living.draperyEastSouth',
+    axis: 'z',
+    center: [5.95, 11.68],
+    widthM: 0.62,
+    ceilingTopY,
+    cutaway: eastCliffCut,
+  });
+  addSheerPinchPleatDraperyStack(root, mcm, {
+    name: 'stahl.living.draperySouthWest',
+    axis: 'x',
+    center: [0.58, 12.04],
+    widthM: 0.64,
+    ceilingTopY,
+    cutaway: southCliffCut,
+  });
+  addSheerPinchPleatDraperyStack(root, mcm, {
+    name: 'stahl.dining.draperyEastNorth',
+    axis: 'z',
+    center: [5.95, 0.56],
+    widthM: 0.58,
+    ceilingTopY,
+    cutaway: eastCliffCut,
+  });
+
+  // Dining Zone: Saarinen Oval Pedestal Table + 6 Eames Fiberglass Chairs + Nelson Saucer Bubble Pendant + Knoll Credenza
+  buildSaarinenDiningSetAndNelsonPendant(ctx, root, mcm, [3.55, 3.25], ceilingTopY);
+  buildFlorenceKnollCredenza(root, mcm, [1.22, 0.0006, 0.44], 0);
+
+  // =========================================================================
+  // 3. PUBLIC WING — NORTH KITCHEN BAY (`X in [0, 6.096], Z in [-6.096, 0]`)
+  // =========================================================================
+  buildStahlKitchenBay(ctx, root, mcm);
+
+  // =========================================================================
+  // 4. PRIVATE WEST WING PARTITIONS, BEDROOMS & CENTRAL BATHROOM CORE
+  // =========================================================================
   const partBaseY = 0.0006;
-  const partTopY = CLEAR_CEILING_Y - 0.038;
+  const partTopY = ceilingTopY;
   const partH = partTopY - partBaseY;
   const partMidY = partBaseY + partH * 0.5;
   const bathCoreMinZ = Z0 + 0.163;
   const bathCoreMaxZ = -1.65 - 0.061;
   const bathCoreDepth = bathCoreMaxZ - bathCoreMinZ;
   const bathCoreCenterZ = (bathCoreMinZ + bathCoreMaxZ) * 0.5;
+
   const bathCoreSouth = new THREE.Mesh(
     extrudePlanarSolidWithHoles({
       outer: [
@@ -239,18 +319,24 @@ export function buildStahlInteriors(
       origin: [0, 0, -1.65],
       depthRange: [-0.06, 0.06],
     }),
-    mats.walnutWood
+    mcm.walnut
   );
+  bathCoreSouth.name = 'stahl.partition.bathCoreSouth';
+
   const bathCoreEast = new THREE.Mesh(
     prepGeo(new THREE.BoxGeometry(0.12, partH, bathCoreDepth)),
     mats.plasterOffWhite
   );
+  bathCoreEast.name = 'stahl.partition.bathCoreEast';
   bathCoreEast.position.set(X2 + 1.4, partMidY, bathCoreCenterZ);
+
   const bathCoreWest = new THREE.Mesh(
     prepGeo(new THREE.BoxGeometry(0.12, partH, bathCoreDepth)),
     mats.plasterOffWhite
   );
+  bathCoreWest.name = 'stahl.partition.bathCoreWest';
   bathCoreWest.position.set(X2 - 1.2, partMidY, bathCoreCenterZ);
+
   const wingDivider = new THREE.Mesh(
     extrudePlanarSolidWithHoles({
       outer: [
@@ -263,65 +349,53 @@ export function buildStahlInteriors(
       wAxis: [1, 0, 0],
       depthRange: [-0.06, 0.06],
     }),
-    mats.walnutWood
+    mcm.walnut
   );
+  wingDivider.name = 'stahl.partition.wingDivider';
   root.add(bathCoreSouth, bathCoreEast, bathCoreWest, wingDivider);
 
-  const bathDoor = new THREE.Mesh(prepGeo(new THREE.BoxGeometry(0.78, 2.1, 0.042)), mats.walnutWood);
+  const bathDoor = new THREE.Mesh(metricBox(0.78, 2.1, 0.042, 0.85, 0.85), mcm.walnut);
   bathDoor.name = 'stahlMasterBathDoor';
   bathDoor.position.set(X2 + 0.75, 1.055, -1.65);
   root.add(bathDoor);
   registerHingedDoor(ctx, { parent: root, door: bathDoor, hingeOffset: [-0.39, -1.055, 0], axis: 'y', openAngle: 1.38 });
 
-  // Master Suite (`X2+1.4..X3`) & Bedroom 2 / Den (`X1..X2-1.2`) beds + sanitaryware
-  buildCoxDanicaBed(root, { name: 'stahl.master.bed', zone: 'stahlMasterSuite', position: [-2.35, 0, Z0 + 0.18], rotationY: -Math.PI / 2, size: 'ukKing' });
-  buildCoxDanicaBed(root, { name: 'stahl.den.daybed', zone: 'stahlBedroom2', position: [X1 + 0.16, 0, -3.2], rotationY: 0, size: 'ukDouble' });
+  // Master Bedroom, Bedroom 2, Breezeway Linen Closet & Central Bathroom Core
+  buildMasterAndBedroom2Furnishings(ctx, root, mcm, cuts, ceilingTopY);
+  buildBreezewayAndCentralBathCore(ctx, root, mcm, cuts, ceilingTopY);
 
-  const wc = buildLefroyBrooksCharterhouseWc({ namePrefix: 'stahl.bath.wc', finish: 'PF', variant: 'closeCoupled' });
-  wc.position.set(X2 - 0.55, 0, Z0 + 0.18);
-  wc.rotation.y = wallFacingToRotY('south');
-  const vanity = buildLefroyBrooksLissaDoonWashstand({ namePrefix: 'stahl.bath.vanity', finish: 'PF' });
-  vanity.position.set(X2 + 0.35, 0, Z0 + 0.18);
-  vanity.rotation.y = wallFacingToRotY('south');
-  const shower = buildArmstrongConcealedShowerSet({ namePrefix: 'stahl.bath.shower', finish: 'PF' });
-  shower.position.set(X2 + 1.3, 0, -3.2);
-  shower.rotation.y = wallFacingToRotY('west');
-  root.add(wc, vanity, shower);
-
-  // Spun-aluminum monopoint downlights, dining globe pendant & conventional multi-way switches/dimmers
+  // =========================================================================
+  // 5. ARCHITECTURAL LIGHTING CIRCUITS (STRICT 7 POINTLIGHTS IN INTERIORS)
+  // =========================================================================
   addSpunAluminumCone(ctx, root, 'stahlLivingCones', 1.8, 8.2);
   addSpunAluminumCone(ctx, root, 'stahlLivingCones', 4.4, 8.2);
   addSpunAluminumCone(ctx, root, 'stahlLivingCones', 1.8, 10.6);
   addSpunAluminumCone(ctx, root, 'stahlLivingCones', 4.4, 10.6);
   attachCircuitPointLight(ctx, root, 'stahlLivingCones', [3.1, 2.4, 9.3], 0xffd29a, 3.2, 11.0);
 
-  // Dining globe pendant
-  const dinGrp = (ctx.lightGroups as Record<string, LightCircuitGroup>).stahlDiningPendant;
-  const globeMat = new THREE.MeshStandardMaterial({ color: 0xfff9ee, emissive: new THREE.Color(0xffd6a2), emissiveIntensity: 1.4, roughness: 0.35 });
-  const globe = new THREE.Mesh(prepGeo(new THREE.SphereGeometry(0.19, 20, 14)), globeMat);
-  globe.position.set(3.1, 1.88, 3.25);
-  const cordTopY = CLEAR_CEILING_Y - 0.038;
-  const cord = new THREE.Mesh(prepGeo(new THREE.CylinderGeometry(0.005, 0.005, cordTopY - 1.88, 8)), mats.matteBlackHood);
-  cord.position.set(3.1, (cordTopY + 1.88) * 0.5, 3.25);
-  root.add(globe, cord);
-  if (dinGrp) dinGrp.emissives.push(globeMat);
-  attachCircuitPointLight(ctx, root, 'stahlDiningPendant', [3.1, 1.78, 3.25], 0xffd6a2, 2.5, 8.5);
+  attachCircuitPointLight(ctx, root, 'stahlDiningPendant', [3.55, 1.82, 3.25], 0xffd6a2, 2.5, 8.5);
+  ctx.addGlowPool('stahlDiningPendant' as never, 3.55, 0.008, 3.25, 1.6, 0.22);
+
+  attachCircuitPointLight(ctx, root, 'stahlKitchenLuminous', [3.20, 2.15, -3.72], 0xfff0cc, 3.0, 9.0);
+  ctx.addGlowPool('stahlKitchenLuminous' as never, 3.20, 0.008, -3.55, 2.1, 0.26);
 
   addSpunAluminumCone(ctx, root, 'stahlMasterCones', -2.35, -3.1);
   attachCircuitPointLight(ctx, root, 'stahlMasterCones', [-2.35, 2.4, -3.1], 0xffd39c, 2.4, 8.0);
 
-  addSpunAluminumCone(ctx, root, 'stahlDenCones', -9.6, -3.1);
-  attachCircuitPointLight(ctx, root, 'stahlDenCones', [-9.6, 2.4, -3.1], 0xffd39c, 2.4, 8.0);
+  addSpunAluminumCone(ctx, root, 'stahlDenCones', -9.8, -3.1);
+  attachCircuitPointLight(ctx, root, 'stahlDenCones', [-9.8, 2.4, -3.1], 0xffd39c, 2.4, 8.0);
 
-  addSpunAluminumCone(ctx, root, 'stahlBathVanity', X2 + 0.2, -3.5, 0xfff0d4);
-  attachCircuitPointLight(ctx, root, 'stahlBathVanity', [X2 + 0.2, 2.35, -3.5], 0xfff0d4, 2.0, 5.5);
+  addSpunAluminumCone(ctx, root, 'stahlBathVanity', -5.95, -3.6, 0xfff0d4);
+  attachCircuitPointLight(ctx, root, 'stahlBathVanity', [-5.95, 2.35, -3.6], 0xfff0d4, 2.1, 5.8);
 
   addSpunAluminumCone(ctx, root, 'stahlCarportGlobes', -15.2, -3.05, 0xffe4b8);
   attachCircuitPointLight(ctx, root, 'stahlCarportGlobes', [-15.2, 2.4, -3.05], 0xffe4b8, 2.4, 9.5);
 
-  // Wall switches & rotary dimmers
+  // =========================================================================
+  // 6. MULTI-WAY WALL SWITCHES & ROTARY DIMMERS (100% CUTAWAY-TAGGED)
+  // =========================================================================
   buildCorstonToggleSwitch(ctx, { name: 'stahl.sw.entry', switchPa: 'plate-entry-breezeway', location: 'Kitchen entry X3/Z1', x: X3 + 0.08, y: 1.15, z: -0.22, facing: 'east', mountedInZoneId: 'stahlKitchen', parentGroup: root, gangs: [{ gang: 1, zoneId: 'stahlKitchen', label: 'Luminous Ceiling' }, { gang: 2, zoneId: 'stahlPoolTerrace', label: 'Pool 2-Way A' }] });
-  buildCorstonToggleSwitch(ctx, { name: 'stahl.sw.hearth', switchPa: 'plate-living-hearth', location: 'Living column X3/Z2', x: X3 + 0.08, y: 1.15, z: Z2 + 0.12, facing: 'east', mountedInZoneId: 'stahlLivingDining', parentGroup: root, gangs: [{ gang: 1, zoneId: 'stahlPoolTerrace', label: 'Pool 2-Way B' }, { gang: 2, zoneId: 'stahlPoolTerrace', label: 'Soffit Wash' }] });
+  buildCorstonToggleSwitch(ctx, { name: 'stahl.sw.hearth', switchPa: 'plate-living-hearth', location: 'Living column X3/Z2', x: X3 + 0.08, y: 1.15, z: Z2 + 0.12, facing: 'east', mountedInZoneId: 'stahlLivingDining', parentGroup: root, cutawayWall: westPoolLivingCut, gangs: [{ gang: 1, zoneId: 'stahlPoolTerrace', label: 'Pool 2-Way B' }, { gang: 2, zoneId: 'stahlPoolTerrace', label: 'Soffit Wash' }] });
   buildCorstonToggleSwitch(ctx, { name: 'stahl.sw.carport', switchPa: 'plate-carport-entry', location: 'Carport wall', x: X1 - 0.1, y: 1.15, z: -1.2, facing: 'west', mountedInZoneId: 'stahlCarport', parentGroup: root, cutawayWall: cuts.westCarportCut, gangs: [{ gang: 1, zoneId: 'stahlCarport', label: 'Carport' }, { gang: 2, zoneId: 'stahlBedroom2', label: 'Den 2-Way A' }] });
   buildCorstonToggleSwitch(ctx, { name: 'stahl.sw.den', switchPa: 'plate-den-inner', location: 'Den inner wall', x: X2 - 1.28, y: 1.15, z: -2.1, facing: 'west', mountedInZoneId: 'stahlBedroom2', parentGroup: root, gangs: [{ gang: 1, zoneId: 'stahlBedroom2', label: 'Den 2-Way B' }, { gang: 2, zoneId: 'stahlBathCore', label: 'Bath Core' }] });
   buildCorstonToggleSwitch(ctx, { name: 'stahl.sw.masterDoor', switchPa: 'plate-master-door', location: 'Master entry', x: X3 - 0.08, y: 1.15, z: -1.6, facing: 'west', mountedInZoneId: 'stahlMasterSuite', parentGroup: root, gangs: [{ gang: 1, zoneId: 'stahlMasterSuite', label: 'Master 3-Way Door' }] });
@@ -334,6 +408,7 @@ export function buildStahlInteriors(
     knob.position.set(X3 + 0.09, 1.15, zPos);
     knob.name = `stahl.dimmer.${id}`;
     knob.userData = { electricalDimmerId: id, zoneId: 'stahlLivingDining' };
+    tagCutaway(knob, westPoolLivingCut);
     ctx.interactiveMeshes.push(knob);
     root.add(knob);
   }
