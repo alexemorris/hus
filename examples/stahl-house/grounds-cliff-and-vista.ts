@@ -713,11 +713,6 @@ export function buildStahlCliffOutcropsAndChaparral(root: THREE.Group): void {
   for (let i = 0; i < cliffRimSeeds.length; i++) {
     const [sx, sz] = cliffRimSeeds[i]!;
     tussockCoords.push([sx, sz, i]);
-    tussockCoords.push([
-      sx + (hashCell2D(i, 11, 907) - 0.35) * 1.35,
-      sz + (hashCell2D(i, 12, 907) - 0.35) * 1.35,
-      i + 200,
-    ]);
   }
 
   const deerMatrices: THREE.Matrix4[] = [];

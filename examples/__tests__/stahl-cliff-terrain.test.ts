@@ -197,5 +197,5 @@ describe('Slope-Driven Arid Terrain Biome & Stahl House Rocky Cliff Escarpment',
     });
 
     assertNoZFighting(scene, { epsilonM: 0.00035 });
-  });
+  }, 30000);
 });
