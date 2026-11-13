@@ -341,7 +341,7 @@ function appendDentilCourseBlocks(
     openEndCap: options.endCap ?? defaultCap,
     cutawayWalls: cutawayList,
     floor: options.floor,
-    cutawayToleranceM: options.cutawayToleranceM ?? 0.18,
+    cutawayToleranceM: options.cutawayToleranceM ?? 0.24,
   });
 
   const interiorAcc = createMeshAccumulator();
@@ -1247,7 +1247,7 @@ export function createPanellingRun(options: PanellingRunOptions): PanellingRunRe
     openEndCap: options.endCap ?? defaultCap,
     cutawayWalls: cutawayList,
     floor: options.floor,
-    cutawayToleranceM: options.cutawayToleranceM ?? 0.18,
+    cutawayToleranceM: options.cutawayToleranceM ?? 0.24,
   });
 
   // Vertically partition skirting [floorY + floorClearanceM .. floorY + skirtingH],

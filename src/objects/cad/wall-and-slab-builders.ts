@@ -63,6 +63,7 @@ export interface WallNetworkSegmentInput {
   readonly exteriorMaterial?: THREE.Material;
   readonly interiorMaterial?: THREE.Material;
   readonly revealMaterial?: THREE.Material;
+  readonly capMaterial?: THREE.Material;
   readonly zone?: string;
   readonly splitAtPartitions?: boolean;
   readonly includeInFirstFloorCutaway?: boolean;
@@ -82,9 +83,13 @@ export interface CreateWallNetworkOptions {
   readonly exteriorMaterial?: THREE.Material;
   readonly interiorMaterial?: THREE.Material;
   readonly revealMaterial?: THREE.Material;
+  readonly capMaterial?: THREE.Material;
   readonly roofClipPlanes?: readonly HalfPlane3D[];
   readonly name?: string;
 }
+
+export type WallSegmentInput = WallNetworkSegmentInput;
+export type WallNetworkOptions = CreateWallNetworkOptions;
 
 export interface BuiltWallSegment {
   readonly id: string;
@@ -193,11 +198,13 @@ export interface RoofBuildResult {
 
 const NODE_SNAP_EPS = 1e-4;
 const LAYER_CLEARANCE_M = 0.0005;
+const SECTION_CAP_INSET_M = 0.0015;
 const MAX_MITER_RATIO = 4.0;
 
 let fallbackExteriorMat: THREE.MeshStandardMaterial | null = null;
 let fallbackInteriorMat: THREE.MeshStandardMaterial | null = null;
 let fallbackRevealMat: THREE.MeshStandardMaterial | null = null;
+let fallbackCapMat: THREE.MeshStandardMaterial | null = null;
 let fallbackCeilingMat: THREE.MeshStandardMaterial | null = null;
 
 function getDefaultExteriorMaterial(): THREE.Material {
@@ -228,6 +235,31 @@ function getDefaultRevealMaterial(): THREE.Material {
     });
   }
   return fallbackRevealMat;
+}
+
+function ensureSectionCapDoubleSide<T extends THREE.Material>(mat: T): T {
+  if (mat.side !== THREE.DoubleSide) {
+    mat.side = THREE.DoubleSide;
+    mat.needsUpdate = true;
+  }
+  if (!mat.userData?.preserveDoubleSide) {
+    mat.userData = { ...(mat.userData ?? {}), preserveDoubleSide: true };
+  }
+  return mat;
+}
+
+function getDefaultCapMaterial(): THREE.Material {
+  if (!fallbackCapMat) {
+    fallbackCapMat = ensureSectionCapDoubleSide(
+      new THREE.MeshStandardMaterial({
+        color: 0xe6e1d6,
+        roughness: 0.95,
+        metalness: 0.0,
+        side: THREE.DoubleSide,
+      })
+    );
+  }
+  return fallbackCapMat;
 }
 
 function getDefaultCeilingMaterial(): THREE.Material {
@@ -809,6 +841,7 @@ export function createWallNetwork(options: CreateWallNetworkOptions): BuiltWallN
   const defaultExtMat = options.exteriorMaterial ?? getDefaultExteriorMaterial();
   const defaultIntMat = options.interiorMaterial ?? getDefaultInteriorMaterial();
   const defaultRevMat = options.revealMaterial ?? getDefaultRevealMaterial();
+  const defaultCapMat = options.capMaterial ?? getDefaultCapMaterial();
   const globalRoofPlanes = options.roofClipPlanes ?? [];
 
   // Cluster endpoints within 1e-4 m
@@ -1246,6 +1279,7 @@ export function createWallNetwork(options: CreateWallNetworkOptions): BuiltWallN
       (w.kind === 'exterior' ? defaultExtMat : (w.input.interiorMaterial ?? defaultIntMat));
     const intMat = w.input.interiorMaterial ?? defaultIntMat;
     const revMat = w.input.revealMaterial ?? defaultRevMat;
+    const capMat = ensureSectionCapDoubleSide(w.input.capMaterial ?? defaultCapMat);
     const openings = wallAperturesMap.get(w.input.id) ?? [];
     const createdBayGroups: THREE.Group[] = [];
 
@@ -1317,6 +1351,7 @@ export function createWallNetwork(options: CreateWallNetworkOptions): BuiltWallN
       const extAcc = createAccumulator();
       const intAcc = createAccumulator();
       const revAcc = createAccumulator();
+      const capAcc = createAccumulator();
 
       // Outer face (+normal)
       emitWallFaceElevation(
@@ -1448,50 +1483,149 @@ export function createWallNetwork(options: CreateWallNetworkOptions): BuiltWallN
         }
       }
 
-      // Free end-caps (omitted at mitered L-corners, multi-wall nodes, T-junctions, and bay splits)
+      // Vertical end-caps & cutaway section caps:
+      // - Free wall ends (!bayStartSuppress / !bayEndSuppress) sit flush on the exact end plane.
+      // - Junctions (L-corners, 3+ way nodes, T-junctions) and exterior bay splits emit solid
+      //   section caps inset 1.5 mm perpendicularly inside the bay volume so hidden cutaway walls
+      //   reveal crisp solid poché cross-sections with zero z-fighting when neighbors are visible.
       const uvEndCap = (p: THREE.Vector3): [number, number] => [
         p.x * normal3.x + p.z * normal3.z,
         p.y,
       ];
-      if (!bayStartSuppress) {
-        const pIn0 = toWorldUW(uInner0, yMin, w.offsetInner);
-        const pOut0 = toWorldUW(uOuter0, yMin, w.offsetOuter);
-        const edge = new THREE.Vector3().subVectors(pOut0, pIn0);
-        const capN = new THREE.Vector3().crossVectors(edge, new THREE.Vector3(0, 1, 0)).normalize();
-        if (capN.dot(tangent3) > 0) capN.negate();
-        emitClippedPolygon3D(
-          revAcc,
-          [
-            pIn0,
-            pOut0,
-            toWorldUW(uOuter0, yMax, w.offsetOuter),
-            toWorldUW(uInner0, yMax, w.offsetInner),
-          ],
-          capN,
-          roofPlanes,
-          uvEndCap
-        );
-      }
+      const maxSafeInsetU = Math.max(
+        0,
+        Math.min(uOuter1 - uOuter0, uInner1 - uInner0) * 0.45 - 1e-4
+      );
+      const emitVerticalCapSegment = (
+        uA: number,
+        wA: number,
+        uB: number,
+        wB: number,
+        isStart: boolean
+      ): void => {
+        const dw = Math.abs(wB - wA);
+        if (dw <= 1e-5) return;
+        const segMinU = Math.min(uA, uB);
+        const segMaxU = Math.max(uA, uB);
+        const yCuts = openings
+          .filter((op) => {
+            const op0 = op.centerOffset - op.width * 0.5;
+            const op1 = op.centerOffset + op.width * 0.5;
+            return op1 > segMinU - 0.002 && op0 < segMaxU + 0.002;
+          })
+          .map((op): [number, number] => [
+            Math.max(yMin, wallBaseY + op.sillY),
+            Math.min(yMax, wallBaseY + op.sillY + op.height + (op.archRiseM ?? 0)),
+          ])
+          .filter(([ya, yb]) => yb - ya > 1e-4)
+          .sort((a, b) => a[0] - b[0]);
 
-      if (!bayEndSuppress) {
-        const pIn1 = toWorldUW(uInner1, yMin, w.offsetInner);
-        const pOut1 = toWorldUW(uOuter1, yMin, w.offsetOuter);
-        const edge = new THREE.Vector3().subVectors(pOut1, pIn1);
-        const capN = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), edge).normalize();
-        if (capN.dot(tangent3) < 0) capN.negate();
-        emitClippedPolygon3D(
-          revAcc,
-          [
-            pOut1,
-            pIn1,
-            toWorldUW(uInner1, yMax, w.offsetInner),
-            toWorldUW(uOuter1, yMax, w.offsetOuter),
-          ],
-          capN,
-          roofPlanes,
-          uvEndCap
-        );
-      }
+        const ySpans: [number, number][] = [];
+        let curY = yMin;
+        for (const [ya, yb] of yCuts) {
+          if (ya - curY > 1e-4) ySpans.push([curY, ya]);
+          curY = Math.max(curY, yb);
+        }
+        if (yMax - curY > 1e-4) ySpans.push([curY, yMax]);
+        if (ySpans.length === 0) return;
+
+        const baseA = toWorldUW(uA, yMin, wA);
+        const baseB = toWorldUW(uB, yMin, wB);
+        const edge = new THREE.Vector3().subVectors(baseB, baseA);
+        if (edge.lengthSq() <= 1e-10) return;
+        const capN = isStart
+          ? new THREE.Vector3().crossVectors(edge, new THREE.Vector3(0, 1, 0)).normalize()
+          : new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), edge).normalize();
+        if (isStart && capN.dot(tangent3) > 0) capN.negate();
+        if (!isStart && capN.dot(tangent3) < 0) capN.negate();
+
+        for (const [ya, yb] of ySpans) {
+          if (isStart) {
+            emitClippedPolygon3D(
+              capAcc,
+              [
+                toWorldUW(uA, ya, wA),
+                toWorldUW(uB, ya, wB),
+                toWorldUW(uB, yb, wB),
+                toWorldUW(uA, yb, wA),
+              ],
+              capN,
+              roofPlanes,
+              uvEndCap
+            );
+          } else {
+            emitClippedPolygon3D(
+              capAcc,
+              [
+                toWorldUW(uB, ya, wB),
+                toWorldUW(uA, ya, wA),
+                toWorldUW(uA, yb, wA),
+                toWorldUW(uB, yb, wB),
+              ],
+              capN,
+              roofPlanes,
+              uvEndCap
+            );
+          }
+        }
+      };
+
+      const emitEndSectionCaps = (
+        uIn: number,
+        uOut: number,
+        centerPt: [number, number] | undefined,
+        suppressed: boolean,
+        isStart: boolean
+      ): void => {
+        const sign = isStart ? 1 : -1;
+        const wallThick = w.offsetOuter - w.offsetInner;
+        if (wallThick <= 1e-5) return;
+        if (suppressed && maxSafeInsetU <= 5e-4) return;
+
+        if (centerPt) {
+          const uCenter =
+            (centerPt[0] - w.from[0]) * w.tx + (centerPt[1] - w.from[1]) * w.tz;
+          const wCenter =
+            (centerPt[0] - w.from[0]) * w.outwardNormal[0] +
+            (centerPt[1] - w.from[1]) * w.outwardNormal[1];
+          if (wCenter > w.offsetInner + 1e-3 && wCenter < w.offsetOuter - 1e-3) {
+            const dw1 = wCenter - w.offsetInner;
+            const dw2 = w.offsetOuter - wCenter;
+            const len1 = Math.hypot(dw1, uCenter - uIn);
+            const len2 = Math.hypot(dw2, uOut - uCenter);
+            const reqDu = suppressed
+              ? Math.min(
+                  maxSafeInsetU,
+                  SECTION_CAP_INSET_M * Math.max(len1 / dw1, len2 / dw2)
+                )
+              : 0;
+            const du = sign * reqDu;
+            emitVerticalCapSegment(uIn + du, w.offsetInner, uCenter + du, wCenter, isStart);
+            emitVerticalCapSegment(uCenter + du, wCenter, uOut + du, w.offsetOuter, isStart);
+            return;
+          }
+        }
+
+        const edgeLen = Math.hypot(wallThick, uOut - uIn);
+        let reqDu = suppressed
+          ? Math.min(maxSafeInsetU, SECTION_CAP_INSET_M * (edgeLen / wallThick))
+          : 0;
+        if (suppressed && centerPt) {
+          const uCenter =
+            (centerPt[0] - w.from[0]) * w.tx + (centerPt[1] - w.from[1]) * w.tz;
+          const dent = isStart
+            ? uCenter - Math.min(uIn, uOut)
+            : Math.max(uIn, uOut) - uCenter;
+          if (dent > 0) {
+            reqDu = Math.min(maxSafeInsetU, Math.max(reqDu, dent + SECTION_CAP_INSET_M));
+          }
+        }
+        const du = sign * reqDu;
+        emitVerticalCapSegment(uIn + du, w.offsetInner, uOut + du, w.offsetOuter, isStart);
+      };
+
+      emitEndSectionCaps(uInner0, uOuter0, bayStartCenter, bayStartSuppress, true);
+      emitEndSectionCaps(uInner1, uOuter1, bayEndCenter, bayEndSuppress, false);
 
       // Top & bottom horizontal caps (split around floor-level or top-reaching openings)
       const uvHorizCap = (p: THREE.Vector3): [number, number] => [
@@ -1554,7 +1688,7 @@ export function createWallNetwork(options: CreateWallNetworkOptions): BuiltWallN
 
       if (bottomDoorCuts.length === 0) {
         emitClippedPolygon3D(
-          revAcc,
+          capAcc,
           buildBayPlanPolygonAtY(yMin, 'full', bayMinU, bayMaxU),
           new THREE.Vector3(0, -1, 0),
           roofPlanes,
@@ -1565,7 +1699,7 @@ export function createWallNetwork(options: CreateWallNetworkOptions): BuiltWallN
         for (const [c0, c1] of bottomDoorCuts) {
           if (c0 - cur > 1e-4) {
             emitClippedPolygon3D(
-              revAcc,
+              capAcc,
               buildBayPlanPolygonAtY(yMin, 'sub', cur, c0),
               new THREE.Vector3(0, -1, 0),
               roofPlanes,
@@ -1576,7 +1710,7 @@ export function createWallNetwork(options: CreateWallNetworkOptions): BuiltWallN
         }
         if (bayMaxU - cur > 1e-4) {
           emitClippedPolygon3D(
-            revAcc,
+            capAcc,
             buildBayPlanPolygonAtY(yMin, 'sub', cur, bayMaxU),
             new THREE.Vector3(0, -1, 0),
             roofPlanes,
@@ -1597,7 +1731,7 @@ export function createWallNetwork(options: CreateWallNetworkOptions): BuiltWallN
 
       if (topCuts.length === 0) {
         emitClippedPolygon3D(
-          revAcc,
+          capAcc,
           buildBayPlanPolygonAtY(yMax, 'full', bayMinU, bayMaxU),
           new THREE.Vector3(0, 1, 0),
           roofPlanes,
@@ -1608,7 +1742,7 @@ export function createWallNetwork(options: CreateWallNetworkOptions): BuiltWallN
         for (const [c0, c1] of topCuts) {
           if (c0 - cur > 1e-4) {
             emitClippedPolygon3D(
-              revAcc,
+              capAcc,
               buildBayPlanPolygonAtY(yMax, 'sub', cur, c0),
               new THREE.Vector3(0, 1, 0),
               roofPlanes,
@@ -1619,7 +1753,7 @@ export function createWallNetwork(options: CreateWallNetworkOptions): BuiltWallN
         }
         if (bayMaxU - cur > 1e-4) {
           emitClippedPolygon3D(
-            revAcc,
+            capAcc,
             buildBayPlanPolygonAtY(yMax, 'sub', cur, bayMaxU),
             new THREE.Vector3(0, 1, 0),
             roofPlanes,
@@ -1658,6 +1792,7 @@ export function createWallNetwork(options: CreateWallNetworkOptions): BuiltWallN
       addAccMesh(extAcc, extMat, 'outer');
       addAccMesh(intAcc, intMat, 'inner');
       addAccMesh(revAcc, revMat, 'reveals');
+      addAccMesh(capAcc, capMat, 'caps');
 
       if (bayGroup.children.length === 0) continue;
 
@@ -2942,6 +3077,7 @@ function buildAnalyticalRoof(
         capMesh.castShadow = true;
         capMesh.receiveShadow = true;
         capMesh.userData.isArchitecturalShell = true;
+        capMesh.userData.skipWalkthroughObstacle = true;
         group.add(capMesh);
       }
     }

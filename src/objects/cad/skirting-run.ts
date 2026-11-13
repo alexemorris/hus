@@ -2398,7 +2398,7 @@ export function sweepMouldingProfileRun(options: SweepMouldingProfileRunOptions)
   const includeHiddenFaces = options.includeHiddenFaces ?? false;
   const maxMiterRatio = options.maxMiterRatio ?? 4.0;
   const uvScale = options.uvScale ?? 1.0;
-  const cutawayToleranceM = options.cutawayToleranceM ?? 0.18;
+  const cutawayToleranceM = options.cutawayToleranceM ?? 0.24;
   const cutawayList = resolveCutawayWallsInput(options.cutawayWalls);
 
   const { pieces, activeTotalLen } = computeActiveMouldingPieces({

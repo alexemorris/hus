@@ -376,6 +376,13 @@ describe('Stages 4.3, 4.4, 4.5 & 4.10b — husjs Example & Showcase Homes', { ti
       'simpleHouse.dressing.archedBrassMirror',
       'simpleHouse.airingCupboard.hotWaterCylinder',
       'simpleHouse.bathroom.wetZoneOliveMetroNorth',
+      'simpleHouse.structure.kitchenSpineRsj',
+      'simpleHouse.structure.kitchenNorthRsj',
+      'simpleHouse.structure.kitchenRsjPierWest',
+      'simpleHouse.structure.kitchenRsjPierEast',
+      'simpleHouse.structure.stairwellTrimmer',
+      'simpleHouse.study.chimneyBreast',
+      'simpleHouse.principal.chimneyBreast',
     ]) {
       expect(scene.getObjectByName(keyPiece), `Missing key piece ${keyPiece}`).toBeDefined();
     }

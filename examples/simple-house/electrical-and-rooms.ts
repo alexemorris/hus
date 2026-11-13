@@ -16,9 +16,10 @@ export const FFL_FIRST = 3.05;
 export const GROUND_CEILING_SOFFIT_Y = 2.83; // 3.05 - 0.22 slab thickness
 export const FIRST_CEILING_SOFFIT_Y = 5.60;
 export const EAVES_Y = 5.62;
-export const HALF_W = 5.70; // 11.40 m exterior width -> interior [-5.42, +5.42]
-export const HALF_D = 4.50; // 9.00 m exterior depth  -> interior [-4.22, +4.22]
-export const EXT_WALL_T = 0.28;
+export const HALF_W = 5.78; // 11.56 m exterior width (360 mm 1.5-brick walls) -> interior [-5.42, +5.42]
+export const HALF_D = 4.58; // 9.16 m exterior depth  (360 mm 1.5-brick walls) -> interior [-4.22, +4.22]
+export const EXT_WALL_T = 0.36;
+export const SPINE_WALL_T = 0.24;
 export const INT_WALL_T = 0.12;
 
 export const SIMPLE_HOUSE_BUILDING_ID = 'mainHouse' as BuildingId;
@@ -32,7 +33,7 @@ export const SIMPLE_HOUSE_FLOORS: readonly FloorDefinition[] = [
     elevationY: FFL_GROUND,
     elevationM: FFL_GROUND,
     ceilingHeight: 2.83,
-    ceilingCutawayY: 2.85,
+    ceilingCutawayY: GROUND_CEILING_SOFFIT_Y,
   },
   {
     id: 'first',
@@ -169,15 +170,15 @@ export const SIMPLE_HOUSE_ELECTRICAL: ElectricalSystemOptions = {
 
 export const SIMPLE_HOUSE_ROOM_ZONES: Readonly<Record<string, RoomZoneDefinition>> = {
   houseHall: { id: 'houseHall' as RoomZoneId, name: 'Marble Entrance Hall', shortName: 'Hall', buildingId: SIMPLE_HOUSE_BUILDING_ID, floorId: 'ground', knxAreaLine: '1.1', isInterior: true, bounds: { minX: -1.15, maxX: 1.15, minY: FFL_GROUND, maxY: GROUND_CEILING_SOFFIT_Y, minZ: -1.53, maxZ: 4.22 }, floorSurface: 'stone', volumeM3: 38, primarySurface: 'stone' },
-  houseDrawing: { id: 'houseDrawing' as RoomZoneId, name: 'Georgian Drawing Room', shortName: 'Drawing Room', buildingId: SIMPLE_HOUSE_BUILDING_ID, floorId: 'ground', knxAreaLine: '1.1', isInterior: true, bounds: { minX: -5.42, maxX: -1.27, minY: FFL_GROUND, maxY: GROUND_CEILING_SOFFIT_Y, minZ: -4.22, maxZ: 4.22 }, floorSurface: 'wood', volumeM3: 99, primarySurface: 'plaster' },
-  houseKitchenDiner: { id: 'houseKitchenDiner' as RoomZoneId, name: 'Chichester Kitchen & Dining', shortName: 'Kitchen', buildingId: SIMPLE_HOUSE_BUILDING_ID, floorId: 'ground', knxAreaLine: '1.1', isInterior: true, bounds: { minX: 1.27, maxX: 5.42, minY: FFL_GROUND, maxY: GROUND_CEILING_SOFFIT_Y, minZ: -4.22, maxZ: 4.22 }, floorSurface: 'wood', volumeM3: 99, primarySurface: 'timber' },
-  houseCloakroom: { id: 'houseCloakroom' as RoomZoneId, name: 'Boot Lobby & Cloakroom WC', shortName: 'Boot & WC', buildingId: SIMPLE_HOUSE_BUILDING_ID, floorId: 'ground', knxAreaLine: '1.1', isInterior: true, bounds: { minX: -1.15, maxX: 1.15, minY: FFL_GROUND, maxY: GROUND_CEILING_SOFFIT_Y, minZ: -4.22, maxZ: -1.65 }, floorSurface: 'stone', volumeM3: 17, primarySurface: 'tile' },
+  houseDrawing: { id: 'houseDrawing' as RoomZoneId, name: 'Georgian Drawing Room', shortName: 'Drawing Room', buildingId: SIMPLE_HOUSE_BUILDING_ID, floorId: 'ground', knxAreaLine: '1.1', isInterior: true, bounds: { minX: -5.42, maxX: -1.39, minY: FFL_GROUND, maxY: GROUND_CEILING_SOFFIT_Y, minZ: -4.22, maxZ: 4.22 }, floorSurface: 'wood', volumeM3: 96, primarySurface: 'plaster' },
+  houseKitchenDiner: { id: 'houseKitchenDiner' as RoomZoneId, name: 'Chichester Kitchen & Dining', shortName: 'Kitchen', buildingId: SIMPLE_HOUSE_BUILDING_ID, floorId: 'ground', knxAreaLine: '1.1', isInterior: true, bounds: { minX: 1.39, maxX: 5.42, minY: FFL_GROUND, maxY: GROUND_CEILING_SOFFIT_Y, minZ: -4.22, maxZ: 4.22 }, floorSurface: 'wood', volumeM3: 96, primarySurface: 'timber' },
+  houseCloakroom: { id: 'houseCloakroom' as RoomZoneId, name: 'Boot Lobby & Cloakroom WC', shortName: 'Boot & WC', buildingId: SIMPLE_HOUSE_BUILDING_ID, floorId: 'ground', knxAreaLine: '1.1', isInterior: true, bounds: { minX: -1.15, maxX: 1.15, minY: FFL_GROUND, maxY: GROUND_CEILING_SOFFIT_Y, minZ: -4.22, maxZ: -1.77 }, floorSurface: 'stone', volumeM3: 16, primarySurface: 'tile' },
   houseLanding: { id: 'houseLanding' as RoomZoneId, name: 'Galleried Landing', shortName: 'Landing', buildingId: SIMPLE_HOUSE_BUILDING_ID, floorId: 'first', knxAreaLine: '1.2', isInterior: true, bounds: { minX: -1.15, maxX: 1.15, minY: FFL_FIRST, maxY: FIRST_CEILING_SOFFIT_Y, minZ: -1.53, maxZ: 4.22 }, floorSurface: 'wood', volumeM3: 34, primarySurface: 'plaster' },
-  housePrincipalBed: { id: 'housePrincipalBed' as RoomZoneId, name: 'Principal Bedroom & Walk-In Dressing', shortName: 'Principal Bed', buildingId: SIMPLE_HOUSE_BUILDING_ID, floorId: 'first', knxAreaLine: '1.2', isInterior: true, bounds: { minX: -5.42, maxX: -1.27, minY: FFL_FIRST, maxY: FIRST_CEILING_SOFFIT_Y, minZ: -1.65, maxZ: 4.22 }, floorSurface: 'wood', volumeM3: 73, primarySurface: 'carpet' },
-  housePrincipalEnsuite: { id: 'housePrincipalEnsuite' as RoomZoneId, name: 'Principal Ensuite', shortName: 'Ensuite', buildingId: SIMPLE_HOUSE_BUILDING_ID, floorId: 'first', knxAreaLine: '1.2', isInterior: true, bounds: { minX: -3.47, maxX: -1.27, minY: FFL_FIRST, maxY: FIRST_CEILING_SOFFIT_Y, minZ: -4.22, maxZ: -1.77 }, floorSurface: 'stone', volumeM3: 14, primarySurface: 'tile' },
-  houseBedroom2: { id: 'houseBedroom2' as RoomZoneId, name: 'Guest Double Bedroom', shortName: 'Guest Bed', buildingId: SIMPLE_HOUSE_BUILDING_ID, floorId: 'first', knxAreaLine: '1.2', isInterior: true, bounds: { minX: 1.27, maxX: 5.42, minY: FFL_FIRST, maxY: FIRST_CEILING_SOFFIT_Y, minZ: -0.10, maxZ: 4.22 }, floorSurface: 'wood', volumeM3: 46, primarySurface: 'carpet' },
-  houseStudy: { id: 'houseStudy' as RoomZoneId, name: 'Study / Bedroom 3', shortName: 'Study', buildingId: SIMPLE_HOUSE_BUILDING_ID, floorId: 'first', knxAreaLine: '1.2', isInterior: true, bounds: { minX: 1.27, maxX: 5.42, minY: FFL_FIRST, maxY: FIRST_CEILING_SOFFIT_Y, minZ: -4.22, maxZ: -0.22 }, floorSurface: 'wood', volumeM3: 41, primarySurface: 'timber' },
-  houseBathroom: { id: 'houseBathroom' as RoomZoneId, name: 'Family Bathroom', shortName: 'Bathroom', buildingId: SIMPLE_HOUSE_BUILDING_ID, floorId: 'first', knxAreaLine: '1.2', isInterior: true, bounds: { minX: -1.15, maxX: 2.35, minY: FFL_FIRST, maxY: FIRST_CEILING_SOFFIT_Y, minZ: -4.22, maxZ: -1.65 }, floorSurface: 'stone', volumeM3: 21, primarySurface: 'tile' },
+  housePrincipalBed: { id: 'housePrincipalBed' as RoomZoneId, name: 'Principal Bedroom & Walk-In Dressing', shortName: 'Principal Bed', buildingId: SIMPLE_HOUSE_BUILDING_ID, floorId: 'first', knxAreaLine: '1.2', isInterior: true, bounds: { minX: -5.42, maxX: -1.39, minY: FFL_FIRST, maxY: FIRST_CEILING_SOFFIT_Y, minZ: -1.65, maxZ: 4.22 }, floorSurface: 'wood', volumeM3: 71, primarySurface: 'carpet' },
+  housePrincipalEnsuite: { id: 'housePrincipalEnsuite' as RoomZoneId, name: 'Principal Ensuite', shortName: 'Ensuite', buildingId: SIMPLE_HOUSE_BUILDING_ID, floorId: 'first', knxAreaLine: '1.2', isInterior: true, bounds: { minX: -3.47, maxX: -1.39, minY: FFL_FIRST, maxY: FIRST_CEILING_SOFFIT_Y, minZ: -4.22, maxZ: -1.77 }, floorSurface: 'stone', volumeM3: 13, primarySurface: 'tile' },
+  houseBedroom2: { id: 'houseBedroom2' as RoomZoneId, name: 'Guest Double Bedroom', shortName: 'Guest Bed', buildingId: SIMPLE_HOUSE_BUILDING_ID, floorId: 'first', knxAreaLine: '1.2', isInterior: true, bounds: { minX: 1.39, maxX: 5.42, minY: FFL_FIRST, maxY: FIRST_CEILING_SOFFIT_Y, minZ: -0.10, maxZ: 4.22 }, floorSurface: 'wood', volumeM3: 44, primarySurface: 'carpet' },
+  houseStudy: { id: 'houseStudy' as RoomZoneId, name: 'Study / Bedroom 3', shortName: 'Study', buildingId: SIMPLE_HOUSE_BUILDING_ID, floorId: 'first', knxAreaLine: '1.2', isInterior: true, bounds: { minX: 1.39, maxX: 5.42, minY: FFL_FIRST, maxY: FIRST_CEILING_SOFFIT_Y, minZ: -4.22, maxZ: -0.22 }, floorSurface: 'wood', volumeM3: 39, primarySurface: 'timber' },
+  houseBathroom: { id: 'houseBathroom' as RoomZoneId, name: 'Family Bathroom', shortName: 'Bathroom', buildingId: SIMPLE_HOUSE_BUILDING_ID, floorId: 'first', knxAreaLine: '1.2', isInterior: true, bounds: { minX: -1.15, maxX: 2.35, minY: FFL_FIRST, maxY: FIRST_CEILING_SOFFIT_Y, minZ: -4.22, maxZ: -1.77 }, floorSurface: 'stone', volumeM3: 20, primarySurface: 'tile' },
 };
 
 export const SIMPLE_HOUSE_MANIFEST: readonly RoomManifestEntry[] = [
@@ -384,7 +385,7 @@ export const SIMPLE_HOUSE_CAMERAS: Readonly<Record<string, CameraPresetDefinitio
     label: 'Drawing Room',
     buildingId: SIMPLE_HOUSE_BUILDING_ID,
     zoneId: 'houseDrawing' as RoomZoneId,
-    pos: new THREE.Vector3(-1.82, 1.62, 3.35),
+    pos: new THREE.Vector3(-1.88, 1.62, 3.35),
     target: new THREE.Vector3(-4.15, 1.12, -0.15),
     floorViewMode: 'ground',
   },
@@ -393,7 +394,7 @@ export const SIMPLE_HOUSE_CAMERAS: Readonly<Record<string, CameraPresetDefinitio
     label: 'Chichester Kitchen & Dining',
     buildingId: SIMPLE_HOUSE_BUILDING_ID,
     zoneId: 'houseKitchenDiner' as RoomZoneId,
-    pos: new THREE.Vector3(1.62, 1.48, -1.15),
+    pos: new THREE.Vector3(1.74, 1.48, -1.15),
     target: new THREE.Vector3(4.85, 1.18, -1.85),
     floorViewMode: 'ground',
   },
@@ -402,7 +403,7 @@ export const SIMPLE_HOUSE_CAMERAS: Readonly<Record<string, CameraPresetDefinitio
     label: 'Boot Lobby & Cloakroom WC',
     buildingId: SIMPLE_HOUSE_BUILDING_ID,
     zoneId: 'houseCloakroom' as RoomZoneId,
-    pos: new THREE.Vector3(-0.35, 1.58, -1.85),
+    pos: new THREE.Vector3(-0.35, 1.58, -1.96),
     target: new THREE.Vector3(0.15, 1.15, -3.85),
     floorViewMode: 'ground',
   },
@@ -438,7 +439,7 @@ export const SIMPLE_HOUSE_CAMERAS: Readonly<Record<string, CameraPresetDefinitio
     label: 'Guest Double Bedroom',
     buildingId: SIMPLE_HOUSE_BUILDING_ID,
     zoneId: 'houseBedroom2' as RoomZoneId,
-    pos: new THREE.Vector3(1.85, 4.62, 3.45),
+    pos: new THREE.Vector3(1.9, 4.62, 3.45),
     target: new THREE.Vector3(3.85, 3.98, 1.45),
     floorViewMode: 'first',
   },
@@ -456,7 +457,7 @@ export const SIMPLE_HOUSE_CAMERAS: Readonly<Record<string, CameraPresetDefinitio
     label: 'Family Bathroom',
     buildingId: SIMPLE_HOUSE_BUILDING_ID,
     zoneId: 'houseBathroom' as RoomZoneId,
-    pos: new THREE.Vector3(-0.75, 4.54, -1.92),
+    pos: new THREE.Vector3(-0.75, 4.54, -2.02),
     target: new THREE.Vector3(0.85, 3.92, -3.65),
     floorViewMode: 'first',
   },

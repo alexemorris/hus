@@ -122,6 +122,59 @@ function deconflictRomanBlind(blind: THREE.Group, facingZ: 1 | -1): THREE.Group 
   return blind;
 }
 
+
+function buildStairwellSteelTrimmer(): THREE.Group {
+  const group = new THREE.Group();
+  group.name = 'simpleHouse.structure.stairwellTrimmer';
+
+  const steelMat = new THREE.MeshStandardMaterial({
+    name: 'simpleHouse.structure.pfcSteel',
+    color: 0x383c3f,
+    roughness: 0.46,
+    metalness: 0.68,
+  });
+
+  // 200 x 90 PFC parallel flange channel lining the stairwell void South apron (Z = 2.565)
+  // Spans X in [0.035, 1.146] from the cantilevered landing newel pocket to the 240 mm East spine wall.
+  const x0 = 0.035;
+  const x1 = 1.146;
+  const lenX = x1 - x0;
+  const cx = (x0 + x1) * 0.5;
+  const pfcH = 0.20;
+  const flangeW = 0.09;
+  const flangeT = 0.012;
+  const webT = 0.0085;
+  const yBot = FFL_FIRST - 0.226; // 2.824 m (6 mm proud below 2.830 ceiling soffit, top 3.024 m clear of 3.0275 deck)
+  const zBack = 2.562; // 3 mm clear inside Z = 2.565 void apron face
+
+  const addPart = (name: string, size: [number, number, number], pos: [number, number, number]) => {
+    const m = new THREE.Mesh(prepGeo(new THREE.BoxGeometry(size[0], size[1], size[2])), steelMat);
+    m.name = `${group.name}.${name}`;
+    m.position.set(pos[0], pos[1], pos[2]);
+    m.castShadow = true;
+    m.receiveShadow = true;
+    group.add(m);
+  };
+
+  addPart('web', [lenX, pfcH - flangeT * 2, webT], [cx, yBot + pfcH * 0.5, zBack - webT * 0.5]);
+  addPart('bottomFlange', [lenX, flangeT, flangeW], [cx, yBot + flangeT * 0.5, zBack - flangeW * 0.5]);
+  addPart('topFlange', [lenX, flangeT, flangeW], [cx, yBot + pfcH - flangeT * 0.5, zBack - flangeW * 0.5]);
+
+  // Welded web stiffeners + East spine-wall bolted end-plate
+  const stiffD = flangeW - webT - 0.004;
+  const stiffH = pfcH - flangeT * 2 - 0.002;
+  for (const [idx, sx] of [[1, 0.10], [2, 0.59], [3, 1.08]] as const) {
+    addPart(
+      `stiffener_${idx}`,
+      [0.008, stiffH, stiffD],
+      [sx, yBot + pfcH * 0.5, zBack - webT - stiffD * 0.5 - 0.001]
+    );
+  }
+  addPart('eastEndPlate', [0.01, pfcH - 0.008, flangeW - 0.004], [x1 - 0.006, yBot + pfcH * 0.5, zBack - flangeW * 0.5]);
+
+  return group;
+}
+
 export function buildSimpleHouseStaircaseAndHall(ctx: SceneBuilderContext, stair: SimpleHouseStair): void {
   const groundGroup = ctx.floor ? ctx.floor('ground').group : ctx.scene;
   const groundCeilingGroup = ctx.floor ? ctx.floor('ground').ceilingGroup : ctx.groundFloorCeilingGroup;
@@ -131,6 +184,7 @@ export function buildSimpleHouseStaircaseAndHall(ctx: SceneBuilderContext, stair
   const brass = getBathroomBrassMaterials('BR').primary;
 
   groundGroup.add(stair.group);
+  groundGroup.add(buildStairwellSteelTrimmer());
 
   // Galleried landing guard: runs down the open West edge of the stairwell and returns across its South end.
   const guard = createBalustradeRun({

@@ -93,6 +93,7 @@ export const simpleHouse: HouseDefinition = defineHouse({
       { id: 'principal-bedroom', label: 'Principal Bedroom', zoneId: 'housePrincipalBed', position: [-2.35, FFL_FIRST, 1.4], yawDeg: 65 },
     ],
     sampleTerrainY: (x, z) => simpleHouseTerrainSampler.sampleTerrainY(x, z),
+    classifyCollisionMesh: (mesh) => (mesh.userData?.isArchitecturalShell === true ? { noFurniture: true } : null),
   },
   lenses: {
     enabledTrades: ['owner', 'architect', 'electrician'],

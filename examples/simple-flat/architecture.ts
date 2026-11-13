@@ -110,7 +110,9 @@ export function buildSimpleFlatArchitecture(ctx: SceneBuilderContext): SimpleFla
     name: 'simpleFlat.wall.sectionPoche',
     color: 0xd8d1c5,
     roughness: 0.9,
+    side: THREE.DoubleSide,
   });
+  pocheMat.userData = { ...pocheMat.userData, preserveDoubleSide: true };
   const structuralSteelMat = new THREE.MeshStandardMaterial({
     name: 'simpleFlat.structure.graphiteSteel',
     color: 0x383c3f,
@@ -528,8 +530,17 @@ export function buildSimpleFlatArchitecture(ctx: SceneBuilderContext): SimpleFla
   spineCore.castShadow = spineCore.receiveShadow = true;
   root.add(spineCore);
   addFlatBox(root, 'simpleFlat.wall.spineTopCap', [SPINE_T - 0.001, capH, (IN_Z - 0.013) * 2], [SPINE_X, capMidY, 0], pocheMat);
-  addFlatBox(root, 'simpleFlat.wall.spineEndCapNorth', [SPINE_T - 0.001, westCoreH, 0.002], [SPINE_X, westCoreMidY, -IN_Z + 0.0015], pocheMat);
-  addFlatBox(root, 'simpleFlat.wall.spineEndCapSouth', [SPINE_T - 0.001, westCoreH, 0.002], [SPINE_X, westCoreMidY, IN_Z - 0.0015], pocheMat);
+  addFlatBox(root, 'simpleFlat.wall.spineEndCapNorth', [SPINE_T - 0.0004, westCoreH - 0.001, 0.001], [SPINE_X, westCoreMidY, -IN_Z + 0.002], pocheMat);
+  addFlatBox(root, 'simpleFlat.wall.spineEndCapSouth', [SPINE_T - 0.0004, westCoreH - 0.001, 0.001], [SPINE_X, westCoreMidY, IN_Z - 0.002], pocheMat);
+  // 1.5 mm-inset full-thickness exterior corner section caps when a perpendicular facade cuts away
+  tagCutaway(addFlatBox(root, 'simpleFlat.wall.eastCornerCapNorth', [EXT_T + 0.01, westCoreH - 0.001, 0.001], [IN_X + (EXT_T - 0.011) * 0.5, westCoreMidY, -IN_Z + 0.0145], pocheMat), eastCut);
+  tagCutaway(addFlatBox(root, 'simpleFlat.wall.eastCornerCapSouth', [EXT_T + 0.01, westCoreH - 0.001, 0.001], [IN_X + (EXT_T - 0.011) * 0.5, westCoreMidY, IN_Z - 0.0145], pocheMat), eastCut);
+  tagCutaway(addFlatBox(root, 'simpleFlat.wall.westCornerCapNorth', [EXT_T + 0.01, westCoreH - 0.001, 0.001], [-IN_X - (EXT_T - 0.011) * 0.5, westCoreMidY, -IN_Z + 0.0145], pocheMat), westCut);
+  tagCutaway(addFlatBox(root, 'simpleFlat.wall.westCornerCapSouth', [EXT_T + 0.01, westCoreH - 0.001, 0.001], [-IN_X - (EXT_T - 0.011) * 0.5, westCoreMidY, IN_Z - 0.0145], pocheMat), westCut);
+  tagCutaway(addFlatBox(root, 'simpleFlat.wall.northCornerCapEast', [0.001, westCoreH - 0.001, EXT_T + 0.01], [IN_X - 0.0145, westCoreMidY, -IN_Z - (EXT_T - 0.011) * 0.5], pocheMat), northCut);
+  tagCutaway(addFlatBox(root, 'simpleFlat.wall.northCornerCapWest', [0.001, westCoreH - 0.001, EXT_T + 0.01], [-IN_X + 0.0145, westCoreMidY, -IN_Z - (EXT_T - 0.011) * 0.5], pocheMat), northCut);
+  tagCutaway(addFlatBox(root, 'simpleFlat.wall.southCornerCapEast', [0.001, westCoreH - 0.001, EXT_T + 0.01], [IN_X - 0.0145, westCoreMidY, IN_Z + (EXT_T - 0.011) * 0.5], pocheMat), southCut);
+  tagCutaway(addFlatBox(root, 'simpleFlat.wall.southCornerCapWest', [0.001, westCoreH - 0.001, EXT_T + 0.01], [-IN_X + 0.0145, westCoreMidY, IN_Z + (EXT_T - 0.011) * 0.5], pocheMat), southCut);
 
   const spineEastLiving = new THREE.Mesh(
     extrudePlanarSolidWithHoles({
@@ -670,7 +681,7 @@ export function buildSimpleFlatArchitecture(ctx: SceneBuilderContext): SimpleFla
   bedPartCore.castShadow = bedPartCore.receiveShadow = true;
   root.add(bedPartCore);
   addFlatBox(root, 'simpleFlat.wall.bedPartitionTopCap', [bedPartMaxX - (-IN_X + 0.013), capH, INT_T - 0.001], [(-IN_X + 0.013 + bedPartMaxX) * 0.5, capMidY, BED_BATH_Z], pocheMat);
-  addFlatBox(root, 'simpleFlat.wall.bedPartitionEndCapWest', [0.002, westCoreH, INT_T - 0.001], [-IN_X + 0.0015, westCoreMidY, BED_BATH_Z], pocheMat);
+  addFlatBox(root, 'simpleFlat.wall.bedPartitionEndCapWest', [0.001, westCoreH - 0.001, INT_T - 0.0004], [-IN_X + 0.002, westCoreMidY, BED_BATH_Z], pocheMat);
 
   const bedPartNorth = new THREE.Mesh(
     extrudePlanarSolidWithHoles({
@@ -742,7 +753,7 @@ export function buildSimpleFlatArchitecture(ctx: SceneBuilderContext): SimpleFla
   bathPartCore.castShadow = bathPartCore.receiveShadow = true;
   root.add(bathPartCore);
   addFlatBox(root, 'simpleFlat.wall.bathPartitionTopCap', [INT_T - 0.001, capH, IN_Z - 0.013 - bathPartMinZ], [BATH_HALL_X, capMidY, (bathPartMinZ + IN_Z - 0.013) * 0.5], pocheMat);
-  addFlatBox(root, 'simpleFlat.wall.bathPartitionEndCapSouth', [INT_T - 0.001, westCoreH, 0.002], [BATH_HALL_X, westCoreMidY, IN_Z - 0.0015], pocheMat);
+  addFlatBox(root, 'simpleFlat.wall.bathPartitionEndCapSouth', [INT_T - 0.0004, westCoreH - 0.001, 0.001], [BATH_HALL_X, westCoreMidY, IN_Z - 0.002], pocheMat);
 
   for (const [sideName, dRange, mat] of [
     ['simpleFlat.wall.bathPartitionWest', [-INT_T * 0.5, -(INT_T * 0.5 - 0.012)] as const, schemes.bathroom.walls],

@@ -1,10 +1,13 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
+import { detectZFighting } from '../../engine/diagnostics/z-fighting-detector.ts';
 import {
   createFloorSlab,
   createHippedRoof,
   createPitchedRoof,
   createWallNetwork,
+  type WallNetworkOptions,
+  type WallSegmentInput,
 } from './wall-and-slab-builders.ts';
 
 function collectMeshes(root: THREE.Object3D): THREE.Mesh[] {
@@ -305,5 +308,122 @@ describe('wall-and-slab-builders', () => {
     const hipBox = new THREE.Box3().setFromObject(hipped.group);
     expect(hipBox.min.x).toBeCloseTo(-0.25, 4);
     expect(hipBox.max.x).toBeCloseTo(10.25, 4);
+  });
+
+  it("emits 1.5 mm inward-inset solid section caps at L-corners, T-junctions, and bay splits with capMaterial and zero z-fighting", () => {
+    const netCapMat = new THREE.MeshStandardMaterial({ color: 0xe6e1d6, roughness: 0.95 });
+    const spineCapMat = new THREE.MeshStandardMaterial({ color: 0xd8d2c5, roughness: 0.95 });
+    const revMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35 });
+
+    const walls: WallSegmentInput[] = [
+      { id: "north", from: [0, 0], to: [8, 0], thickness: 0.36, align: "interior" },
+      { id: "east", from: [8, 0], to: [8, 5], thickness: 0.36, align: "interior" },
+      { id: "south", from: [8, 5], to: [0, 5], thickness: 0.36, align: "interior" },
+      {
+        id: "west",
+        from: [0, 5],
+        to: [0, 0],
+        thickness: 0.36,
+        align: "interior",
+        openings: [{ id: "win", centerOffset: 2.5, width: 1.2, sillY: 0.9, height: 1.4 }],
+      },
+      {
+        id: "spine",
+        from: [4, 0],
+        to: [4, 5],
+        thickness: 0.24,
+        kind: "partition",
+        capMaterial: spineCapMat,
+      },
+      {
+        id: "cross",
+        from: [4, 2.5],
+        to: [8, 2.5],
+        thickness: 0.12,
+        kind: "partition",
+      },
+    ];
+
+    const opts: WallNetworkOptions = {
+      floor: "ground",
+      baseY: 0,
+      height: 2.83,
+      revealMaterial: revMat,
+      capMaterial: netCapMat,
+      walls,
+    };
+
+    const network = createWallNetwork(opts);
+
+    // 0 z-fighting findings across all 90° L-corners, T-junctions, and exterior bay splits
+    const findingsAll = detectZFighting(network.group, { epsilonM: 0.00035 });
+    expect(findingsAll).toHaveLength(0);
+
+    // Verify capMaterial vs revealMaterial assignment
+    const westCaps = collectMeshes(network.group).find((m) => m.name === "west.caps")!;
+    const westReveals = collectMeshes(network.group).find((m) => m.name === "west.reveals")!;
+    const spineCaps = collectMeshes(network.group).find((m) => m.name === "spine.caps")!;
+    expect(westCaps).toBeDefined();
+    expect(westReveals).toBeDefined();
+    expect(spineCaps).toBeDefined();
+    expect(westCaps.material).toBe(netCapMat);
+    expect(westReveals.material).toBe(revMat);
+    expect(spineCaps.material).toBe(spineCapMat);
+    expect((westCaps.material as THREE.Material).side).toBe(THREE.DoubleSide);
+    expect((westCaps.material as THREE.Material).userData.preserveDoubleSide).toBe(true);
+    expect((spineCaps.material as THREE.Material).side).toBe(THREE.DoubleSide);
+    expect((spineCaps.material as THREE.Material).userData.preserveDoubleSide).toBe(true);
+
+    // Verify T-junction partition ("spine") has vertical end-caps inset 1.5 mm inside z=0 and z=5
+    const spineNorm = spineCaps.geometry.getAttribute("normal");
+    const spinePos = spineCaps.geometry.getAttribute("position");
+    const northCapZs: number[] = [];
+    const southCapZs: number[] = [];
+    for (let i = 0; i < spineNorm.count; i++) {
+      const nz = spineNorm.getZ(i);
+      if (nz < -0.9) northCapZs.push(spinePos.getZ(i));
+      if (nz > 0.9) southCapZs.push(spinePos.getZ(i));
+    }
+    expect(northCapZs.length).toBeGreaterThanOrEqual(4);
+    expect(southCapZs.length).toBeGreaterThanOrEqual(4);
+    for (const z of northCapZs) expect(z).toBeCloseTo(0.0015, 5);
+    for (const z of southCapZs) expect(z).toBeCloseTo(5 - 0.0015, 5);
+
+    // Verify exterior bay split on north wall at x = 4 has opposing 1.5 mm-inset section caps
+    const northBay0Caps = collectMeshes(network.group).find((m) => m.name === "north.bay_0.caps")!;
+    const northBay1Caps = collectMeshes(network.group).find((m) => m.name === "north.bay_1.caps")!;
+    expect(northBay0Caps).toBeDefined();
+    expect(northBay1Caps).toBeDefined();
+
+    const b0Norm = northBay0Caps.geometry.getAttribute("normal");
+    const b0Pos = northBay0Caps.geometry.getAttribute("position");
+    let foundBay0SplitCap = false;
+    let foundBay0MiterCap = false;
+    for (let i = 0; i < b0Norm.count; i++) {
+      const nx = b0Norm.getX(i);
+      const nz = b0Norm.getZ(i);
+      if (nx > 0.95) {
+        foundBay0SplitCap = true;
+        expect(b0Pos.getX(i)).toBeCloseTo(4 - 0.0015, 5);
+      } else if (nx < -0.5 && nz > 0.5) {
+        // 45° miter cap at NW L-corner inset 1.5 mm perpendicularly inside bay_0
+        foundBay0MiterCap = true;
+      }
+    }
+    expect(foundBay0SplitCap).toBe(true);
+    expect(foundBay0MiterCap).toBe(true);
+
+    // Outer hull must remain strictly within [-0.36..8.36] x [-0.36..5.36] (zero cap poke-through!)
+    const hullBox = new THREE.Box3().setFromObject(network.group);
+    expect(hullBox.min.x).toBeCloseTo(-0.36, 4);
+    expect(hullBox.max.x).toBeCloseTo(8.36, 4);
+    expect(hullBox.min.z).toBeCloseTo(-0.36, 4);
+    expect(hullBox.max.z).toBeCloseTo(5.36, 4);
+
+    // Hide south wall (simulating CutawayController) and verify 0 z-fights remain
+    const southBays = network.group.children.filter((c) => c.name.startsWith("south"));
+    expect(southBays.length).toBe(2);
+    for (const b of southBays) b.visible = false;
+    expect(detectZFighting(network.group, { epsilonM: 0.00035 })).toHaveLength(0);
   });
 });

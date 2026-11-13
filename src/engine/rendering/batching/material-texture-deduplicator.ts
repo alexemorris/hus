@@ -514,8 +514,13 @@ export class MaterialTextureDeduplicator {
         true
       );
 
+      const matUserEarly = mat.userData as Record<string, unknown> | undefined;
+      const preserveDoubleSide = Boolean(matUserEarly?.preserveDoubleSide);
       const targetSide =
-        mat.side === THREE.DoubleSide && !mat.transparent && isClosedSolidGeometry(outGeo)
+        mat.side === THREE.DoubleSide &&
+        !preserveDoubleSide &&
+        !mat.transparent &&
+        isClosedSolidGeometry(outGeo)
           ? THREE.FrontSide
           : mat.side;
 
@@ -817,6 +822,9 @@ export class MaterialTextureDeduplicator {
             if (canBakeEmissiveVc) {
               cloned.emissiveIntensity = qEmissiveIntensity;
             }
+          }
+          if (preserveDoubleSide) {
+            cloned.userData = { ...(cloned.userData ?? {}), preserveDoubleSide: true };
           }
           cloned.side = targetSide;
           cloned.map = map;

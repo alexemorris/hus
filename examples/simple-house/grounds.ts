@@ -272,7 +272,7 @@ export function buildSimpleHouseGrounds(ctx: SceneBuilderContext): THREE.Group {
   addMetricBox(
     root,
     'simpleHouse.grounds.subPlinthEarth',
-    [11.8, 0.08, 9.2],
+    [11.96, 0.08, 9.36],
     [0, -0.365, 0],
     soilMat,
     2.0
@@ -299,13 +299,13 @@ export function buildSimpleHouseGrounds(ctx: SceneBuilderContext): THREE.Group {
     true
   ).castShadow = false;
 
-  // Axial riven-Yorkstone flagstone walk: Z in [+4.55, +10.42], X in [-0.85, +0.85], top Y = -0.155 m
+  // Axial riven-Yorkstone flagstone walk: Z in [+4.63, +10.42], X in [-0.85, +0.85], top Y = -0.155 m
   const walkThick = 0.065;
   addMetricBox(
     root,
     'simpleHouse.grounds.axialYorkstoneWalk',
-    [1.7, walkThick, 5.87],
-    [0, AXIAL_WALK_TOP_Y - walkThick * 0.5, (4.55 + 10.42) * 0.5],
+    [1.7, walkThick, 5.79],
+    [0, AXIAL_WALK_TOP_Y - walkThick * 0.5, (4.63 + 10.42) * 0.5],
     yorkstoneMat,
     1.0,
     true
@@ -313,9 +313,9 @@ export function buildSimpleHouseGrounds(ctx: SceneBuilderContext): THREE.Group {
 
   // Flanking pea-gravel carriage court split cleanly left & right of the axial walk (top Y = -0.168 m)
   const gravelThick = 0.06;
-  const gravelWidth = 5.6 - 0.87;
-  const gravelDepth = 10.24 - 4.58;
-  const gravelCenterZ = (4.58 + 10.24) * 0.5;
+  const gravelWidth = 5.68 - 0.87;
+  const gravelDepth = 10.24 - 4.66;
+  const gravelCenterZ = (4.66 + 10.24) * 0.5;
   for (const [sideTag, sign] of [
     ['west', -1],
     ['east', 1],
@@ -334,8 +334,8 @@ export function buildSimpleHouseGrounds(ctx: SceneBuilderContext): THREE.Group {
     addMetricBox(
       root,
       `simpleHouse.grounds.walkSettKerb.${sideTag}`,
-      [0.016, 0.06, 4.22],
-      [sign * 0.86, -0.152 - 0.03, (5.99 + 10.21) * 0.5],
+      [0.016, 0.06, 4.14],
+      [sign * 0.86, -0.152 - 0.03, (6.07 + 10.21) * 0.5],
       settsMat,
       1.0
     );
@@ -345,7 +345,7 @@ export function buildSimpleHouseGrounds(ctx: SceneBuilderContext): THREE.Group {
       root,
       `simpleHouse.grounds.outerSettKerb.${sideTag}`,
       [0.2, 0.065, gravelDepth],
-      [sign * 5.72, -0.152 - 0.0325, gravelCenterZ],
+      [sign * 5.8, -0.152 - 0.0325, gravelCenterZ],
       settsMat,
       1.0
     );
@@ -358,18 +358,18 @@ export function buildSimpleHouseGrounds(ctx: SceneBuilderContext): THREE.Group {
     [-10.25, -14.08],
     [10.25, -14.08],
     [10.25, 10.24],
-    [5.822, 10.24],
-    [5.822, 4.542],
-    [5.744, 4.542],
-    [5.744, -4.542],
-    [5.702, -4.542],
-    [5.702, -8.402],
-    [-5.702, -8.402],
-    [-5.702, -4.542],
-    [-5.744, -4.542],
-    [-5.744, 4.542],
-    [-5.822, 4.542],
-    [-5.822, 10.24],
+    [5.902, 10.24],
+    [5.902, 4.622],
+    [5.824, 4.622],
+    [5.824, -4.622],
+    [5.782, -4.622],
+    [5.782, -8.482],
+    [-5.782, -8.482],
+    [-5.782, -4.622],
+    [-5.824, -4.622],
+    [-5.824, 4.622],
+    [-5.902, 4.622],
+    [-5.902, 10.24],
     [-10.25, 10.24],
   ];
   const formalLawnGeo = prepGeo(
@@ -448,7 +448,7 @@ export function buildSimpleHouseGrounds(ctx: SceneBuilderContext): THREE.Group {
       addTopiary(
         `${sideTag}_plinth_${idx + 1}`,
         sign * px,
-        5.05,
+        5.13,
         plinthDiameters[idx]!,
         CARRIAGE_GRAVEL_TOP_Y,
         (sign < 0 ? 300 : 400) + idx * 23
@@ -456,13 +456,13 @@ export function buildSimpleHouseGrounds(ctx: SceneBuilderContext): THREE.Group {
     });
   }
 
-  // Rear riven-Yorkstone garden terrace: X in [-5.70, +5.70], Z in [-8.40, -4.55], top Y = -0.14 m
+  // Rear riven-Yorkstone garden terrace: X in [-5.78, +5.78], Z in [-8.48, -4.63], top Y = -0.14 m
   const terraceThick = 0.08;
   addMetricBox(
     root,
     'simpleHouse.grounds.rearYorkstoneTerrace',
-    [11.4, terraceThick, 3.85],
-    [0, REAR_TERRACE_TOP_Y - terraceThick * 0.5, (-8.4 - 4.55) * 0.5],
+    [11.56, terraceThick, 3.85],
+    [0, REAR_TERRACE_TOP_Y - terraceThick * 0.5, (-8.48 - 4.63) * 0.5],
     yorkstoneMat,
     1.0,
     true
@@ -473,7 +473,7 @@ export function buildSimpleHouseGrounds(ctx: SceneBuilderContext): THREE.Group {
     root,
     'simpleHouse.grounds.frenchDoorLowerStep',
     [1.76, 0.044, 0.36],
-    [4.25, REAR_TERRACE_TOP_Y + 0.024, -4.96],
+    [4.25, REAR_TERRACE_TOP_Y + 0.024, -5.04],
     copingMat,
     1.0,
     true
@@ -482,7 +482,7 @@ export function buildSimpleHouseGrounds(ctx: SceneBuilderContext): THREE.Group {
     root,
     'simpleHouse.grounds.frenchDoorUpperStep',
     [1.64, 0.044, 0.21],
-    [4.25, REAR_TERRACE_TOP_Y + 0.07, -4.67],
+    [4.25, REAR_TERRACE_TOP_Y + 0.07, -4.75],
     copingMat,
     1.0,
     true
