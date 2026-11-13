@@ -107,6 +107,8 @@ export function buildCasementWindow(
     readonly brassMat: THREE.Material;
     readonly includeExteriorSillAndLintel?: boolean;
     readonly includeInteriorBoard?: boolean;
+    readonly linerDepthM?: number;
+    readonly exteriorFaceOffsetM?: number;
     readonly panesCols?: 2 | 3;
     readonly cutaway?: CutawayWallDescriptor;
   }
@@ -172,7 +174,7 @@ export function buildCasementWindow(
     );
   }
 
-  const linerD = 0.068;
+  const linerD = opts.linerDepthM ?? 0.148;
   const linerCz = frameD * 0.5 + linerD * 0.5 + 0.002;
   addFlatBox(g, `${opts.name}.revealTop`, [fw, 0.014, linerD], [0, fh * 0.5 - 0.007, linerCz], opts.sillMat);
   addFlatBox(g, `${opts.name}.revealL`, [0.014, fh - 0.032, linerD], [-fw * 0.5 + 0.007, 0, linerCz], opts.sillMat);
@@ -189,19 +191,20 @@ export function buildCasementWindow(
   }
 
   if (opts.includeExteriorSillAndLintel !== false) {
+    const extOff = opts.exteriorFaceOffsetM ?? 0.16;
     addFlatBox(
       g,
       `${opts.name}.stoneSill`,
-      [opts.width + 0.14, 0.058, 0.092],
-      [0, -opts.height * 0.5 - 0.031, -0.145],
+      [opts.width + 0.14, 0.058, 0.096],
+      [0, -opts.height * 0.5 - 0.031, -(extOff + 0.026)],
       opts.stoneMat,
       1.0
     );
     addFlatBox(
       g,
       `${opts.name}.stoneLintel`,
-      [opts.width + 0.16, 0.135, 0.036],
-      [0, opts.height * 0.5 + 0.07, -0.142],
+      [opts.width + 0.16, 0.135, 0.038],
+      [0, opts.height * 0.5 + 0.07, -(extOff + 0.021)],
       opts.stoneMat,
       1.0
     );
@@ -357,6 +360,7 @@ export function buildCourtyardGrounds(
     roughness: 0.72,
   });
 
+  // Outer plinth collar sits at X in [-4.62, 4.62], Z in [-3.82, 3.82] (60 mm beyond 360 mm London Stock brick)
   const gravelGeo = extrudePlanarSolidWithHoles({
     outer: [
       [-8.1, -6.1],
@@ -366,10 +370,10 @@ export function buildCourtyardGrounds(
     ],
     holes: [
       [
-        [-4.506, -3.706],
-        [4.506, -3.706],
-        [4.506, 3.706],
-        [-4.506, 3.706],
+        [-4.626, -3.826],
+        [4.626, -3.826],
+        [4.626, 3.826],
+        [-4.626, 3.826],
       ],
     ],
     origin: [0, 0, 0],
@@ -386,8 +390,8 @@ export function buildCourtyardGrounds(
 
   const terraceGeo = extrudePlanarSolidWithHoles({
     outer: [
-      [-5.6, 3.715],
-      [5.6, 3.715],
+      [-5.6, 3.835],
+      [5.6, 3.835],
       [5.6, 7.8],
       [-5.6, 7.8],
     ],
@@ -405,8 +409,8 @@ export function buildCourtyardGrounds(
 
   const walkGeo = extrudePlanarSolidWithHoles({
     outer: [
-      [-2.25, 4.54],
-      [-0.7, 4.54],
+      [-2.25, 4.66],
+      [-0.7, 4.66],
       [-0.7, 8.85],
       [-2.25, 8.85],
     ],
@@ -422,8 +426,8 @@ export function buildCourtyardGrounds(
   walkMesh.receiveShadow = true;
   grounds.add(walkMesh);
 
-  addFlatBox(grounds, 'simpleFlat.grounds.stepLower', [1.5, 0.11, 0.8], [-1.475, -0.181, 4.12], stoneMat, 1.0);
-  addFlatBox(grounds, 'simpleFlat.grounds.stepUpper', [1.24, 0.114, 0.52], [-1.475, -0.065, 3.91], stoneMat, 1.0);
+  addFlatBox(grounds, 'simpleFlat.grounds.stepLower', [1.5, 0.11, 0.8], [-1.475, -0.181, 4.24], stoneMat, 1.0);
+  addFlatBox(grounds, 'simpleFlat.grounds.stepUpper', [1.24, 0.114, 0.52], [-1.475, -0.065, 4.03], stoneMat, 1.0);
 
   for (const [tag, x0, x1] of [
     ['west', -7.8, -2.56],
@@ -447,10 +451,10 @@ export function buildCourtyardGrounds(
   addFlatBox(grounds, 'simpleFlat.grounds.hedgeNorth', [14.8, 1.25, 0.65], [0, 0.365, -5.75], hedgeMat, 1.2);
 
   for (const [idx, px, pz] of [
-    [1, -2.54, 3.96],
-    [2, -0.41, 3.96],
-    [3, 0.55, 3.96],
-    [4, 2.95, 3.96],
+    [1, -2.54, 4.08],
+    [2, -0.41, 4.08],
+    [3, 0.55, 4.08],
+    [4, 2.95, 4.08],
   ] as const) {
     const pot = new THREE.Mesh(prepGeo(new THREE.CylinderGeometry(0.22, 0.16, 0.42, 18)), terracottaMat);
     pot.name = `simpleFlat.grounds.planterPot_${idx}`;

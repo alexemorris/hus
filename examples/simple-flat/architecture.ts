@@ -36,6 +36,9 @@ import {
   IN_X,
   IN_Z,
   INT_T,
+  SPINE_EAST_X,
+  SPINE_T,
+  SPINE_WEST_X,
   SPINE_X,
   WALL_H,
 } from './electrical-and-rooms.ts';
@@ -72,30 +75,30 @@ export function buildSimpleFlatArchitecture(ctx: SceneBuilderContext): SimpleFla
   ctx.scene.add(root);
   const schemes = {
     living: createRoomPaintScheme({
-      wallColor: "school-house-white",
-      trimColor: "wimborne-white",
-      ceilingColor: "wimborne-white",
-      wallSheen: "estate-emulsion",
-      roomKind: "kitchen",
+      wallColor: 'school-house-white',
+      trimColor: 'wimborne-white',
+      ceilingColor: 'wimborne-white',
+      wallSheen: 'estate-emulsion',
+      roomKind: 'kitchen',
     }),
     hall: createRoomPaintScheme({
-      wallColor: "slipper-satin",
-      trimColor: "wimborne-white",
-      ceilingColor: "wimborne-white",
-      roomKind: "hallway",
+      wallColor: 'slipper-satin',
+      trimColor: 'wimborne-white',
+      ceilingColor: 'wimborne-white',
+      roomKind: 'hallway',
     }),
     bedroom: createRoomPaintScheme({
-      wallColor: "skimming-stone",
-      trimColor: "wimborne-white",
-      ceilingColor: "wimborne-white",
-      roomKind: "bedroom",
+      wallColor: 'skimming-stone',
+      trimColor: 'wimborne-white',
+      ceilingColor: 'wimborne-white',
+      roomKind: 'bedroom',
     }),
     bathroom: createRoomPaintScheme({
-      wallColor: "mizzle",
-      trimColor: "wimborne-white",
-      ceilingColor: "wimborne-white",
-      wallSheen: "modern-emulsion",
-      roomKind: "bathroom",
+      wallColor: 'mizzle',
+      trimColor: 'wimborne-white',
+      ceilingColor: 'wimborne-white',
+      wallSheen: 'modern-emulsion',
+      roomKind: 'bathroom',
     }),
   };
   const trimMat = schemes.living.trim;
@@ -103,6 +106,17 @@ export function buildSimpleFlatArchitecture(ctx: SceneBuilderContext): SimpleFla
   const frontDoorMat = createPaintMaterial({ color: 'farrow-ball:green-smoke', sheen: 'exterior-eggshell' });
   const brickMat = createBrickMaterial({ preset: 'yellow-london-stock', bond: 'flemish' });
   const stoneMat = createStoneMasonryMaterial({ preset: 'sawn-yorkstone-coping' });
+  const pocheMat = new THREE.MeshStandardMaterial({
+    name: 'simpleFlat.wall.sectionPoche',
+    color: 0xd8d1c5,
+    roughness: 0.9,
+  });
+  const structuralSteelMat = new THREE.MeshStandardMaterial({
+    name: 'simpleFlat.structure.graphiteSteel',
+    color: 0x383c3f,
+    roughness: 0.42,
+    metalness: 0.78,
+  });
   const roofSlateMat = new THREE.MeshStandardMaterial({
     name: 'simpleFlat.leadRoofMat',
     color: 0x565b60,
@@ -122,9 +136,11 @@ export function buildSimpleFlatArchitecture(ctx: SceneBuilderContext): SimpleFla
 
   buildCourtyardGrounds(root, stoneMat, brickMat);
 
-  addFlatBox(root, 'simpleFlat.plinth.base', [9.0, 0.218, 7.4], [0, -0.151, 0], stoneMat, 1.0);
+  const extMaxX = IN_X + EXT_T; // 4.56
+  const extMaxZ = IN_Z + EXT_T; // 3.76
+  addFlatBox(root, 'simpleFlat.plinth.base', [9.24, 0.218, 7.64], [0, -0.151, 0], stoneMat, 1.0);
   const plinthCollarGeo = extrudePlanarSolidWithHoles({
-    outer: [[-4.5, -3.7], [4.5, -3.7], [4.5, 3.7], [-4.5, 3.7]],
+    outer: [[-4.62, -3.82], [4.62, -3.82], [4.62, 3.82], [-4.62, 3.82]],
     holes: [[[-4.202, -3.402], [4.202, -3.402], [4.202, 3.402], [-4.202, 3.402]]],
     origin: [0, 0, 0],
     uAxis: [1, 0, 0],
@@ -173,18 +189,31 @@ export function buildSimpleFlatArchitecture(ctx: SceneBuilderContext): SimpleFla
 
   addFloorPoly(
     'simpleFlat.floor.livingAndHallParquet',
-    [[-0.598, -3.4], [4.2, -3.4], [4.2, 3.4], [-2.198, 3.4], [-2.198, 1.102], [-0.598, 1.102]],
+    [
+      [SPINE_EAST_X, -3.4], [4.2, -3.4], [4.2, 3.4], [-2.198, 3.4],
+      [-2.198, 1.102], [SPINE_WEST_X, 1.102], [SPINE_WEST_X, 1.43], [SPINE_EAST_X, 1.43],
+    ],
     parquetMat,
     0.74
   );
-  addFloorPoly('simpleFlat.floor.bedroomOak', [[-4.2, -3.4], [-0.602, -3.4], [-0.602, 1.098], [-4.2, 1.098]], bedroomOakMat, 0.85);
-  addFloorPoly('simpleFlat.floor.bathroomCabochon', [[-4.2, 1.102], [-2.202, 1.102], [-2.202, 3.4], [-4.2, 3.4]], bathCabochonMat, 0.85);
+  addFloorPoly(
+    'simpleFlat.floor.bedroomOak',
+    [[-4.2, -3.4], [SPINE_WEST_X - 0.002, -3.4], [SPINE_WEST_X - 0.002, 1.098], [-4.2, 1.098]],
+    bedroomOakMat,
+    0.85
+  );
+  addFloorPoly(
+    'simpleFlat.floor.bathroomCabochon',
+    [[-4.2, 1.102], [-2.202, 1.102], [-2.202, 3.4], [-4.2, 3.4]],
+    bathCabochonMat,
+    0.85
+  );
 
-  const ceilingSoffit = addFlatBox(ctx.ceilingMeshGroup, 'simpleFlat.ceiling.soffit', [8.86, 0.13, 7.26], [0, WALL_H + 0.066, 0], schemes.living.ceiling);
+  const ceilingSoffit = addFlatBox(ctx.ceilingMeshGroup, 'simpleFlat.ceiling.soffit', [9.1, 0.13, 7.5], [0, WALL_H + 0.066, 0], schemes.living.ceiling);
   ceilingSoffit.castShadow = false;
-  addFlatBox(ctx.ceilingMeshGroup, 'simpleFlat.roof.deck', [8.56, 0.045, 6.96], [0, WALL_H + 0.155, 0], roofSlateMat, 1.2);
+  addFlatBox(ctx.ceilingMeshGroup, 'simpleFlat.roof.deck', [8.8, 0.045, 7.2], [0, WALL_H + 0.155, 0], roofSlateMat, 1.2);
   const parapetGeo = extrudePlanarSolidWithHoles({
-    outer: [[-4.45, -3.65], [4.45, -3.65], [4.45, 3.65], [-4.45, 3.65]],
+    outer: [[-extMaxX, -extMaxZ], [extMaxX, -extMaxZ], [extMaxX, extMaxZ], [-extMaxX, extMaxZ]],
     holes: [[[-4.26, -3.46], [4.26, -3.46], [4.26, 3.46], [-4.26, 3.46]]],
     origin: [0, 0, 0],
     uAxis: [1, 0, 0],
@@ -198,7 +227,7 @@ export function buildSimpleFlatArchitecture(ctx: SceneBuilderContext): SimpleFla
   parapetBrick.castShadow = true;
   ctx.ceilingMeshGroup.add(parapetBrick);
   const copingGeo = extrudePlanarSolidWithHoles({
-    outer: [[-4.52, -3.72], [4.52, -3.72], [4.52, 3.72], [-4.52, 3.72]],
+    outer: [[-4.63, -3.83], [4.63, -3.83], [4.63, 3.83], [-4.63, 3.83]],
     holes: [[[-4.22, -3.42], [4.22, -3.42], [4.22, 3.42], [-4.22, 3.42]]],
     origin: [0, 0, 0],
     uAxis: [1, 0, 0],
@@ -213,7 +242,7 @@ export function buildSimpleFlatArchitecture(ctx: SceneBuilderContext): SimpleFla
   ctx.ceilingMeshGroup.add(parapetCoping);
 
   for (const [rName, rx, rz, diam] of [
-    ['simpleFlat.rose.hall', -1.4, 2.28, 0.44],
+    ['simpleFlat.rose.hall', -1.46, 2.28, 0.44],
     ['simpleFlat.rose.living', 2.65, 1.45, 0.58],
     ['simpleFlat.rose.dining', 0.52, -0.62, 0.46],
     ['simpleFlat.rose.bedroom', -2.55, -1.35, 0.52],
@@ -224,32 +253,35 @@ export function buildSimpleFlatArchitecture(ctx: SceneBuilderContext): SimpleFla
   }
 
   const wallBaseY = 0.0005;
-  const wallTopY = WALL_H - 0.0005;
-  const extMaxX = IN_X + EXT_T;
+  const wallCoreTopY = WALL_H - 0.0022;
+  const capMidY = WALL_H - 0.0011;
+  const capH = 0.0012;
   const northCut: CutawayWallDescriptor = { axis: 'z', coord: -IN_Z, minSpan: -extMaxX, maxSpan: extMaxX, floor: 'level-0', outwardSide: 'north' };
   const southCut: CutawayWallDescriptor = { axis: 'z', coord: IN_Z, minSpan: -extMaxX, maxSpan: extMaxX, floor: 'level-0', outwardSide: 'south' };
-  const eastCut: CutawayWallDescriptor = { axis: 'x', coord: IN_X, minSpan: -3.65, maxSpan: 3.65, floor: 'level-0', outwardSide: 'east' };
-  const westCut: CutawayWallDescriptor = { axis: 'x', coord: -IN_X, minSpan: -3.65, maxSpan: 3.65, floor: 'level-0', outwardSide: 'west' };
+  const eastCut: CutawayWallDescriptor = { axis: 'x', coord: IN_X, minSpan: -extMaxZ, maxSpan: extMaxZ, floor: 'level-0', outwardSide: 'east' };
+  const westCut: CutawayWallDescriptor = { axis: 'x', coord: -IN_X, minSpan: -extMaxZ, maxSpan: extMaxZ, floor: 'level-0', outwardSide: 'west' };
 
+  // Solid 360 mm London Stock exterior masonry (`[-EXT_T, -0.001]` / `[0.001, EXT_T]` — zero 14 mm hollow air trenches!)
   const northBrickGeo = extrudePlanarSolidWithHoles({
-    outer: [[-extMaxX, wallBaseY], [extMaxX, wallBaseY], [extMaxX, wallTopY], [-extMaxX, wallTopY]],
+    outer: [[-extMaxX, wallBaseY], [extMaxX, wallBaseY], [extMaxX, wallCoreTopY], [-extMaxX, wallCoreTopY]],
     holes: [
       [[-3.3, 0.85], [-1.5, 0.85], [-1.5, 2.25], [-3.3, 2.25]],
       [[0.8, 1.02], [2.75, 1.02], [2.75, 2.25], [0.8, 2.25]],
     ],
     origin: [0, 0, -IN_Z],
-    depthRange: [-EXT_T, -0.014],
+    depthRange: [-EXT_T, -0.001],
   });
   projectWorldBoxUVs(northBrickGeo, undefined, 0.9);
   const northBrick = new THREE.Mesh(northBrickGeo, brickMat);
   northBrick.name = 'simpleFlat.wall.northBrick';
-  northBrick.castShadow = true;
-  northBrick.receiveShadow = true;
+  northBrick.castShadow = northBrick.receiveShadow = true;
   tagCutaway(northBrick, northCut);
   root.add(northBrick);
+  tagCutaway(addFlatBox(root, 'simpleFlat.wall.northTopCap', [extMaxX * 2 - 0.002, capH, EXT_T + 0.011], [0, capMidY, -IN_Z - (EXT_T - 0.011) * 0.5], pocheMat), northCut);
+
   const northBedLining = new THREE.Mesh(
     extrudePlanarSolidWithHoles({
-      outer: [[-IN_X + 0.014, wallBaseY], [SPINE_X - INT_T * 0.5 - 0.002, wallBaseY], [SPINE_X - INT_T * 0.5 - 0.002, wallTopY], [-IN_X + 0.014, wallTopY]],
+      outer: [[-IN_X + 0.013, wallBaseY], [SPINE_WEST_X - 0.001, wallBaseY], [SPINE_WEST_X - 0.001, wallCoreTopY], [-IN_X + 0.013, wallCoreTopY]],
       holes: [[[-3.3, 0.85], [-1.5, 0.85], [-1.5, 2.25], [-3.3, 2.25]]],
       origin: [0, 0, -IN_Z],
       depthRange: [0, 0.012],
@@ -262,7 +294,7 @@ export function buildSimpleFlatArchitecture(ctx: SceneBuilderContext): SimpleFla
   root.add(northBedLining);
   const northKitLining = new THREE.Mesh(
     extrudePlanarSolidWithHoles({
-      outer: [[SPINE_X + INT_T * 0.5 + 0.002, wallBaseY], [IN_X - 0.014, wallBaseY], [IN_X - 0.014, wallTopY], [SPINE_X + INT_T * 0.5 + 0.002, wallTopY]],
+      outer: [[SPINE_EAST_X + 0.001, wallBaseY], [IN_X - 0.013, wallBaseY], [IN_X - 0.013, wallCoreTopY], [SPINE_EAST_X + 0.001, wallCoreTopY]],
       holes: [[[0.8, 1.02], [2.75, 1.02], [2.75, 2.25], [0.8, 2.25]]],
       origin: [0, 0, -IN_Z],
       depthRange: [0, 0.012],
@@ -275,32 +307,35 @@ export function buildSimpleFlatArchitecture(ctx: SceneBuilderContext): SimpleFla
   root.add(northKitLining);
 
   buildCasementWindow(root, {
-    name: 'flat.win.bedN', cx: -2.4, cy: 1.55, cz: -3.52, width: 1.8, height: 1.4, rotY: 0,
-    frameMat: exteriorWindowMat, sillMat: trimMat, stoneMat, glassMat, brassMat: brassMats.primary, panesCols: 3, cutaway: northCut,
+    name: 'flat.win.bedN', cx: -2.4, cy: 1.55, cz: -IN_Z - 0.2, width: 1.8, height: 1.4, rotY: 0,
+    frameMat: exteriorWindowMat, sillMat: trimMat, stoneMat, glassMat, brassMat: brassMats.primary,
+    linerDepthM: 0.15, exteriorFaceOffsetM: 0.16, panesCols: 3, cutaway: northCut,
   });
   buildCasementWindow(root, {
-    name: 'flat.win.kitN', cx: 1.775, cy: 1.635, cz: -3.52, width: 1.95, height: 1.23, rotY: 0,
-    frameMat: exteriorWindowMat, sillMat: trimMat, stoneMat, glassMat, brassMat: brassMats.primary, panesCols: 3, cutaway: northCut,
+    name: 'flat.win.kitN', cx: 1.775, cy: 1.635, cz: -IN_Z - 0.2, width: 1.95, height: 1.23, rotY: 0,
+    frameMat: exteriorWindowMat, sillMat: trimMat, stoneMat, glassMat, brassMat: brassMats.primary,
+    linerDepthM: 0.15, exteriorFaceOffsetM: 0.16, panesCols: 3, cutaway: northCut,
   });
 
   const southBrickGeo = extrudePlanarSolidWithHoles({
     outer: [
       [-extMaxX, wallBaseY], [-1.95, wallBaseY], [-1.95, 2.22], [-1.0, 2.22], [-1.0, wallBaseY],
-      [0.85, wallBaseY], [0.85, 2.34], [2.65, 2.34], [2.65, wallBaseY], [extMaxX, wallBaseY], [extMaxX, wallTopY], [-extMaxX, wallTopY],
+      [0.85, wallBaseY], [0.85, 2.34], [2.65, 2.34], [2.65, wallBaseY], [extMaxX, wallBaseY], [extMaxX, wallCoreTopY], [-extMaxX, wallCoreTopY],
     ],
     origin: [0, 0, IN_Z],
-    depthRange: [0.014, EXT_T],
+    depthRange: [0.001, EXT_T],
   });
   projectWorldBoxUVs(southBrickGeo, undefined, 0.9);
   const southBrick = new THREE.Mesh(southBrickGeo, brickMat);
   southBrick.name = 'simpleFlat.wall.southBrick';
-  southBrick.castShadow = true;
-  southBrick.receiveShadow = true;
+  southBrick.castShadow = southBrick.receiveShadow = true;
   tagCutaway(southBrick, southCut);
   root.add(southBrick);
+  tagCutaway(addFlatBox(root, 'simpleFlat.wall.southTopCap', [extMaxX * 2 - 0.002, capH, EXT_T + 0.011], [0, capMidY, IN_Z + (EXT_T - 0.011) * 0.5], pocheMat), southCut);
+
   const southBathLining = new THREE.Mesh(
     extrudePlanarSolidWithHoles({
-      outer: [[-IN_X + 0.014, wallBaseY], [BATH_HALL_X - INT_T * 0.5 - 0.002, wallBaseY], [BATH_HALL_X - INT_T * 0.5 - 0.002, wallTopY], [-IN_X + 0.014, wallTopY]],
+      outer: [[-IN_X + 0.013, wallBaseY], [BATH_HALL_X - INT_T * 0.5 - 0.001, wallBaseY], [BATH_HALL_X - INT_T * 0.5 - 0.001, wallCoreTopY], [-IN_X + 0.013, wallCoreTopY]],
       origin: [0, 0, IN_Z],
       depthRange: [-0.012, 0],
     }),
@@ -313,8 +348,8 @@ export function buildSimpleFlatArchitecture(ctx: SceneBuilderContext): SimpleFla
   const southHallLining = new THREE.Mesh(
     extrudePlanarSolidWithHoles({
       outer: [
-        [BATH_HALL_X + INT_T * 0.5 + 0.002, wallBaseY], [-1.95, wallBaseY], [-1.95, 2.22], [-1.0, 2.22], [-1.0, wallBaseY],
-        [SPINE_X - INT_T * 0.5 - 0.002, wallBaseY], [SPINE_X - INT_T * 0.5 - 0.002, wallTopY], [BATH_HALL_X + INT_T * 0.5 + 0.002, wallTopY],
+        [BATH_HALL_X + INT_T * 0.5 + 0.001, wallBaseY], [-1.95, wallBaseY], [-1.95, 2.22], [-1.0, 2.22], [-1.0, wallBaseY],
+        [SPINE_WEST_X - 0.001, wallBaseY], [SPINE_WEST_X - 0.001, wallCoreTopY], [BATH_HALL_X + INT_T * 0.5 + 0.001, wallCoreTopY],
       ],
       origin: [0, 0, IN_Z],
       depthRange: [-0.012, 0],
@@ -328,8 +363,8 @@ export function buildSimpleFlatArchitecture(ctx: SceneBuilderContext): SimpleFla
   const southLivingLining = new THREE.Mesh(
     extrudePlanarSolidWithHoles({
       outer: [
-        [SPINE_X + INT_T * 0.5 + 0.002, wallBaseY], [0.85, wallBaseY], [0.85, 2.34], [2.65, 2.34], [2.65, wallBaseY],
-        [IN_X - 0.014, wallBaseY], [IN_X - 0.014, wallTopY], [SPINE_X + INT_T * 0.5 + 0.002, wallTopY],
+        [SPINE_EAST_X + 0.001, wallBaseY], [0.85, wallBaseY], [0.85, 2.34], [2.65, 2.34], [2.65, wallBaseY],
+        [IN_X - 0.013, wallBaseY], [IN_X - 0.013, wallCoreTopY], [SPINE_EAST_X + 0.001, wallCoreTopY],
       ],
       origin: [0, 0, IN_Z],
       depthRange: [-0.012, 0],
@@ -343,11 +378,11 @@ export function buildSimpleFlatArchitecture(ctx: SceneBuilderContext): SimpleFla
 
   const entryGroup = new THREE.Group();
   entryGroup.name = 'simpleFlat.entryDoorEnsemble';
-  entryGroup.position.set(-1.475, 0, IN_Z + 0.12);
-  addFlatBox(entryGroup, 'simpleFlat.entry.stoneLintel', [1.14, 0.14, 0.04], [0, 2.3, 0.142], stoneMat, 1.0);
-  addFlatBox(entryGroup, 'simpleFlat.entry.frameL', [0.048, 2.21, 0.236], [-0.449, 1.11, 0], trimMat);
-  addFlatBox(entryGroup, 'simpleFlat.entry.frameR', [0.048, 2.21, 0.236], [0.449, 1.11, 0], trimMat);
-  addFlatBox(entryGroup, 'simpleFlat.entry.frameTop', [0.848, 0.048, 0.236], [0, 2.192, 0], trimMat);
+  entryGroup.position.set(-1.475, 0, IN_Z + EXT_T * 0.5);
+  addFlatBox(entryGroup, 'simpleFlat.entry.stoneLintel', [1.14, 0.14, 0.04], [0, 2.3, EXT_T * 0.5 + 0.022], stoneMat, 1.0);
+  addFlatBox(entryGroup, 'simpleFlat.entry.frameL', [0.048, 2.21, EXT_T - 0.004], [-0.449, 1.11, 0], trimMat);
+  addFlatBox(entryGroup, 'simpleFlat.entry.frameR', [0.048, 2.21, EXT_T - 0.004], [0.449, 1.11, 0], trimMat);
+  addFlatBox(entryGroup, 'simpleFlat.entry.frameTop', [0.848, 0.048, EXT_T - 0.004], [0, 2.192, 0], trimMat);
   addFlatBox(entryGroup, 'simpleFlat.entry.transom', [0.848, 0.042, 0.095], [0, 1.88, 0], trimMat);
   const fanlightGlass = addFlatBox(entryGroup, 'simpleFlat.entry.fanlightGlass', [0.84, 0.26, 0.012], [0, 2.035, 0], glassMat);
   fanlightGlass.castShadow = false;
@@ -372,22 +407,21 @@ export function buildSimpleFlatArchitecture(ctx: SceneBuilderContext): SimpleFla
   const balconyFrame = new THREE.Group();
   balconyFrame.name = 'simpleFlat.julietBalconyFrame';
   addFlatBox(balconyFrame, 'simpleFlat.balcony.stoneLintel', [2.02, 0.145, 0.04], [1.75, 2.42, IN_Z + EXT_T + 0.022], stoneMat, 1.0);
-  addFlatBox(balconyFrame, 'simpleFlat.balcony.stoneThreshold', [1.96, 0.052, 0.34], [1.75, -0.027, IN_Z + 0.165], stoneMat, 1.0);
-  addFlatBox(balconyFrame, 'simpleFlat.balcony.jambL', [0.048, 2.33, 0.236], [0.876, 1.17, IN_Z + 0.12], exteriorWindowMat);
-  addFlatBox(balconyFrame, 'simpleFlat.balcony.jambR', [0.048, 2.33, 0.236], [2.624, 1.17, IN_Z + 0.12], exteriorWindowMat);
-  addFlatBox(balconyFrame, 'simpleFlat.balcony.head', [1.696, 0.048, 0.236], [1.75, 2.312, IN_Z + 0.12], exteriorWindowMat);
+  addFlatBox(balconyFrame, 'simpleFlat.balcony.stoneThreshold', [1.96, 0.052, 0.46], [1.75, -0.027, IN_Z + 0.225], stoneMat, 1.0);
+  addFlatBox(balconyFrame, 'simpleFlat.balcony.jambL', [0.048, 2.33, EXT_T - 0.004], [0.876, 1.17, IN_Z + EXT_T * 0.5], exteriorWindowMat);
+  addFlatBox(balconyFrame, 'simpleFlat.balcony.jambR', [0.048, 2.33, EXT_T - 0.004], [2.624, 1.17, IN_Z + EXT_T * 0.5], exteriorWindowMat);
+  addFlatBox(balconyFrame, 'simpleFlat.balcony.head', [1.696, 0.048, EXT_T - 0.004], [1.75, 2.312, IN_Z + EXT_T * 0.5], exteriorWindowMat);
   const railZ = IN_Z + EXT_T + 0.11;
   const railW = 1.92;
   addFlatBox(balconyFrame, 'simpleFlat.balcony.topRail', [railW, 0.032, 0.038], [1.75, 1.06, railZ], castIronMat);
-  addFlatBox(balconyFrame, 'simpleFlat.balcony.botRail', [railW, 0.028, 0.032], [1.75, 0.12, railZ], castIronMat);
-  addFlatBox(balconyFrame, 'simpleFlat.balcony.brassTopCap', [railW + 0.02, 0.012, 0.044], [1.75, 1.084, railZ], brassMats.primary);
+  addFlatBox(balconyFrame, 'simpleFlat.balcony.botRail', [railW, 0.028, 0.034], [1.75, 0.12, railZ], castIronMat);
   for (const sx of [-1, 1] as const) {
-    const endX = 1.75 + sx * (railW * 0.5 - 0.014);
-    addFlatBox(balconyFrame, `simpleFlat.balcony.returnTop_${sx}`, [0.028, 0.028, 0.092], [endX, 1.06, railZ - 0.066], castIronMat);
-    addFlatBox(balconyFrame, `simpleFlat.balcony.returnBot_${sx}`, [0.026, 0.026, 0.092], [endX, 0.12, railZ - 0.066], castIronMat);
+    for (const ry of [0.12, 1.06] as const) {
+      addFlatBox(balconyFrame, `simpleFlat.balcony.return_${sx}_${ry}`, [0.024, 0.024, 0.088], [1.75 + sx * (railW * 0.5 - 0.02), ry, railZ - 0.065], castIronMat);
+    }
   }
-  for (let i = 0; i < 15; i++) {
-    const bx = 1.75 - (railW - 0.12) * 0.5 + (i / 14) * (railW - 0.12);
+  for (let i = 0; i <= 14; i++) {
+    const bx = 1.75 - (railW - 0.12) * 0.5 + (i * (railW - 0.12)) / 14;
     addFlatBox(balconyFrame, `simpleFlat.balcony.spindle_${i + 1}`, [0.016, 0.908, 0.016], [bx, 0.59, railZ], castIronMat);
     if (i % 2 === 1) {
       const ring = new THREE.Mesh(prepGeo(new THREE.TorusGeometry(0.044, 0.008, 8, 18)), castIronMat);
@@ -419,32 +453,33 @@ export function buildSimpleFlatArchitecture(ctx: SceneBuilderContext): SimpleFla
     addFlatBox(balconyLeaf, `flatBalconyDoor.barIn_${frac}`, [bInnerW - 0.004, 0.018, 0.008], [0, bBotRail + bGlassH * frac, -0.012], exteriorWindowMat);
   }
   addFlatBox(balconyLeaf, 'flatBalconyDoor.brassHandle', [0.016, 0.11, 0.036], [bDoorW * 0.5 - 0.034, 1.02, -0.044], brassMats.primary);
-  balconyLeaf.position.set(1.324, 0.012, IN_Z + 0.09);
+  balconyLeaf.position.set(1.324, 0.012, IN_Z + 0.12);
   tagCutaway(balconyLeaf, southCut);
   root.add(balconyLeaf);
   registerHingedDoor(ctx, { parent: root, door: balconyLeaf, hingeOffset: [-bDoorW * 0.5, 0, 0], axis: 'y', openAngle: 1.24 });
 
   buildCasementWindow(root, {
-    name: 'flat.win.balconyFixed', cx: 2.176, cy: 1.147, cz: IN_Z + 0.09, width: 0.848, height: 2.278, rotY: Math.PI,
+    name: 'flat.win.balconyFixed', cx: 2.176, cy: 1.147, cz: IN_Z + 0.12, width: 0.848, height: 2.278, rotY: Math.PI,
     frameMat: exteriorWindowMat, sillMat: trimMat, stoneMat, glassMat, brassMat: brassMats.primary,
-    includeExteriorSillAndLintel: false, includeInteriorBoard: false, panesCols: 2, cutaway: southCut,
+    includeExteriorSillAndLintel: false, includeInteriorBoard: false, linerDepthM: 0.068, panesCols: 2, cutaway: southCut,
   });
 
   const eastBrickGeo = extrudePlanarSolidWithHoles({
-    outer: [[-IN_Z + 0.001, wallBaseY], [IN_Z - 0.001, wallBaseY], [IN_Z - 0.001, wallTopY], [-IN_Z + 0.001, wallTopY]],
+    outer: [[-IN_Z + 0.002, wallBaseY], [IN_Z - 0.002, wallBaseY], [IN_Z - 0.002, wallCoreTopY], [-IN_Z + 0.002, wallCoreTopY]],
     holes: [[[-0.9, 0.78], [1.6, 0.78], [1.6, 2.25], [-0.9, 2.25]]],
-    origin: [IN_X, 0, 0], uAxis: [0, 0, 1], vAxis: [0, 1, 0], wAxis: [1, 0, 0], depthRange: [0.014, EXT_T],
+    origin: [IN_X, 0, 0], uAxis: [0, 0, 1], vAxis: [0, 1, 0], wAxis: [1, 0, 0], depthRange: [0.001, EXT_T],
   });
   projectWorldBoxUVs(eastBrickGeo, undefined, 0.9);
   const eastBrick = new THREE.Mesh(eastBrickGeo, brickMat);
   eastBrick.name = 'simpleFlat.wall.eastBrick';
-  eastBrick.castShadow = true;
-  eastBrick.receiveShadow = true;
+  eastBrick.castShadow = eastBrick.receiveShadow = true;
   tagCutaway(eastBrick, eastCut);
   root.add(eastBrick);
+  tagCutaway(addFlatBox(root, 'simpleFlat.wall.eastTopCap', [EXT_T + 0.011, capH, (IN_Z - 0.013) * 2], [IN_X + (EXT_T - 0.011) * 0.5, capMidY, 0], pocheMat), eastCut);
+
   const eastLivingLining = new THREE.Mesh(
     extrudePlanarSolidWithHoles({
-      outer: [[-IN_Z + 0.014, wallBaseY], [IN_Z - 0.014, wallBaseY], [IN_Z - 0.014, wallTopY], [-IN_Z + 0.014, wallTopY]],
+      outer: [[-IN_Z + 0.013, wallBaseY], [IN_Z - 0.013, wallBaseY], [IN_Z - 0.013, wallCoreTopY], [-IN_Z + 0.013, wallCoreTopY]],
       holes: [[[-0.9, 0.78], [1.6, 0.78], [1.6, 2.25], [-0.9, 2.25]]],
       origin: [IN_X, 0, 0], uAxis: [0, 0, 1], vAxis: [0, 1, 0], wAxis: [1, 0, 0], depthRange: [-0.012, 0],
     }),
@@ -456,132 +491,285 @@ export function buildSimpleFlatArchitecture(ctx: SceneBuilderContext): SimpleFla
   root.add(eastLivingLining);
 
   buildCasementWindow(root, {
-    name: 'flat.win.east', cx: IN_X + 0.12, cy: 1.515, cz: 0.35, width: 2.5, height: 1.47, rotY: -Math.PI / 2,
-    frameMat: exteriorWindowMat, sillMat: trimMat, stoneMat, glassMat, brassMat: brassMats.primary, panesCols: 3, cutaway: eastCut,
+    name: 'flat.win.east', cx: IN_X + 0.2, cy: 1.515, cz: 0.35, width: 2.5, height: 1.47, rotY: -Math.PI / 2,
+    frameMat: exteriorWindowMat, sillMat: trimMat, stoneMat, glassMat, brassMat: brassMats.primary,
+    linerDepthM: 0.15, exteriorFaceOffsetM: 0.16, panesCols: 3, cutaway: eastCut,
   });
 
-  const westBrick = addFlatBox(root, 'simpleFlat.wall.westBrick', [EXT_T - 0.014, wallTopY - wallBaseY, (IN_Z - 0.001) * 2], [-IN_X - (EXT_T + 0.014) * 0.5, (wallTopY + wallBaseY) * 0.5, 0], brickMat, 0.9);
+  const westCoreH = wallCoreTopY - wallBaseY;
+  const westCoreMidY = (wallCoreTopY + wallBaseY) * 0.5;
+  const westBrick = addFlatBox(root, 'simpleFlat.wall.westBrick', [EXT_T - 0.001, westCoreH, (IN_Z - 0.002) * 2], [-IN_X - (EXT_T + 0.001) * 0.5, westCoreMidY, 0], brickMat, 0.9);
   tagCutaway(westBrick, westCut);
-  const westBedLining = addFlatBox(root, 'simpleFlat.wall.westBedroomLining', [0.012, wallTopY - wallBaseY, BED_BATH_Z - INT_T * 0.5 + IN_Z - 0.016], [-IN_X + 0.006, (wallTopY + wallBaseY) * 0.5, (-IN_Z + 0.014 + BED_BATH_Z - INT_T * 0.5 - 0.002) * 0.5], schemes.bedroom.walls);
-  tagCutaway(westBedLining, westCut);
-  const westBathTile = addFlatBox(root, 'simpleFlat.wall.westBathroomWetTile', [0.012, wallTopY - wallBaseY, 2.24 - 1.162], [-IN_X + 0.006, (wallTopY + wallBaseY) * 0.5, (1.162 + 2.24) * 0.5], wetTileMat, 0.85);
-  tagCutaway(westBathTile, westCut);
-  const westBathPlaster = addFlatBox(root, 'simpleFlat.wall.westBathroomPlaster', [0.012, wallTopY - wallBaseY, IN_Z - 0.014 - 2.244], [-IN_X + 0.006, (wallTopY + wallBaseY) * 0.5, (2.244 + IN_Z - 0.014) * 0.5], schemes.bathroom.walls);
-  tagCutaway(westBathPlaster, westCut);
+  tagCutaway(addFlatBox(root, 'simpleFlat.wall.westTopCap', [EXT_T + 0.011, capH, (IN_Z - 0.013) * 2], [-IN_X - (EXT_T - 0.011) * 0.5, capMidY, 0], pocheMat), westCut);
+  const westBedMaxZ = BED_BATH_Z - INT_T * 0.5 - 0.001;
+  tagCutaway(addFlatBox(root, 'simpleFlat.wall.westBedroomLining', [0.012, westCoreH, westBedMaxZ - (-IN_Z + 0.013)], [-IN_X + 0.006, westCoreMidY, (-IN_Z + 0.013 + westBedMaxZ) * 0.5], schemes.bedroom.walls), westCut);
+  tagCutaway(addFlatBox(root, 'simpleFlat.wall.westBathroomWetTile', [0.012, westCoreH, 2.24 - 1.161], [-IN_X + 0.006, westCoreMidY, (1.161 + 2.24) * 0.5], wetTileMat, 0.85), westCut);
+  tagCutaway(addFlatBox(root, 'simpleFlat.wall.westBathroomPlaster', [0.012, westCoreH, IN_Z - 0.013 - 2.243], [-IN_X + 0.006, westCoreMidY, (2.243 + IN_Z - 0.013) * 0.5], schemes.bathroom.walls), westCut);
 
+  // =========================================================================
+  // 240 mm SOLID LOAD-BEARING CENTRAL SPINE WALL (`X in [-0.78, -0.54]`)
+  // =========================================================================
   const spineArchMinZ = 1.43;
   const spineArchMaxZ = 2.47;
   const spineArchTopY = 2.202;
+  const spineMinZ = -IN_Z + 0.003; // -3.397 (2 mm clear of northBrick -3.401 with 1.5 mm end-cap)
+  const spineMaxZ = IN_Z - 0.003;  // +3.397
+  const spineCoreGeo = extrudePlanarSolidWithHoles({
+    outer: [
+      [spineMinZ, wallBaseY], [spineArchMinZ, wallBaseY], [spineArchMinZ, spineArchTopY + 0.146],
+      [spineArchMaxZ, spineArchTopY + 0.146], [spineArchMaxZ, wallBaseY], [spineMaxZ, wallBaseY],
+      [spineMaxZ, wallCoreTopY], [spineMinZ, wallCoreTopY],
+    ],
+    origin: [SPINE_X, 0, 0], uAxis: [0, 0, 1], vAxis: [0, 1, 0], wAxis: [1, 0, 0],
+    depthRange: [-(SPINE_T * 0.5 - 0.013), SPINE_T * 0.5 - 0.013],
+  });
+  const spineCore = new THREE.Mesh(spineCoreGeo, pocheMat);
+  spineCore.name = 'simpleFlat.wall.spineCore';
+  spineCore.castShadow = spineCore.receiveShadow = true;
+  root.add(spineCore);
+  addFlatBox(root, 'simpleFlat.wall.spineTopCap', [SPINE_T - 0.001, capH, (IN_Z - 0.013) * 2], [SPINE_X, capMidY, 0], pocheMat);
+  addFlatBox(root, 'simpleFlat.wall.spineEndCapNorth', [SPINE_T - 0.001, westCoreH, 0.002], [SPINE_X, westCoreMidY, -IN_Z + 0.0015], pocheMat);
+  addFlatBox(root, 'simpleFlat.wall.spineEndCapSouth', [SPINE_T - 0.001, westCoreH, 0.002], [SPINE_X, westCoreMidY, IN_Z - 0.0015], pocheMat);
+
   const spineEastLiving = new THREE.Mesh(
     extrudePlanarSolidWithHoles({
       outer: [
-        [-IN_Z + 0.014, wallBaseY], [spineArchMinZ, wallBaseY], [spineArchMinZ, spineArchTopY],
-        [spineArchMaxZ, spineArchTopY], [spineArchMaxZ, wallBaseY], [IN_Z - 0.014, wallBaseY], [IN_Z - 0.014, wallTopY], [-IN_Z + 0.014, wallTopY],
+        [-IN_Z + 0.013, wallBaseY], [spineArchMinZ, wallBaseY], [spineArchMinZ, spineArchTopY],
+        [spineArchMaxZ, spineArchTopY], [spineArchMaxZ, wallBaseY], [IN_Z - 0.013, wallBaseY], [IN_Z - 0.013, wallCoreTopY], [-IN_Z + 0.013, wallCoreTopY],
       ],
-      origin: [SPINE_X, 0, 0], uAxis: [0, 0, 1], vAxis: [0, 1, 0], wAxis: [1, 0, 0], depthRange: [0.001, INT_T * 0.5],
+      origin: [SPINE_X, 0, 0], uAxis: [0, 0, 1], vAxis: [0, 1, 0], wAxis: [1, 0, 0],
+      depthRange: [SPINE_T * 0.5 - 0.012, SPINE_T * 0.5],
     }),
     schemes.living.walls
   );
   spineEastLiving.name = 'simpleFlat.wall.spineLiving';
-  spineEastLiving.castShadow = true;
-  spineEastLiving.receiveShadow = true;
+  spineEastLiving.castShadow = spineEastLiving.receiveShadow = true;
   root.add(spineEastLiving);
   addFlatBox(
     root, 'simpleFlat.wall.spineBedroom',
-    [INT_T * 0.5 - 0.001, wallTopY - wallBaseY, BED_BATH_Z - INT_T * 0.5 + IN_Z - 0.016],
-    [SPINE_X - (INT_T * 0.5 + 0.001) * 0.5, (wallTopY + wallBaseY) * 0.5, (-IN_Z + 0.014 + BED_BATH_Z - INT_T * 0.5 - 0.002) * 0.5],
+    [0.012, westCoreH, westBedMaxZ - (-IN_Z + 0.013)],
+    [SPINE_WEST_X + 0.006, westCoreMidY, (-IN_Z + 0.013 + westBedMaxZ) * 0.5],
     schemes.bedroom.walls
+  );
+  addFlatBox(
+    root, 'simpleFlat.wall.spineBedJunctionSeal',
+    [0.012, westCoreH, INT_T - 0.001],
+    [SPINE_WEST_X + 0.006, westCoreMidY, BED_BATH_Z],
+    pocheMat
   );
   const spineWestHall = new THREE.Mesh(
     extrudePlanarSolidWithHoles({
       outer: [
-        [BED_BATH_Z + INT_T * 0.5 + 0.002, wallBaseY], [spineArchMinZ, wallBaseY], [spineArchMinZ, spineArchTopY],
-        [spineArchMaxZ, spineArchTopY], [spineArchMaxZ, wallBaseY], [IN_Z - 0.014, wallBaseY], [IN_Z - 0.014, wallTopY], [BED_BATH_Z + INT_T * 0.5 + 0.002, wallTopY],
+        [BED_BATH_Z + INT_T * 0.5 + 0.001, wallBaseY], [spineArchMinZ, wallBaseY], [spineArchMinZ, spineArchTopY],
+        [spineArchMaxZ, spineArchTopY], [spineArchMaxZ, wallBaseY], [IN_Z - 0.013, wallBaseY], [IN_Z - 0.013, wallCoreTopY], [BED_BATH_Z + INT_T * 0.5 + 0.001, wallCoreTopY],
       ],
-      origin: [SPINE_X, 0, 0], uAxis: [0, 0, 1], vAxis: [0, 1, 0], wAxis: [1, 0, 0], depthRange: [-INT_T * 0.5, -0.001],
+      origin: [SPINE_X, 0, 0], uAxis: [0, 0, 1], vAxis: [0, 1, 0], wAxis: [1, 0, 0],
+      depthRange: [-SPINE_T * 0.5, -(SPINE_T * 0.5 - 0.012)],
     }),
     schemes.hall.walls
   );
   spineWestHall.name = 'simpleFlat.wall.spineHall';
-  spineWestHall.castShadow = true;
-  spineWestHall.receiveShadow = true;
+  spineWestHall.castShadow = spineWestHall.receiveShadow = true;
   root.add(spineWestHall);
 
+  // Flanged steel portal lintel (`flat.structure.spinePortalSteel`) over hallToLiving opening
+  const spinePortalSteel = new THREE.Group();
+  spinePortalSteel.name = 'flat.structure.spinePortalSteel';
+  const spLintelZ0 = spineArchMinZ - 0.14;
+  const spLintelZ1 = spineArchMaxZ + 0.14;
+  const spLintelLen = spLintelZ1 - spLintelZ0;
+  const spLintelMidZ = (spLintelZ0 + spLintelZ1) * 0.5;
+  const spBotY = spineArchTopY + 0.002;
+  addFlatBox(spinePortalSteel, 'flat.structure.spinePortalSteel.botFlange', [SPINE_T - 0.028, 0.012, spLintelLen], [SPINE_X, spBotY + 0.006, spLintelMidZ], structuralSteelMat);
+  addFlatBox(spinePortalSteel, 'flat.structure.spinePortalSteel.topFlange', [SPINE_T - 0.028, 0.012, spLintelLen], [SPINE_X, spBotY + 0.136, spLintelMidZ], structuralSteelMat);
+  addFlatBox(spinePortalSteel, 'flat.structure.spinePortalSteel.web', [0.012, 0.116, spLintelLen - 0.004], [SPINE_X, spBotY + 0.071, spLintelMidZ], structuralSteelMat);
+  root.add(spinePortalSteel);
+
   addDoorArchitravePortal(root, {
-    name: 'simpleFlat.portal.hallToLiving', plane: 'x', wallCenterCoord: SPINE_X, wallThickness: INT_T,
+    name: 'simpleFlat.portal.hallToLiving', plane: 'x', wallCenterCoord: SPINE_X, wallThickness: SPINE_T,
     clearMinU: 1.45, clearMaxU: 2.45, clearHeightY: 2.18, trimMat,
   });
-  const bedDoorHoleMinX = -1.77;
-  const bedDoorHoleMaxX = -0.88;
+
+  // =========================================================================
+  // KNOCK-THROUGH LIVING/KITCHEN STEEL RSJ (`flat.structure.livingKitchenRsj`)
+  // 203 x 133 x 30 UB at Z = -1.14 m, X in [-0.54, +4.20], on engaged piers & padstones
+  // =========================================================================
+  const rsjZ = -1.14;
+  const pierMinZ = -1.26;
+  const pierMaxZ = -1.02;
+  const pierW = pierMaxZ - pierMinZ; // 0.24 m
+  const pierTopY = 2.404;
+  const padBotY = 2.4055;
+  const padTopY = 2.521;
+  const padH = padTopY - padBotY;
+
+  const rsjPierWest = new THREE.Group();
+  rsjPierWest.name = 'flat.structure.rsjPierWest';
+  addFlatBox(rsjPierWest, 'flat.structure.rsjPierWest.masonry', [0.179, pierTopY - wallBaseY, pierW], [-0.4495, (pierTopY + wallBaseY) * 0.5, rsjZ], schemes.living.walls);
+  addFlatBox(rsjPierWest, 'flat.structure.rsjPadstoneWest', [0.184, padH, pierW + 0.016], [-0.447, (padBotY + padTopY) * 0.5, rsjZ], stoneMat, 0.8);
+  root.add(rsjPierWest);
+
+  const rsjPierEast = new THREE.Group();
+  rsjPierEast.name = 'flat.structure.rsjPierEast';
+  addFlatBox(rsjPierEast, 'flat.structure.rsjPierEast.masonry', [0.167, pierTopY - wallBaseY, pierW], [4.1035, (pierTopY + wallBaseY) * 0.5, rsjZ], schemes.living.walls);
+  addFlatBox(rsjPierEast, 'flat.structure.rsjPadstoneEast', [0.172, padH, pierW + 0.016], [4.101, (padBotY + padTopY) * 0.5, rsjZ], stoneMat, 0.8);
+  tagCutaway(rsjPierEast, eastCut);
+  root.add(rsjPierEast);
+
+  const rsjGroup = new THREE.Group();
+  rsjGroup.name = 'flat.structure.livingKitchenRsj';
+  const rsjX0 = SPINE_EAST_X + 0.002; // -0.538
+  const rsjX1 = IN_X - 0.014;         // +4.186
+  const rsjLen = rsjX1 - rsjX0;
+  const rsjMidX = (rsjX0 + rsjX1) * 0.5;
+  const ubBotY = 2.5225;
+  const ubTopY = WALL_H - 0.0015; // 2.7485 (top flange flush below ceiling soffit)
+  const flangeT = 0.012;
+  const flangeW = 0.133;
+  const webT = 0.008;
+  const webH = ubTopY - ubBotY - 2 * flangeT - 0.002;
+  addFlatBox(rsjGroup, 'flat.structure.livingKitchenRsj.botFlange', [rsjLen, flangeT, flangeW], [rsjMidX, ubBotY + flangeT * 0.5, rsjZ], structuralSteelMat);
+  addFlatBox(rsjGroup, 'flat.structure.livingKitchenRsj.topFlange', [rsjLen, flangeT, flangeW], [rsjMidX, ubTopY - flangeT * 0.5, rsjZ], structuralSteelMat);
+  addFlatBox(rsjGroup, 'flat.structure.livingKitchenRsj.web', [rsjLen - 0.004, webH, webT], [rsjMidX, (ubBotY + ubTopY) * 0.5, rsjZ], structuralSteelMat);
+  const stiffSpanZ = (flangeW - webT) * 0.5 - 0.004;
+  for (const [sIdx, sx] of [[1, -0.37], [2, 0.95], [3, 2.45], [4, 4.03]] as const) {
+    for (const sz of [-1, 1] as const) {
+      addFlatBox(
+        rsjGroup,
+        `flat.structure.livingKitchenRsj.stiffener_${sIdx}_${sz > 0 ? 'S' : 'N'}`,
+        [0.008, webH - 0.002, stiffSpanZ],
+        [sx, (ubBotY + ubTopY) * 0.5, rsjZ + sz * (webT * 0.5 + stiffSpanZ * 0.5 + 0.001)],
+        structuralSteelMat
+      );
+    }
+  }
+  root.add(rsjGroup);
+
+  // =========================================================================
+  // SOLID 120 mm INTERIOR PARTITIONS (`BED_BATH_Z` & `BATH_HALL_X` — zero cracks or shafts!)
+  // =========================================================================
+  const bedDoorHoleMinX = -1.85;
+  const bedDoorHoleMaxX = -0.96;
   const bedDoorHoleTopY = 2.122;
-  const bedPartMaxX = SPINE_X - INT_T * 0.5 - 0.002;
+  const bedPartMinX = -IN_X + 0.003;     // -4.197
+  const bedPartMaxX = SPINE_WEST_X - 0.0015; // -0.7815
+
+  const bedPartCore = new THREE.Mesh(
+    extrudePlanarSolidWithHoles({
+      outer: [
+        [bedPartMinX, wallBaseY], [bedDoorHoleMinX, wallBaseY], [bedDoorHoleMinX, bedDoorHoleTopY],
+        [bedDoorHoleMaxX, bedDoorHoleTopY], [bedDoorHoleMaxX, wallBaseY], [bedPartMaxX, wallBaseY],
+        [bedPartMaxX, wallCoreTopY], [bedPartMinX, wallCoreTopY],
+      ],
+      origin: [0, 0, BED_BATH_Z],
+      depthRange: [-(INT_T * 0.5 - 0.013), INT_T * 0.5 - 0.013],
+    }),
+    pocheMat
+  );
+  bedPartCore.name = 'simpleFlat.wall.bedPartitionCore';
+  bedPartCore.castShadow = bedPartCore.receiveShadow = true;
+  root.add(bedPartCore);
+  addFlatBox(root, 'simpleFlat.wall.bedPartitionTopCap', [bedPartMaxX - (-IN_X + 0.013), capH, INT_T - 0.001], [(-IN_X + 0.013 + bedPartMaxX) * 0.5, capMidY, BED_BATH_Z], pocheMat);
+  addFlatBox(root, 'simpleFlat.wall.bedPartitionEndCapWest', [0.002, westCoreH, INT_T - 0.001], [-IN_X + 0.0015, westCoreMidY, BED_BATH_Z], pocheMat);
+
   const bedPartNorth = new THREE.Mesh(
     extrudePlanarSolidWithHoles({
       outer: [
-        [-IN_X + 0.014, wallBaseY], [bedDoorHoleMinX, wallBaseY], [bedDoorHoleMinX, bedDoorHoleTopY],
-        [bedDoorHoleMaxX, bedDoorHoleTopY], [bedDoorHoleMaxX, wallBaseY], [bedPartMaxX, wallBaseY], [bedPartMaxX, wallTopY], [-IN_X + 0.014, wallTopY],
+        [-IN_X + 0.013, wallBaseY], [bedDoorHoleMinX, wallBaseY], [bedDoorHoleMinX, bedDoorHoleTopY],
+        [bedDoorHoleMaxX, bedDoorHoleTopY], [bedDoorHoleMaxX, wallBaseY], [bedPartMaxX, wallBaseY],
+        [bedPartMaxX, wallCoreTopY], [-IN_X + 0.013, wallCoreTopY],
       ],
-      origin: [0, 0, BED_BATH_Z], depthRange: [-INT_T * 0.5, -0.001],
+      origin: [0, 0, BED_BATH_Z],
+      depthRange: [-INT_T * 0.5, -(INT_T * 0.5 - 0.012)],
     }),
     schemes.bedroom.walls
   );
   bedPartNorth.name = 'simpleFlat.wall.bedPartitionNorth';
-  bedPartNorth.castShadow = true;
-  bedPartNorth.receiveShadow = true;
+  bedPartNorth.castShadow = bedPartNorth.receiveShadow = true;
   root.add(bedPartNorth);
+
   const bedPartSouthHall = new THREE.Mesh(
     extrudePlanarSolidWithHoles({
       outer: [
-        [BATH_HALL_X + INT_T * 0.5 + 0.002, wallBaseY], [bedDoorHoleMinX, wallBaseY], [bedDoorHoleMinX, bedDoorHoleTopY],
-        [bedDoorHoleMaxX, bedDoorHoleTopY], [bedDoorHoleMaxX, wallBaseY], [bedPartMaxX, wallBaseY], [bedPartMaxX, wallTopY], [BATH_HALL_X + INT_T * 0.5 + 0.002, wallTopY],
+        [BATH_HALL_X + INT_T * 0.5 + 0.001, wallBaseY], [bedDoorHoleMinX, wallBaseY], [bedDoorHoleMinX, bedDoorHoleTopY],
+        [bedDoorHoleMaxX, bedDoorHoleTopY], [bedDoorHoleMaxX, wallBaseY], [bedPartMaxX, wallBaseY],
+        [bedPartMaxX, wallCoreTopY], [BATH_HALL_X + INT_T * 0.5 + 0.001, wallCoreTopY],
       ],
-      origin: [0, 0, BED_BATH_Z], depthRange: [0.001, INT_T * 0.5],
+      origin: [0, 0, BED_BATH_Z],
+      depthRange: [INT_T * 0.5 - 0.012, INT_T * 0.5],
     }),
     schemes.hall.walls
   );
   bedPartSouthHall.name = 'simpleFlat.wall.bedPartitionHall';
-  bedPartSouthHall.castShadow = true;
-  bedPartSouthHall.receiveShadow = true;
+  bedPartSouthHall.castShadow = bedPartSouthHall.receiveShadow = true;
   root.add(bedPartSouthHall);
+
   addFlatBox(
     root, 'simpleFlat.wall.bathNorthWetTile',
-    [-3.28 - (-IN_X + 0.014), wallTopY - wallBaseY, INT_T * 0.5 - 0.001],
-    [(-IN_X + 0.014 - 3.28) * 0.5, (wallTopY + wallBaseY) * 0.5, BED_BATH_Z + (INT_T * 0.5 + 0.001) * 0.5],
+    [-3.28 - (-IN_X + 0.013), westCoreH, 0.012],
+    [(-IN_X + 0.013 - 3.28) * 0.5, westCoreMidY, BED_BATH_Z + INT_T * 0.5 - 0.006],
     wetTileMat, 0.85
   );
+  const bathNorthPlasterMaxX = BATH_HALL_X - INT_T * 0.5 - 0.001;
   addFlatBox(
     root, 'simpleFlat.wall.bathNorthPlaster',
-    [BATH_HALL_X - INT_T * 0.5 - 0.002 - -3.276, wallTopY - wallBaseY, INT_T * 0.5 - 0.001],
-    [(-3.276 + BATH_HALL_X - INT_T * 0.5 - 0.002) * 0.5, (wallTopY + wallBaseY) * 0.5, BED_BATH_Z + (INT_T * 0.5 + 0.001) * 0.5],
+    [bathNorthPlasterMaxX - -3.277, westCoreH, 0.012],
+    [(-3.277 + bathNorthPlasterMaxX) * 0.5, westCoreMidY, BED_BATH_Z + INT_T * 0.5 - 0.006],
     schemes.bathroom.walls
   );
+  addFlatBox(
+    root, 'simpleFlat.wall.bathJunctionSeal',
+    [INT_T - 0.001, westCoreH, 0.012],
+    [BATH_HALL_X, westCoreMidY, BED_BATH_Z + INT_T * 0.5 - 0.006],
+    pocheMat
+  );
+
+  const bathPartMinZ = BED_BATH_Z + INT_T * 0.5 + 0.0015; // 1.1615
+  const bathPartMaxZ = IN_Z - 0.003;                      // 3.397
+  const bathPartCore = new THREE.Mesh(
+    extrudePlanarSolidWithHoles({
+      outer: [
+        [bathPartMinZ, wallBaseY], [1.43, wallBaseY], [1.43, 2.122],
+        [2.22, 2.122], [2.22, wallBaseY], [bathPartMaxZ, wallBaseY],
+        [bathPartMaxZ, wallCoreTopY], [bathPartMinZ, wallCoreTopY],
+      ],
+      origin: [BATH_HALL_X, 0, 0], uAxis: [0, 0, 1], vAxis: [0, 1, 0], wAxis: [1, 0, 0],
+      depthRange: [-(INT_T * 0.5 - 0.013), INT_T * 0.5 - 0.013],
+    }),
+    pocheMat
+  );
+  bathPartCore.name = 'simpleFlat.wall.bathPartitionCore';
+  bathPartCore.castShadow = bathPartCore.receiveShadow = true;
+  root.add(bathPartCore);
+  addFlatBox(root, 'simpleFlat.wall.bathPartitionTopCap', [INT_T - 0.001, capH, IN_Z - 0.013 - bathPartMinZ], [BATH_HALL_X, capMidY, (bathPartMinZ + IN_Z - 0.013) * 0.5], pocheMat);
+  addFlatBox(root, 'simpleFlat.wall.bathPartitionEndCapSouth', [INT_T - 0.001, westCoreH, 0.002], [BATH_HALL_X, westCoreMidY, IN_Z - 0.0015], pocheMat);
 
   for (const [sideName, dRange, mat] of [
-    ['simpleFlat.wall.bathPartitionWest', [-INT_T * 0.5, -0.001] as const, schemes.bathroom.walls],
-    ['simpleFlat.wall.bathPartitionHall', [0.001, INT_T * 0.5] as const, schemes.hall.walls],
+    ['simpleFlat.wall.bathPartitionWest', [-INT_T * 0.5, -(INT_T * 0.5 - 0.012)] as const, schemes.bathroom.walls],
+    ['simpleFlat.wall.bathPartitionHall', [INT_T * 0.5 - 0.012, INT_T * 0.5] as const, schemes.hall.walls],
   ] as const) {
     const m = new THREE.Mesh(
       extrudePlanarSolidWithHoles({
         outer: [
-          [BED_BATH_Z + INT_T * 0.5 + 0.002, wallBaseY], [1.43, wallBaseY], [1.43, 2.122],
-          [2.22, 2.122], [2.22, wallBaseY], [IN_Z - 0.014, wallBaseY], [IN_Z - 0.014, wallTopY], [BED_BATH_Z + INT_T * 0.5 + 0.002, wallTopY],
+          [bathPartMinZ, wallBaseY], [1.43, wallBaseY], [1.43, 2.122],
+          [2.22, 2.122], [2.22, wallBaseY], [IN_Z - 0.013, wallBaseY],
+          [IN_Z - 0.013, wallCoreTopY], [bathPartMinZ, wallCoreTopY],
         ],
         origin: [BATH_HALL_X, 0, 0], uAxis: [0, 0, 1], vAxis: [0, 1, 0], wAxis: [1, 0, 0], depthRange: dRange,
       }),
       mat
     );
     m.name = sideName;
-    m.castShadow = true;
-    m.receiveShadow = true;
+    m.castShadow = m.receiveShadow = true;
     root.add(m);
   }
 
   addDoorArchitravePortal(root, {
     name: 'simpleFlat.portal.bedroomDoor', plane: 'z', wallCenterCoord: BED_BATH_Z, wallThickness: INT_T,
-    clearMinU: -1.75, clearMaxU: -0.9, clearHeightY: 2.1, trimMat, thresholdMat: brassMats.primary,
+    clearMinU: -1.83, clearMaxU: -0.98, clearHeightY: 2.1, trimMat, thresholdMat: brassMats.primary,
   });
   const bedDoor = buildPanelledInteriorDoorLeaf('flatBedroomDoor', 0.824, 2.078, false, trimMat, brassMats.primary);
-  bedDoor.position.set(-1.325, 1.044, BED_BATH_Z - INT_T * 0.5 - 0.024);
+  bedDoor.position.set(-1.405, 1.044, BED_BATH_Z - INT_T * 0.5 - 0.024);
   root.add(bedDoor);
   registerHingedDoor(ctx, { parent: root, door: bedDoor, hingeOffset: [-0.412, -1.044, -0.021], axis: 'y', openAngle: 1.38 });
 
@@ -598,40 +786,65 @@ export function buildSimpleFlatArchitecture(ctx: SceneBuilderContext): SimpleFla
   const inWestX = -IN_X + 0.012;
   const inNorthZ = -IN_Z + 0.012;
   const inSouthZ = IN_Z - 0.012;
-  const livingPts: readonly (readonly [number, number])[] = [
-    [SPINE_X + INT_T * 0.5, inNorthZ], [inEastX, inNorthZ], [inEastX, inSouthZ], [SPINE_X + INT_T * 0.5, inSouthZ],
+  const livingSkirtPts: readonly (readonly [number, number])[] = [
+    [SPINE_EAST_X, inNorthZ],
+    [inEastX, inNorthZ],
+    [inEastX, inSouthZ],
+    [SPINE_EAST_X, inSouthZ],
+    [SPINE_EAST_X, pierMaxZ],
+    [-0.36, pierMaxZ],
+    [-0.36, pierMinZ],
+    [SPINE_EAST_X, pierMinZ],
+  ];
+  const livingCornicePts: readonly (readonly [number, number])[] = [
+    [SPINE_EAST_X, inNorthZ], [inEastX, inNorthZ], [inEastX, inSouthZ], [SPINE_EAST_X, inSouthZ],
   ];
   const hallPts: readonly (readonly [number, number])[] = [
-    [BATH_HALL_X + INT_T * 0.5, BED_BATH_Z + INT_T * 0.5], [SPINE_X - INT_T * 0.5, BED_BATH_Z + INT_T * 0.5],
-    [SPINE_X - INT_T * 0.5, inSouthZ], [BATH_HALL_X + INT_T * 0.5, inSouthZ],
+    [BATH_HALL_X + INT_T * 0.5, BED_BATH_Z + INT_T * 0.5], [SPINE_WEST_X, BED_BATH_Z + INT_T * 0.5],
+    [SPINE_WEST_X, inSouthZ], [BATH_HALL_X + INT_T * 0.5, inSouthZ],
   ];
   const bedroomPts: readonly (readonly [number, number])[] = [
-    [inWestX, inNorthZ], [SPINE_X - INT_T * 0.5, inNorthZ], [SPINE_X - INT_T * 0.5, BED_BATH_Z - INT_T * 0.5], [inWestX, BED_BATH_Z - INT_T * 0.5],
+    [inWestX, inNorthZ], [SPINE_WEST_X, inNorthZ], [SPINE_WEST_X, BED_BATH_Z - INT_T * 0.5], [inWestX, BED_BATH_Z - INT_T * 0.5],
   ];
   const bathroomPts: readonly (readonly [number, number])[] = [
     [inWestX, BED_BATH_Z + INT_T * 0.5], [BATH_HALL_X - INT_T * 0.5, BED_BATH_Z + INT_T * 0.5],
     [BATH_HALL_X - INT_T * 0.5, inSouthZ], [inWestX, inSouthZ],
   ];
+
+  const livingSkirting = createSkirtingRun({
+    name: 'flat.living.skirting', zone: 'flatLivingKitchen',
+    points: livingSkirtPts, closed: true, roomSide: 'right',
+    elevationY: 0.001, profile: 'ogee', height: 0.125, thickness: 0.018, material: trimMat,
+    gaps: [
+      { box: { minX: -0.56, maxX: 3.92, minZ: -3.5, maxZ: -3.3 }, cap: 'selfReturn' },
+      { box: { minX: 0.83, maxX: 2.67, minZ: 3.3, maxZ: 3.5 }, cap: 'selfReturn' },
+      { box: { minX: 2.98, maxX: 4.1, minZ: 3.3, maxZ: 3.5 }, cap: 'selfReturn' },
+      { box: { minX: -0.62, maxX: -0.46, minZ: 1.35, maxZ: 2.55 }, cap: 'selfReturn' },
+      { box: { minX: 4.0, maxX: 4.22, minZ: pierMinZ - 0.002, maxZ: pierMaxZ + 0.002 }, cap: 'butt' },
+    ],
+    cutawayWalls: [northCut, eastCut, southCut], floor: 'level-0',
+  });
+  const eastPierSkirtWrap = createSkirtingRun({
+    name: 'flat.living.skirting.eastPierWrap', zone: 'flatLivingKitchen',
+    path: mouldingPath
+      .startAt(inEastX - 0.002, pierMinZ, { y: 0.001, roomSide: 'right' })
+      .lineTo(4.02, pierMinZ)
+      .lineTo(4.02, pierMaxZ)
+      .lineTo(inEastX - 0.002, pierMaxZ)
+      .build(),
+    profile: 'ogee', height: 0.125, thickness: 0.018, material: trimMat, floor: 'level-0',
+  });
+  tagCutaway(eastPierSkirtWrap, eastCut);
+  livingSkirting.add(eastPierSkirtWrap);
+
   root.add(
-    createSkirtingRun({
-      name: 'flat.living.skirting', zone: 'flatLivingKitchen',
-      path: mouldingPath.startAt(livingPts[0]![0], livingPts[0]![1], { y: 0.001, roomSide: 'right' })
-        .lineTo(livingPts[1]![0], livingPts[1]![1]).lineTo(livingPts[2]![0], livingPts[2]![1]).lineTo(livingPts[3]![0], livingPts[3]![1]).close(),
-      profile: 'ogee', height: 0.125, thickness: 0.018, material: trimMat,
-      gaps: [
-        { box: { minX: -0.56, maxX: 3.92, minZ: -3.5, maxZ: -3.3 }, cap: 'selfReturn' },
-        { box: { minX: 0.83, maxX: 2.67, minZ: 3.3, maxZ: 3.5 }, cap: 'selfReturn' },
-        { box: { minX: 2.98, maxX: 4.1, minZ: 3.3, maxZ: 3.5 }, cap: 'selfReturn' },
-        { box: { minX: -0.62, maxX: -0.46, minZ: 1.35, maxZ: 2.55 }, cap: 'selfReturn' },
-      ],
-      cutawayWalls: [northCut, eastCut, southCut], floor: 'level-0',
-    }),
+    livingSkirting,
     createSkirtingRun({
       name: 'flat.hall.skirting', zone: 'flatHall', points: hallPts, closed: true, roomSide: 'right',
       elevationY: 0.001, profile: 'ogee', height: 0.125, thickness: 0.018, material: trimMat,
       gaps: [
-        { box: { minX: -1.85, maxX: -0.8, minZ: 1.08, maxZ: 1.24 }, cap: 'selfReturn' },
-        { box: { minX: -0.74, maxX: -0.58, minZ: 1.35, maxZ: 2.55 }, cap: 'selfReturn' },
+        { box: { minX: -1.93, maxX: -0.88, minZ: 1.08, maxZ: 1.24 }, cap: 'selfReturn' },
+        { box: { minX: -0.86, maxX: -0.7, minZ: 1.35, maxZ: 2.55 }, cap: 'selfReturn' },
         { box: { minX: -1.98, maxX: -0.97, minZ: 3.3, maxZ: 3.5 }, cap: 'selfReturn' },
         { box: { minX: -2.22, maxX: -2.06, minZ: 1.35, maxZ: 2.3 }, cap: 'selfReturn' },
       ],
@@ -641,8 +854,8 @@ export function buildSimpleFlatArchitecture(ctx: SceneBuilderContext): SimpleFla
       name: 'flat.bedroom.skirting', zone: 'flatBedroom', points: bedroomPts, closed: true, roomSide: 'right',
       elevationY: 0.001, profile: 'ogee', height: 0.125, thickness: 0.018, material: trimMat,
       gaps: [
-        { box: { minX: -0.78, maxX: -0.6, minZ: -3.4, maxZ: -1.78 }, cap: 'selfReturn' },
-        { box: { minX: -1.85, maxX: -0.8, minZ: 0.96, maxZ: 1.1 }, cap: 'selfReturn' },
+        { box: { minX: -0.9, maxX: -0.72, minZ: -3.4, maxZ: -1.78 }, cap: 'selfReturn' },
+        { box: { minX: -1.93, maxX: -0.88, minZ: 0.96, maxZ: 1.1 }, cap: 'selfReturn' },
       ],
       cutawayWalls: [northCut, westCut], floor: 'level-0',
     }),
@@ -661,8 +874,12 @@ export function buildSimpleFlatArchitecture(ctx: SceneBuilderContext): SimpleFla
 
   ctx.ceilingMeshGroup.add(
     createCorniceRun({
-      name: 'flat.living.cornice', zone: 'flatLivingKitchen', points: livingPts, closed: true, roomSide: 'right',
+      name: 'flat.living.cornice', zone: 'flatLivingKitchen', points: livingCornicePts, closed: true, roomSide: 'right',
       ceilingY: WALL_H - 0.001, profile: 'georgian-cyma', height: 0.098, projection: 0.092, material: trimMat,
+      gaps: [
+        { box: { minX: -0.62, maxX: -0.34, minZ: pierMinZ - 0.01, maxZ: pierMaxZ + 0.01 }, cap: 'selfReturn' },
+        { box: { minX: 4.0, maxX: 4.24, minZ: pierMinZ - 0.01, maxZ: pierMaxZ + 0.01 }, cap: 'selfReturn' },
+      ],
       cutawayWalls: [northCut, eastCut, southCut], floor: 'level-0',
     }),
     createCorniceRun({
@@ -673,7 +890,7 @@ export function buildSimpleFlatArchitecture(ctx: SceneBuilderContext): SimpleFla
     createCorniceRun({
       name: 'flat.bedroom.cornice', zone: 'flatBedroom', points: bedroomPts, closed: true, roomSide: 'right',
       ceilingY: WALL_H - 0.001, profile: 'georgian-cyma', height: 0.095, projection: 0.088, material: trimMat,
-      gaps: [{ box: { minX: -0.78, maxX: -0.6, minZ: -3.4, maxZ: -1.78 }, cap: 'selfReturn' }],
+      gaps: [{ box: { minX: -0.9, maxX: -0.72, minZ: -3.4, maxZ: -1.78 }, cap: 'selfReturn' }],
       cutawayWalls: [northCut, westCut], floor: 'level-0',
     }),
     createCorniceRun({

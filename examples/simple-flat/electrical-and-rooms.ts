@@ -15,10 +15,13 @@ export const FFL_Y = 0.0;
 export const WALL_H = 2.75;
 export const IN_X = 4.2;
 export const IN_Z = 3.4;
-export const EXT_T = 0.24;
+export const EXT_T = 0.36;
 export const INT_T = 0.12;
+export const SPINE_T = 0.24;
 
-export const SPINE_X = -0.6;
+export const SPINE_X = -0.66;
+export const SPINE_EAST_X = SPINE_X + SPINE_T * 0.5; // -0.54 m
+export const SPINE_WEST_X = SPINE_X - SPINE_T * 0.5; // -0.78 m
 export const BED_BATH_Z = 1.1;
 export const BATH_HALL_X = -2.2;
 
@@ -358,7 +361,7 @@ export const SIMPLE_FLAT_CAMERAS: readonly CameraPresetDefinition[] = [
     buildingId: SIMPLE_FLAT_BUILDING_ID,
     zoneId: 'flatBedroom' as RoomZoneId,
     floorViewMode: 'level-0',
-    pos: new THREE.Vector3(-1.05, 1.58, 0.72),
+    pos: new THREE.Vector3(-1.14, 1.58, 0.72),
     target: new THREE.Vector3(-3.15, 0.95, -1.65),
   },
   {
@@ -376,7 +379,7 @@ export const SIMPLE_FLAT_CAMERAS: readonly CameraPresetDefinition[] = [
     buildingId: SIMPLE_FLAT_BUILDING_ID,
     zoneId: 'flatHall' as RoomZoneId,
     floorViewMode: 'level-0',
-    pos: new THREE.Vector3(-1.35, 1.58, 1.45),
+    pos: new THREE.Vector3(-1.42, 1.58, 1.45),
     target: new THREE.Vector3(-1.55, 1.15, 3.15),
   },
 ];

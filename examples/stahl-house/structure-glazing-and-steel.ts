@@ -12,7 +12,7 @@ import {
 import type { SceneBuilderContext } from 'husjs/viewer';
 import { bevelledBox } from './sculpted-geometry.ts';
 import type { StahlMaterials } from './structure.ts';
-import { CATWALK_WIDTH_M, CLEAR_CEILING_Y, GIRDER_DEPTH_M, H_COL_SIZE_M, X3, X4, Z0, Z1, Z2, Z3 } from './terrain.ts';
+import { CATWALK_WIDTH_M, CLEAR_CEILING_Y, GIRDER_DEPTH_M, H_COL_SIZE_M, X0, X1, X2, X3, X4, Z0, Z1, Z2, Z3 } from './terrain.ts';
 
 export function addWideFlangeColumn(
   parent: THREE.Object3D,
@@ -439,4 +439,168 @@ export function buildCantileveredCliffCatwalk(root: THREE.Group, mats: StahlMate
 
   root.add(catwalkGroup);
 
+}
+
+export function buildNorthPrivacyCoreAndSteelPortalHeaders(
+  root: THREE.Group,
+  northPrivacyGroup: THREE.Group,
+  carportTrimGroup: THREE.Group,
+  mats: StahlMaterials,
+  cuts: {
+    readonly northWoodsCut: CutawayWallDescriptor;
+    readonly eastCliffCut: CutawayWallDescriptor;
+    readonly southCliffCut: CutawayWallDescriptor;
+    readonly westCarportCut: CutawayWallDescriptor;
+    readonly westPoolLivingCut: CutawayWallDescriptor;
+    readonly southPrivatePoolCut: CutawayWallDescriptor;
+  }
+): void {
+  // 1. Solid structural steel-stud & sheathing core bays inside stahl.northPrivacyWall (seals 109 mm hollow trench Z in [-6.153, -6.044])
+  const coreZMid = (Z0 - 0.055 + Z0 + 0.05) * 0.5; // -6.0985, Z in [-6.151, -6.046]
+  const coreDepth = 0.105;
+  const coreBotY = 0.002;
+  const coreTopY = 2.579;
+  const coreH = coreTopY - coreBotY;
+  const coreMidY = (coreBotY + coreTopY) * 0.5;
+  const colClear = 0.06; // >= 4 mm clear of H-column topCap/basePlate half-width 0.056 m
+
+  const coreSpansX: readonly [string, number, number][] = [
+    ["westNib", X1 - 0.073, X1 - colClear],
+    ["bay12", X1 + colClear, X2 - colClear],
+    ["bay23", X2 + colClear, X3 - colClear],
+    ["bay34", X3 + colClear, X4 - colClear],
+  ];
+  for (const [bTag, xA, xB] of coreSpansX) {
+    if (xB - xA <= 0.008) continue;
+    const coreBay = new THREE.Mesh(
+      bevelledBox(xB - xA, coreH, coreDepth, 0.002, 2, 1.2, 1.2),
+      mats.steelCharcoal
+    );
+    coreBay.name = `stahl.northPrivacyWall.core_${bTag}`;
+    coreBay.position.set((xA + xB) * 0.5, coreMidY, coreZMid);
+    coreBay.castShadow = coreBay.receiveShadow = true;
+    northPrivacyGroup.add(coreBay);
+
+    // Top steelCharcoal C-channel closure cap (Y in [2.5815, 2.5980], Z in [-6.1515, -5.9410])
+    const capDepth = (Z0 + 0.155) - (Z0 - 0.0555);
+    const capZMid = ((Z0 + 0.155) + (Z0 - 0.0555)) * 0.5;
+    const topCap = new THREE.Mesh(
+      bevelledBox(xB - xA, 0.0165, capDepth, 0.002, 2),
+      mats.steelCharcoal
+    );
+    topCap.name = `stahl.northPrivacyWall.closureCap_${bTag}`;
+    topCap.position.set((xA + xB) * 0.5, 2.58975, capZMid);
+    topCap.castShadow = true;
+    northPrivacyGroup.add(topCap);
+  }
+
+  // West & East end-closure C-channels on northPrivacyWall
+  const endClosureDepth = (Z0 + 0.155) - (Z0 - 0.0555);
+  const endClosureZMid = ((Z0 + 0.155) + (Z0 - 0.0555)) * 0.5;
+  const westClosure = new THREE.Mesh(
+    bevelledBox(0.014, coreH, endClosureDepth, 0.002, 2),
+    mats.steelCharcoal
+  );
+  westClosure.name = "stahl.northPrivacyWall.endClosureWest";
+  westClosure.position.set(X1 - 0.082, coreMidY, endClosureZMid);
+  northPrivacyGroup.add(westClosure);
+
+  // Carport wall top C-channel closure cap (seals top seam at X1, Z in [Z0 + 0.165, Z1 - 0.064])
+  const cpZ0 = Z0 + 0.165;
+  const cpZ1 = Z1 - 0.064;
+  const carportCap = new THREE.Mesh(
+    bevelledBox(0.186, 0.0046, cpZ1 - cpZ0, 0.0012, 2),
+    mats.steelCharcoal
+  );
+  carportCap.name = "stahl.carportWall.topClosureCap";
+  carportCap.position.set(X1 + 0.017, 2.6015, (cpZ0 + cpZ1) * 0.5);
+  carportTrimGroup.add(carportCap);
+
+  // 2. Welded steelCharcoal moment-frame header / collar tie channels (102 mm wide, Y in [2.588, 2.6402])
+  // Tying all 14 4" WF H-columns along the 20' x 20' grid in root so overhead Section cutaway stays structurally continuous.
+  const portalGroup = new THREE.Group();
+  portalGroup.name = "stahl.steel.portalHeaders";
+
+  const upperBotY = 2.6054;
+  const upperTopY = 2.6402; // 1.8 mm clear below CLEAR_CEILING_Y = 2.642 roof deck soffit
+  const upperH = upperTopY - upperBotY; // 34.8 mm
+  const upperMidY = (upperBotY + upperTopY) * 0.5;
+  const lowerBotY = 2.588;
+  const lowerTopY = 2.6036; // 1.8 mm clear below upper collar & clear of glazing heads <= 2.604
+  const lowerH = lowerTopY - lowerBotY; // 15.6 mm
+  const lowerMidY = (lowerBotY + lowerTopY) * 0.5;
+  const tieW = 0.102;
+  const flangeT = 0.011;
+  const colSpanClear = 0.0585; // >= 2.5 mm clear of H-column topCap [cx +/- 0.056]
+
+  const addPortalHeaderSpan = (
+    spanName: string,
+    axis: "x" | "z",
+    coord: number,
+    uA: number,
+    uB: number,
+    includeLowerFlanges: boolean,
+    cutaway?: CutawayWallDescriptor
+  ) => {
+    const u0 = Math.min(uA, uB) + colSpanClear;
+    const u1 = Math.max(uA, uB) - colSpanClear;
+    const len = u1 - u0;
+    if (len <= 0.02) return;
+    const uMid = (u0 + u1) * 0.5;
+
+    const g = new THREE.Group();
+    g.name = `stahl.steel.portalHeader.${spanName}`;
+    g.position.set(axis === "x" ? uMid : coord, 0, axis === "z" ? uMid : coord);
+    if (axis === "z") g.rotation.y = Math.PI * 0.5;
+
+    // Upper structural C-channel / box tie (102 x 34.8 mm at Y in [2.6054, 2.6402])
+    const upperTie = new THREE.Mesh(
+      bevelledBox(len, upperH, tieW, 0.002, 2),
+      mats.steelCharcoal
+    );
+    upperTie.name = `${g.name}.upperChannel`;
+    upperTie.position.y = upperMidY;
+    upperTie.castShadow = true;
+    g.add(upperTie);
+
+    if (includeLowerFlanges) {
+      // Twin lower C-channel legs (Y in [2.588, 2.6036], full 52.2 mm overall depth 2.588..2.6402)
+      const legGeo = bevelledBox(len, lowerH, flangeT, 0.0015, 2);
+      for (const side of [-1, 1] as const) {
+        const leg = new THREE.Mesh(legGeo, mats.steelCharcoal);
+        leg.position.set(0, lowerMidY, side * (tieW * 0.5 - flangeT * 0.5));
+        g.add(leg);
+      }
+    }
+
+    if (cutaway) tagCutaway(g, cutaway);
+    portalGroup.add(g);
+  };
+
+  // East-West Z-grid lines (Z0, Z1, Z2, Z3)
+  addPortalHeaderSpan("Z0_X0_X1", "x", Z0, X0, X1, true);
+  addPortalHeaderSpan("Z0_X1_X2", "x", Z0, X1, X2, false, cuts.northWoodsCut);
+  addPortalHeaderSpan("Z0_X2_X3", "x", Z0, X2, X3, false, cuts.northWoodsCut);
+  addPortalHeaderSpan("Z0_X3_X4", "x", Z0, X3, X4, false, cuts.northWoodsCut);
+
+  addPortalHeaderSpan("Z1_X0_X1", "x", Z1, X0, X1, true);
+  addPortalHeaderSpan("Z1_X1_X2", "x", Z1, X1, X2, false, cuts.southPrivatePoolCut);
+  addPortalHeaderSpan("Z1_X2_X3", "x", Z1, X2, X3, false, cuts.southPrivatePoolCut);
+  addPortalHeaderSpan("Z1_X3_X4", "x", Z1, X3, X4, true);
+
+  addPortalHeaderSpan("Z2_X3_X4", "x", Z2, X3, X4, false); // clears Koenig fireplace hood at Y = 2.604
+  addPortalHeaderSpan("Z3_X3_X4", "x", Z3, X3, X4, false, cuts.southCliffCut);
+
+  // North-South X-grid lines (X0..X4)
+  addPortalHeaderSpan("X0_Z0_Z1", "z", X0, Z0, Z1, true);
+  addPortalHeaderSpan("X1_Z0_Z1", "z", X1, Z0, Z1, false, cuts.westCarportCut);
+  addPortalHeaderSpan("X2_Z0_Z1", "z", X2, Z0, Z1, false); // clears bathCoreSouth walnut partition at Z = -1.65
+  addPortalHeaderSpan("X3_Z0_Z1", "z", X3, Z0, Z1, false); // clears wingDivider walnut partition at X3
+  addPortalHeaderSpan("X3_Z1_Z2", "z", X3, Z1, Z2, false, cuts.westPoolLivingCut);
+  addPortalHeaderSpan("X3_Z2_Z3", "z", X3, Z2, Z3, false, cuts.westPoolLivingCut);
+  addPortalHeaderSpan("X4_Z0_Z1", "z", X4, Z0, Z1, false, cuts.eastCliffCut);
+  addPortalHeaderSpan("X4_Z1_Z2", "z", X4, Z1, Z2, false, cuts.eastCliffCut);
+  addPortalHeaderSpan("X4_Z2_Z3", "z", X4, Z2, Z3, false, cuts.eastCliffCut);
+
+  root.add(portalGroup);
 }

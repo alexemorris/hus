@@ -33,7 +33,7 @@ import { getHonedCarraraMarbleMaterial } from 'husjs/catalog/sanitaryware';
 import type { SceneBuilderContext } from 'husjs/viewer';
 import { addFlatBox } from './grounds-and-openings.ts';
 import type { SimpleFlatShell } from './architecture.ts';
-import { BATH_HALL_X, BED_BATH_Z, IN_X, IN_Z, INT_T, SPINE_X, WALL_H } from './electrical-and-rooms.ts';
+import { BATH_HALL_X, BED_BATH_Z, IN_X, IN_Z, INT_T, SPINE_EAST_X, WALL_H } from './electrical-and-rooms.ts';
 const FB_PIGEON_HEX = 0x969b90;
 
 export function buildLinenCurtainPair(
@@ -115,7 +115,7 @@ export function buildLivingKitchenAndHallInteriors(
     kind: 'rogerOatesRunnerSwatch',
     widthM: 0.82,
     lengthM: 1.78,
-    position: [-1.36, 0.002, 2.26],
+    position: [-1.46, 0.002, 2.26],
     rotationY: 0,
   });
   tagCollisionRole(hallRunner, 'ignore');
@@ -173,8 +173,8 @@ export function buildLivingKitchenAndHallInteriors(
   const hallLantern = buildHeritageInteriorLighting(ctx, {
     name: 'simpleFlat.hall.bellJarLantern',
     kind: 'hallLantern',
-    position: [-1.4, WALL_H - 0.04, 2.28],
-    dropM: 0.52,
+    position: [-1.46, WALL_H - 0.04, 2.28],
+    dropM: 0.42,
     circuitId: 'flatHallPendant' as CircuitId,
     createPointLight: true,
     pointLightIntensity: 2.0,
@@ -188,7 +188,7 @@ export function buildLivingKitchenAndHallInteriors(
     name: 'flat.sw.hallEntry',
     switchPa: 'plate-hall-entry',
     location: 'Entrance door jamb',
-    x: -0.88,
+    x: -0.89,
     y: 1.15,
     z: IN_Z - 0.013,
     facing: 'north',
@@ -208,7 +208,7 @@ export function buildLivingKitchenAndHallInteriors(
     name: 'flat.sw.hallInner',
     switchPa: 'plate-hall-inner',
     location: 'Inner hall by bedroom door',
-    x: -0.79,
+    x: -0.842,
     y: 1.15,
     z: BED_BATH_Z + INT_T * 0.5 + 0.001,
     facing: 'south',
@@ -611,7 +611,7 @@ export function buildLivingKitchenAndHallInteriors(
   const figTree = buildFiddleLeafFigPlanter(livGroup, {
     namePrefix: 'simpleFlat.living.fiddleLeafFig',
     zone: 'flatLivingKitchen',
-    position: [3.84, 0, -1.65],
+    position: [3.74, 0, -2.05],
   });
   tagCutaway(figTree, shell.eastCut);
   const galleryArt = buildCuratedMirrorsArtAndRugs({
@@ -619,7 +619,7 @@ export function buildLivingKitchenAndHallInteriors(
     kind: 'constableLandscapeOil',
     widthM: 1.08,
     heightM: 0.78,
-    position: [SPINE_X + INT_T * 0.5 + 0.002, 1.54, 0.35],
+    position: [SPINE_EAST_X + 0.002, 1.54, 0.35],
     rotationY: Math.PI / 2,
   });
   livGroup.add(galleryArt);
@@ -627,7 +627,7 @@ export function buildLivingKitchenAndHallInteriors(
     name: 'flat.living.radiator',
     zone: 'flatLivingKitchen' as RoomZoneId,
     cx: IN_X - 0.115,
-    cz: -1.78,
+    cz: -1.86,
     floorY: 0,
     width: 0.92,
     height: 0.66,
@@ -649,7 +649,7 @@ export function buildLivingKitchenAndHallInteriors(
   livGroup.add(livingChandelier);
   const dimmerGroup = new THREE.Group();
   dimmerGroup.name = 'flat.dimmer.living';
-  dimmerGroup.position.set(SPINE_X + INT_T * 0.5 + 0.001, 1.15, 1.24);
+  dimmerGroup.position.set(SPINE_EAST_X + 0.001, 1.15, 1.24);
   livGroup.add(dimmerGroup);
   addFlatBox(dimmerGroup, 'flat.dimmer.living.plate', [0.004, 0.088, 0.088], [0.002, 0, 0], shell.brassMats.primary);
   const dimmerKnob = new THREE.Mesh(
@@ -670,7 +670,7 @@ export function buildLivingKitchenAndHallInteriors(
       name: 'flat.sock.livingSpine',
       zone: 'flatLivingKitchen' as RoomZoneId,
       kind: 'double',
-      x: SPINE_X + INT_T * 0.5 + 0.001,
+      x: SPINE_EAST_X + 0.001,
       y: 0.3,
       z: 0.45,
       facing: 'east',

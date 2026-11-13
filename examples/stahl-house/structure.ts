@@ -32,6 +32,7 @@ import {
   addRoofIGirder,
   addWideFlangeColumn,
   buildCantileveredCliffCatwalk,
+  buildNorthPrivacyCoreAndSteelPortalHeaders,
 } from './structure-glazing-and-steel.ts';
 import {
   CANTILEVER_M,
@@ -911,6 +912,14 @@ export function buildStahlStructure(
     anchor: 'back',
   });
 
+  buildNorthPrivacyCoreAndSteelPortalHeaders(root, northPrivacyGroup, carportTrimGroup, mats, {
+    northWoodsCut,
+    eastCliffCut,
+    southCliffCut,
+    westCarportCut,
+    westPoolLivingCut,
+    southPrivatePoolCut,
+  });
   buildCantileveredCliffCatwalk(root, mats);
 
   return {

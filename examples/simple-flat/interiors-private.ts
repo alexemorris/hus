@@ -153,7 +153,7 @@ export function buildBedroomAndBathroomInteriors(
   // Scribed bulkhead & crown extend cleanly to `WALL_H = 2.75` (`0` dust gap!)
   const wUmin = -3.32;
   const wUmax = -1.8;
-  const wFrontX = -1.24;
+  const wFrontX = -1.29;
   const wDoorBaseY = 0.088;
   const wBodyTopY = 2.28;
   const wDoorH = wBodyTopY - 0.048 - wDoorBaseY;
@@ -165,7 +165,7 @@ export function buildBedroomAndBathroomInteriors(
     uMin: wUmin,
     uMax: wUmax,
     frontCoord: wFrontX,
-    depth: 0.575,
+    depth: 0.505,
     roomFloorY: 0.001,
     carcassBaseY: 0.001,
     doorBaseY: wDoorBaseY,
@@ -212,8 +212,8 @@ export function buildBedroomAndBathroomInteriors(
   addFlatBox(
     bedGroup,
     'simpleFlat.bedroom.wardrobeBulkheadSideSouth',
-    [0.54, friezeH, 0.022],
-    [-0.935, wBodyTopY + friezeH * 0.5 + 0.001, wUmax - 0.011],
+    [0.48, friezeH, 0.022],
+    [-1.025, wBodyTopY + friezeH * 0.5 + 0.001, wUmax - 0.011],
     wardrobePaintMat
   );
   addFlatBox(
@@ -295,7 +295,7 @@ export function buildBedroomAndBathroomInteriors(
     name: 'flat.sw.bedroomDoor',
     switchPa: 'plate-bedroom-door',
     location: 'Bedroom door jamb',
-    x: -0.78,
+    x: -0.842,
     y: 1.15,
     z: BED_BATH_Z - INT_T * 0.5 - 0.001,
     facing: 'north',
