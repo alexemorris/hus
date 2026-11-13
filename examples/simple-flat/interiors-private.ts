@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { CircuitId, InteractiveUserData, RoomZoneId } from 'husjs';
 import { createPaintMaterial } from 'husjs/materials';
+import { createHouseplant } from 'husjs/vegetation';
 import {
   addInteractiveShakerWardrobeDoor,
   attachAssetInteraction,
@@ -259,6 +260,18 @@ export function buildBedroomAndBathroomInteriors(
   });
   bedGroup.add(bedRad);
 
+  const bedPlant = createHouseplant({
+    species: 'monstera-deliciosa',
+    height: 0.98,
+    potStyle: 'stoneware',
+    exposure: 'indoor',
+    seed: 613,
+    name: 'simpleFlat.bedroom.monsteraPlanter',
+  });
+  bedPlant.position.set(-3.84, 0.002, 0.66);
+  tagCutaway(bedPlant, shell.westCut);
+  bedGroup.add(bedPlant);
+
   const bedArt = buildCuratedMirrorsArtAndRugs({
     name: 'simpleFlat.bedroom.botanicalGrid',
     kind: 'curtisBotanicalGrid',
@@ -504,4 +517,16 @@ export function buildBedroomAndBathroomInteriors(
     dimensionsMm: [465, 95, 920],
   });
   bathGroup.add(towelRail);
+
+  const bathPlant = createHouseplant({
+    species: 'boston-fern',
+    height: 0.58,
+    potStyle: 'glazed-ceramic',
+    exposure: 'indoor',
+    seed: 629,
+    name: 'simpleFlat.bathroom.bostonFern',
+  });
+  bathPlant.position.set(-3.92, 0.002, 2.52);
+  tagCutaway(bathPlant, shell.westCut);
+  bathGroup.add(bathPlant);
 }

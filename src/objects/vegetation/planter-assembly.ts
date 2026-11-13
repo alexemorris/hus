@@ -72,9 +72,11 @@ export function buildPlanterAssembly(opts: {
   if (opts.style === 'lead-cube') {
     const w = rTop * 1.88;
     const wall = Math.max(0.02, w * 0.07);
-    const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), mat);
+    const rimH = wall * 0.9;
+    const bodyH = Math.max(0.05, h - rimH - 0.002);
+    const body = new THREE.Mesh(new THREE.BoxGeometry(w, bodyH, w), mat);
     body.name = `${opts.namePrefix}.planterBox`;
-    body.position.y = h * 0.5;
+    body.position.y = bodyH * 0.5;
     body.castShadow = true;
     body.receiveShadow = true;
     group.add(body);

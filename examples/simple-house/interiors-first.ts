@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { CircuitId, InteractiveUserData, RoomZoneId } from 'husjs';
+import { createHouseplant } from 'husjs/vegetation';
 import {
   buildCastIronColumnRadiator,
   buildCorstonPowerSocket,
@@ -396,6 +397,18 @@ export function buildSimpleHouseFirstInteriors(
   );
 
   // Family Bathroom & Airing Cupboard (houseBathroom)
+  const studyPothos = createHouseplant({
+    species: 'calathea-pothos',
+    height: 0.66,
+    potStyle: 'stoneware',
+    exposure: 'indoor',
+    seed: 5309,
+    name: 'simpleHouse.study.calatheaPothos',
+  });
+  studyPothos.position.set(6.55, FFL_FIRST + 0.002, -3.75);
+  tagCutaway(studyPothos, northCut);
+  studyGroup.add(studyPothos);
+
   const bathroomGroup = new THREE.Group();
   bathroomGroup.name = 'simpleHouse.familyBathroom';
   bathroomGroup.userData.zoneId = 'houseBathroom';
@@ -724,6 +737,18 @@ export function buildSimpleHouseFirstInteriors(
       },
     ],
   });
+
+  const bathroomFern = createHouseplant({
+    species: 'boston-fern',
+    height: 0.62,
+    potStyle: 'glazed-ceramic',
+    exposure: 'indoor',
+    seed: 5417,
+    name: 'simpleHouse.familyBathroom.bostonFern',
+  });
+  bathroomFern.position.set(-1.32, FFL_FIRST + 0.002, -3.68);
+  tagCutaway(bathroomFern, northCut);
+  bathroomGroup.add(bathroomFern);
 
   root.add(
     buildCorstonPowerSocket(ctx, tagCutaway, {

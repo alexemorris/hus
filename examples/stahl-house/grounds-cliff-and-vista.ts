@@ -3,10 +3,10 @@ import { toCreasedNormals } from 'three/examples/jsm/utils/BufferGeometryUtils.j
 import type { SkyWeatherSnapshot } from 'husjs';
 import { applyMetricBoxUVs, getOrCreateCachedTexture } from 'husjs/materials';
 import { prepGeo, tagCollisionRole } from 'husjs/objects';
+import { VEG_META_ATTR, VEG_PIVOT_ATTR, createShrub, createTree, createXerophyte } from 'husjs/vegetation';
 import { getStonePbr1024, hashCell2D } from './pbr-textures.ts';
 import {
   bevelledBox,
-  buildAgaveAttenuataRosetteGeo,
   buildSmoothGraniteBoulderGeo,
 } from './sculpted-geometry.ts';
 import { stahlTerrainSampler, X3, X4, Z0, Z1, Z2, Z3 } from './terrain.ts';
@@ -399,131 +399,6 @@ export function buildLaBasinCityLightsVista(root: THREE.Group): void {
   root.add(vistaGroup);
 }
 
-function buildDeergrassClumpGeometry(bladeCount = 22, seed = 701): THREE.BufferGeometry {
-  const positions: number[] = [];
-  const normals: number[] = [];
-  const colors: number[] = [];
-  const indices: number[] = [];
-
-  const baseCol = new THREE.Color(0x6e6335);
-  const midCol = new THREE.Color(0xa68b46);
-  const tipCol = new THREE.Color(0xcab067);
-  const tmpCol = new THREE.Color();
-  const segs = 4;
-
-  for (let b = 0; b < bladeCount; b++) {
-    const az = (b / bladeCount) * Math.PI * 2 + (hashCell2D(b, 1, seed) - 0.5) * 0.38;
-    const tilt = 0.24 + hashCell2D(b, 2, seed) * 0.68;
-    const len = 0.52 + hashCell2D(b, 3, seed) * 0.44;
-    const droop = 0.26 + hashCell2D(b, 4, seed) * 0.34;
-    const baseR = 0.03 + hashCell2D(b, 5, seed) * 0.09;
-    const halfW0 = 0.026 + hashCell2D(b, 6, seed) * 0.012;
-    const dirX = Math.cos(az);
-    const dirZ = Math.sin(az);
-    const sideX = -dirZ;
-    const sideZ = dirX;
-    const baseVert = positions.length / 3;
-
-    for (let s = 0; s <= segs; s++) {
-      const t = s / segs;
-      const reach = baseR + Math.sin(t * Math.PI * 0.58) * len * (0.45 + tilt * 0.72);
-      const cy = Math.max(-0.04, Math.sin(t * Math.PI * 0.76) * len * (1.02 - tilt * 0.32) - t * t * droop);
-      const cx = dirX * reach;
-      const cz = dirZ * reach;
-      const w = halfW0 * (1 - t * 0.88);
-      const ridge = w * 0.45;
-
-      tmpCol.copy(baseCol).lerp(midCol, Math.min(1, t * 1.5)).lerp(tipCol, Math.max(0, (t - 0.45) / 0.55));
-      const tint = 0.9 + hashCell2D(b, 7, seed) * 0.2;
-      const cr = Math.min(1, tmpCol.r * tint);
-      const cg = Math.min(1, tmpCol.g * tint);
-      const cb = Math.min(1, tmpCol.b * tint);
-
-      positions.push(
-        cx - sideX * w, cy, cz - sideZ * w,
-        cx + dirX * ridge * 0.4, cy + ridge, cz + dirZ * ridge * 0.4,
-        cx + sideX * w, cy, cz + sideZ * w
-      );
-      normals.push(-sideX * 0.5, 0.86, -sideZ * 0.5, dirX * 0.3, 0.95, dirZ * 0.3, sideX * 0.5, 0.86, sideZ * 0.5);
-      colors.push(cr, cg, cb, cr * 1.04, cg * 1.04, cb * 1.02, cr, cg, cb);
-
-      if (s < segs) {
-        const r0 = baseVert + s * 3;
-        const r1 = r0 + 3;
-        indices.push(r0, r1, r0 + 1, r0 + 1, r1, r1 + 1, r0 + 1, r1 + 1, r0 + 2, r0 + 2, r1 + 1, r1 + 2);
-      }
-    }
-  }
-
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
-  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  geo.setIndex(indices);
-  geo.computeVertexNormals();
-  return prepGeo(geo);
-}
-
-function buildFountainPlumeClumpGeometry(plumeCount = 16, seed = 811): THREE.BufferGeometry {
-  const positions: number[] = [];
-  const normals: number[] = [];
-  const colors: number[] = [];
-  const indices: number[] = [];
-
-  const stalkCol = new THREE.Color(0x9d8652);
-  const plumeCol = new THREE.Color(0xd8b89e);
-  const plumeTip = new THREE.Color(0xead6c0);
-  const tmpCol = new THREE.Color();
-  const segs = 5;
-
-  for (let p = 0; p < plumeCount; p++) {
-    const az = (p / plumeCount) * Math.PI * 2 + (hashCell2D(p, 1, seed) - 0.5) * 0.45;
-    const tilt = 0.22 + hashCell2D(p, 2, seed) * 0.48;
-    const len = 0.68 + hashCell2D(p, 3, seed) * 0.32;
-    const dirX = Math.cos(az);
-    const dirZ = Math.sin(az);
-    const sideX = -dirZ;
-    const sideZ = dirX;
-    const baseVert = positions.length / 3;
-
-    for (let s = 0; s <= segs; s++) {
-      const t = s / segs;
-      const reach = 0.03 + Math.pow(t, 1.15) * len * (0.36 + tilt * 0.65);
-      const cy = t * len * (1.0 - tilt * 0.25) - t * t * t * 0.22;
-      const cx = dirX * reach;
-      const cz = dirZ * reach;
-      const w = Math.max(0.005, t > 0.35 ? Math.sin(((t - 0.35) / 0.65) * Math.PI) * 0.036 : 0.01);
-
-      tmpCol.copy(stalkCol).lerp(plumeCol, Math.max(0, (t - 0.28) / 0.45)).lerp(plumeTip, Math.max(0, (t - 0.7) / 0.3));
-      positions.push(
-        cx - sideX * w, cy, cz - sideZ * w,
-        cx + dirX * w * 0.7, cy + w * 0.85, cz + dirZ * w * 0.7,
-        cx + sideX * w, cy, cz + sideZ * w
-      );
-      normals.push(-sideX, 0.6, -sideZ, dirX, 0.85, dirZ, sideX, 0.6, sideZ);
-      colors.push(
-        tmpCol.r, tmpCol.g, tmpCol.b,
-        Math.min(1, tmpCol.r * 1.05), Math.min(1, tmpCol.g * 1.04), Math.min(1, tmpCol.b * 1.03),
-        tmpCol.r, tmpCol.g, tmpCol.b
-      );
-
-      if (s < segs) {
-        const r0 = baseVert + s * 3;
-        const r1 = r0 + 3;
-        indices.push(r0, r1, r0 + 1, r0 + 1, r1, r1 + 1, r0 + 1, r1 + 1, r0 + 2, r0 + 2, r1 + 1, r1 + 2);
-      }
-    }
-  }
-
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
-  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  geo.setIndex(indices);
-  geo.computeVertexNormals();
-  return prepGeo(geo);
-}
-
 function maxCliffStructuralCeilingY(x: number, z: number): number {
   if (!(x >= -18.5 && x <= 6.82 && z >= -6.35 && z <= 12.92)) return 12.0;
   const nearEWBeam =
@@ -539,35 +414,73 @@ function maxCliffStructuralCeilingY(x: number, z: number): number {
   return underCatwalk ? -0.16 : -0.26;
 }
 
-function bakeMergedInstances(
-  baseGeo: THREE.BufferGeometry,
+function extractFoliageTemplate(group: THREE.Object3D): {
+  readonly geometry: THREE.BufferGeometry;
+  readonly material: THREE.Material;
+} {
+  let foundMesh: THREE.Mesh | null = null;
+  group.traverse((obj) => {
+    if (!foundMesh && obj instanceof THREE.Mesh && obj.name.endsWith('.foliage')) {
+      foundMesh = obj;
+    }
+  });
+  if (!foundMesh) {
+    throw new Error(`Missing foliage mesh in ${group.name}`);
+  }
+  const mesh = foundMesh as THREE.Mesh;
+  return {
+    geometry: mesh.geometry,
+    material: mesh.material as THREE.Material,
+  };
+}
+
+function bakeMergedPhenologyInstances(
+  templates: readonly THREE.BufferGeometry[],
   matrices: readonly THREE.Matrix4[],
   tints?: readonly THREE.Color[]
 ): THREE.BufferGeometry {
-  const srcPos = baseGeo.attributes.position as THREE.BufferAttribute;
-  const srcNorm = baseGeo.attributes.normal as THREE.BufferAttribute | undefined;
-  const srcCol = baseGeo.attributes.color as THREE.BufferAttribute | undefined;
-  const srcIdx = baseGeo.index;
-
-  const vCount = srcPos.count;
-  const iCount = srcIdx ? srcIdx.count : vCount;
-  const totalV = vCount * matrices.length;
-  const totalI = iCount * matrices.length;
+  let totalV = 0;
+  let totalI = 0;
+  for (let m = 0; m < matrices.length; m++) {
+    const baseGeo = templates[m % templates.length]!;
+    const vCount = (baseGeo.attributes.position as THREE.BufferAttribute).count;
+    const iCount = baseGeo.index ? baseGeo.index.count : vCount;
+    totalV += vCount;
+    totalI += iCount;
+  }
 
   const outPos = new Float32Array(totalV * 3);
   const outNorm = new Float32Array(totalV * 3);
+  const outUv = new Float32Array(totalV * 2);
   const outCol = new Float32Array(totalV * 3);
+  const outPivot = new Float32Array(totalV * 3);
+  const outMeta = new Float32Array(totalV * 4);
   const outIdx = totalV > 65535 ? new Uint32Array(totalI) : new Uint16Array(totalI);
 
   const v = new THREE.Vector3();
   const n = new THREE.Vector3();
+  const piv = new THREE.Vector3();
   const normalMat = new THREE.Matrix3();
+  let vBase = 0;
+  let iBase = 0;
 
   for (let m = 0; m < matrices.length; m++) {
+    const baseGeo = templates[m % templates.length]!;
     const mat = matrices[m]!;
     normalMat.getNormalMatrix(mat);
     const tint = tints ? tints[m] : undefined;
-    const vBase = m * vCount;
+
+    const srcPos = baseGeo.attributes.position as THREE.BufferAttribute;
+    const srcNorm = baseGeo.attributes.normal as THREE.BufferAttribute | undefined;
+    const srcUv = baseGeo.attributes.uv as THREE.BufferAttribute | undefined;
+    const srcCol = baseGeo.attributes.color as THREE.BufferAttribute | undefined;
+    const srcPiv = baseGeo.attributes[VEG_PIVOT_ATTR] as THREE.BufferAttribute | undefined;
+    const srcMeta = baseGeo.attributes[VEG_META_ATTR] as THREE.BufferAttribute | undefined;
+    const srcIdx = baseGeo.index;
+
+    const vCount = srcPos.count;
+    const iCount = srcIdx ? srcIdx.count : vCount;
+    const instanceJitter = (m * 0.61803398875) % 1;
 
     for (let i = 0; i < vCount; i++) {
       v.fromBufferAttribute(srcPos, i).applyMatrix4(mat);
@@ -581,58 +494,46 @@ function bakeMergedInstances(
       outNorm[(vBase + i) * 3 + 1] = n.y;
       outNorm[(vBase + i) * 3 + 2] = n.z;
 
+      outUv[(vBase + i) * 2] = srcUv ? srcUv.getX(i) : 0.5;
+      outUv[(vBase + i) * 2 + 1] = srcUv ? srcUv.getY(i) : 0.5;
+
       const cr = srcCol ? srcCol.getX(i) : 1;
       const cg = srcCol ? srcCol.getY(i) : 1;
       const cb = srcCol ? srcCol.getZ(i) : 1;
-      outCol[(vBase + i) * 3] = Math.min(1, cr * (tint ? tint.r : 1));
-      outCol[(vBase + i) * 3 + 1] = Math.min(1, cg * (tint ? tint.g : 1));
-      outCol[(vBase + i) * 3 + 2] = Math.min(1, cb * (tint ? tint.b : 1));
+      outCol[(vBase + i) * 3] = THREE.MathUtils.clamp(cr * (tint ? tint.r : 1), 0, 1);
+      outCol[(vBase + i) * 3 + 1] = THREE.MathUtils.clamp(cg * (tint ? tint.g : 1), 0, 1);
+      outCol[(vBase + i) * 3 + 2] = THREE.MathUtils.clamp(cb * (tint ? tint.b : 1), 0, 1);
+
+      if (srcPiv) piv.fromBufferAttribute(srcPiv, i).applyMatrix4(mat);
+      else piv.copy(v);
+      outPivot[(vBase + i) * 3] = piv.x;
+      outPivot[(vBase + i) * 3 + 1] = piv.y;
+      outPivot[(vBase + i) * 3 + 2] = piv.z;
+
+      outMeta[(vBase + i) * 4] = srcMeta ? srcMeta.getX(i) : 2;
+      outMeta[(vBase + i) * 4 + 1] = srcMeta ? (srcMeta.getY(i) + instanceJitter) % 1 : instanceJitter;
+      outMeta[(vBase + i) * 4 + 2] = srcMeta ? srcMeta.getZ(i) : 1;
+      outMeta[(vBase + i) * 4 + 3] = srcMeta ? srcMeta.getW(i) : 0.5;
     }
 
-    const iBase = m * iCount;
     for (let k = 0; k < iCount; k++) {
       outIdx[iBase + k] = vBase + (srcIdx ? srcIdx.getX(k) : k);
     }
+    vBase += vCount;
+    iBase += iCount;
   }
 
   const merged = new THREE.BufferGeometry();
   merged.setAttribute('position', new THREE.BufferAttribute(outPos, 3));
   merged.setAttribute('normal', new THREE.BufferAttribute(outNorm, 3));
+  merged.setAttribute('uv', new THREE.BufferAttribute(outUv, 2));
   merged.setAttribute('color', new THREE.BufferAttribute(outCol, 3));
+  merged.setAttribute(VEG_PIVOT_ATTR, new THREE.BufferAttribute(outPivot, 3));
+  merged.setAttribute(VEG_META_ATTR, new THREE.BufferAttribute(outMeta, 4));
   merged.setIndex(new THREE.BufferAttribute(outIdx, 1));
-  return prepGeo(merged);
-}
-
-function paintAgaveVertexColors(geo: THREE.BufferGeometry): THREE.BufferGeometry {
-  const pos = geo.attributes.position as THREE.BufferAttribute;
-  let repaired = false;
-  for (let i = 0; i < pos.count; i++) {
-    if (!Number.isFinite(pos.getX(i)) || !Number.isFinite(pos.getZ(i))) {
-      const p1 = Math.max(0, i - 7);
-      const p2 = Math.max(0, i - 14);
-      pos.setXYZ(i, 2 * pos.getX(p1) - pos.getX(p2), Number.isFinite(pos.getY(i)) ? pos.getY(i) : pos.getY(p1), 2 * pos.getZ(p1) - pos.getZ(p2));
-      repaired = true;
-    }
-  }
-  if (repaired) {
-    pos.needsUpdate = true;
-    geo.computeVertexNormals();
-  }
-  const cols = new Float32Array(pos.count * 3);
-  const inner = new THREE.Color(0x88a674);
-  const outer = new THREE.Color(0x5b7650);
-  const c = new THREE.Color();
-  for (let i = 0; i < pos.count; i++) {
-    const r = Math.hypot(pos.getX(i), pos.getZ(i));
-    const y = pos.getY(i);
-    c.copy(inner).lerp(outer, Math.max(0, Math.min(1, r / 0.52)));
-    const shade = Math.max(0.76, Math.min(1.12, 0.88 + y * 0.45));
-    cols[i * 3] = Math.min(1, c.r * shade);
-    cols[i * 3 + 1] = Math.min(1, c.g * shade);
-    cols[i * 3 + 2] = Math.min(1, c.b * shade);
-  }
-  geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
-  return prepGeo(geo);
+  merged.computeBoundingBox();
+  merged.computeBoundingSphere();
+  return merged;
 }
 
 function buildScaledBoulderGeo(rx: number, ry: number, rz: number, seed: number, detail = 4): THREE.BufferGeometry {
@@ -761,14 +662,8 @@ export function buildStahlCliffOutcropsAndChaparral(root: THREE.Group): void {
     noseGroup.add(block);
   }
 
-  // Sculpted 22-frond double-curvature Agave attenuata hillside rosettes
-  const agaveGeo = paintAgaveVertexColors(buildAgaveAttenuataRosetteGeo(18, 1.0));
-  const agaveMat = new THREE.MeshStandardMaterial({
-    name: 'stahl.agaveAttenuata',
-    vertexColors: true,
-    roughness: 0.58,
-    metalness: 0.0,
-  });
+  const agaveTplA = extractFoliageTemplate(createXerophyte({ species: 'agave-attenuata', scale: 1.0, exposure: 'outdoor', seed: 701 }));
+  const agaveTplB = extractFoliageTemplate(createXerophyte({ species: 'agave-attenuata', scale: 0.94, exposure: 'outdoor', seed: 719 }));
   const agavePlacements: readonly { x: number; z: number; scale: number; rotY: number }[] = [
     { x: 7.38, z: -2.18, scale: 1.18, rotY: 0.4 },
     { x: 7.88, z: -2.68, scale: 0.88, rotY: 1.9 },
@@ -786,21 +681,17 @@ export function buildStahlCliffOutcropsAndChaparral(root: THREE.Group): void {
     dummy.updateMatrix();
     agaveMats.push(dummy.matrix.clone());
   }
-  const agaveMesh = new THREE.Mesh(bakeMergedInstances(agaveGeo, agaveMats), agaveMat);
+  const agaveMesh = new THREE.Mesh(
+    bakeMergedPhenologyInstances([agaveTplA.geometry, agaveTplB.geometry], agaveMats),
+    agaveTplA.material
+  );
   agaveMesh.name = 'stahl.chaparral.agaveRosettes';
   agaveMesh.castShadow = agaveMesh.receiveShadow = true;
   noseGroup.add(agaveMesh);
   cliffGroup.add(noseGroup);
 
-  const deergrassGeo = buildDeergrassClumpGeometry(9, 701);
-  const deergrassMat = new THREE.MeshStandardMaterial({
-    name: 'stahl.chaparral.deergrassMat',
-    vertexColors: true,
-    side: THREE.DoubleSide,
-    roughness: 0.86,
-    metalness: 0.0,
-  });
-
+  const deergrassTplA = extractFoliageTemplate(createXerophyte({ species: 'california-deergrass', scale: 1.0, exposure: 'outdoor', seed: 809 }));
+  const deergrassTplB = extractFoliageTemplate(createXerophyte({ species: 'california-deergrass', scale: 0.92, exposure: 'outdoor', seed: 823 }));
   const tussockCoords: [number, number, number][] = [];
   const cliffRimSeeds: readonly [number, number][] = [
     [6.95, -1.05], [7.55, -0.45], [8.25, 0.35], [6.85, 1.15], [7.65, 2.05],
@@ -835,8 +726,8 @@ export function buildStahlCliffOutcropsAndChaparral(root: THREE.Group): void {
     const [tx, tz, seed] = tussockCoords[i]!;
     const ty = stahlTerrainSampler.sampleTerrainY(tx, tz);
     const n = stahlTerrainSampler.sampleNormal(tx, tz, 0.5);
-    const scale = 1.08 + hashCell2D(seed, 1, 919) * 0.62;
-    const yPos = Math.min(ty + 0.06, maxCliffStructuralCeilingY(tx, tz) - 0.88 * scale);
+    const scale = 1.02 + hashCell2D(seed, 1, 919) * 0.52;
+    const yPos = Math.min(ty + 0.04, maxCliffStructuralCeilingY(tx, tz) - 0.88 * scale);
 
     dummy.position.set(tx, yPos, tz);
     dummy.rotation.set(
@@ -844,26 +735,22 @@ export function buildStahlCliffOutcropsAndChaparral(root: THREE.Group): void {
       hashCell2D(seed, 3, 919) * Math.PI * 2,
       -n.nx * 0.26 + (hashCell2D(seed, 4, 919) - 0.5) * 0.12
     );
-    dummy.scale.set(scale, scale * (0.9 + hashCell2D(seed, 5, 919) * 0.28), scale);
+    dummy.scale.set(scale, scale * (0.9 + hashCell2D(seed, 5, 919) * 0.26), scale);
     dummy.updateMatrix();
     deerMatrices.push(dummy.matrix.clone());
 
     const warmth = hashCell2D(seed, 6, 919);
-    deerTints.push(new THREE.Color(0.94 + warmth * 0.14, 0.91 + warmth * 0.1, 0.8 + (1 - warmth) * 0.14));
+    deerTints.push(new THREE.Color(0.92 + warmth * 0.12, 0.94 + warmth * 0.08, 0.88 + (1 - warmth) * 0.1));
   }
-  const deergrassMesh = new THREE.Mesh(bakeMergedInstances(deergrassGeo, deerMatrices, deerTints), deergrassMat);
+  const deergrassMesh = new THREE.Mesh(
+    bakeMergedPhenologyInstances([deergrassTplA.geometry, deergrassTplB.geometry], deerMatrices, deerTints),
+    deergrassTplA.material
+  );
   deergrassMesh.name = 'stahl.chaparral.deergrassTussocks';
   deergrassMesh.castShadow = deergrassMesh.receiveShadow = true;
   cliffGroup.add(deergrassMesh);
 
-  const plumeGeo = buildFountainPlumeClumpGeometry(16, 811);
-  const plumeMat = new THREE.MeshStandardMaterial({
-    name: 'stahl.chaparral.fountainPlumeMat',
-    vertexColors: true,
-    side: THREE.DoubleSide,
-    roughness: 0.84,
-    metalness: 0.0,
-  });
+  const plumeTpl = extractFoliageTemplate(createXerophyte({ species: 'california-deergrass', scale: 1.16, exposure: 'outdoor', seed: 853 }));
   const plumeCoords: readonly [number, number][] = [
     [6.88, -1.35], [7.25, -0.85], [7.72, -0.35], [6.92, 0.45], [7.35, 1.35],
     [6.85, 2.55], [7.15, 4.05], [6.88, 6.35], [7.12, 8.65], [6.82, 10.95],
@@ -873,27 +760,20 @@ export function buildStahlCliffOutcropsAndChaparral(root: THREE.Group): void {
   for (let i = 0; i < plumeCoords.length; i++) {
     const [px, pz] = plumeCoords[i]!;
     const py = stahlTerrainSampler.sampleTerrainY(px, pz);
-    const sc = 1.15 + hashCell2D(i, 1, 941) * 0.42;
-    dummy.position.set(px, Math.min(py + 0.06, maxCliffStructuralCeilingY(px, pz) - 0.98 * sc), pz);
+    const sc = 1.08 + hashCell2D(i, 1, 941) * 0.36;
+    dummy.position.set(px, Math.min(py + 0.04, maxCliffStructuralCeilingY(px, pz) - 0.98 * sc), pz);
     dummy.rotation.set(0.05 * ((i % 3) - 1), i * 1.7 + 0.3, -0.14);
     dummy.scale.setScalar(sc);
     dummy.updateMatrix();
     plumeMatrices.push(dummy.matrix.clone());
   }
-  const plumeMesh = new THREE.Mesh(bakeMergedInstances(plumeGeo, plumeMatrices), plumeMat);
+  const plumeMesh = new THREE.Mesh(bakeMergedPhenologyInstances([plumeTpl.geometry], plumeMatrices), plumeTpl.material);
   plumeMesh.name = 'stahl.chaparral.fountainPlumes';
   plumeMesh.castShadow = true;
   cliffGroup.add(plumeMesh);
 
-  // Smooth FBM chaparral coastal sagebrush mounds (detail 3 smooth boulders tinted olive-sage)
-  const shrubGeo = toCreasedNormals(buildSmoothGraniteBoulderGeo(1.12, 977, 2, 0.62), Math.PI * 0.85);
-  const shrubMat = new THREE.MeshStandardMaterial({
-    name: 'stahl.chaparral.scrubMoundMat',
-    color: 0x4d613a,
-    roughness: 0.91,
-    metalness: 0.0,
-    vertexColors: true,
-  });
+  const rosemaryTplA = extractFoliageTemplate(createShrub({ species: 'rosemary', radius: 0.72, height: 0.62, exposure: 'outdoor', seed: 977 }));
+  const rosemaryTplB = extractFoliageTemplate(createShrub({ species: 'rosemary', radius: 0.68, height: 0.58, exposure: 'outdoor', seed: 983 }));
   const shrubCoords: readonly [number, number, number][] = [
     [9.4, -0.8, 1.25], [10.6, 1.2, 1.45], [11.8, 3.9, 1.55], [12.4, 7.2, 1.65],
     [11.9, 10.6, 1.5], [11.2, 13.8, 1.7], [9.5, 16.5, 1.6], [6.8, 18.2, 1.75],
@@ -904,19 +784,39 @@ export function buildStahlCliffOutcropsAndChaparral(root: THREE.Group): void {
   const shrubTints: THREE.Color[] = [];
   for (let i = 0; i < shrubCoords.length; i++) {
     const [sx, sz, sc] = shrubCoords[i]!;
-    dummy.position.set(sx, stahlTerrainSampler.sampleTerrainY(sx, sz) + 0.16 * sc, sz);
-    dummy.rotation.set((hashCell2D(i, 1, 991) - 0.5) * 0.2, i * 2.15, (hashCell2D(i, 2, 991) - 0.5) * 0.2);
-    dummy.scale.set(sc, sc * (0.78 + hashCell2D(i, 3, 991) * 0.3), sc);
+    dummy.position.set(sx, stahlTerrainSampler.sampleTerrainY(sx, sz) - 0.04, sz);
+    dummy.rotation.set((hashCell2D(i, 1, 991) - 0.5) * 0.14, i * 2.15, (hashCell2D(i, 2, 991) - 0.5) * 0.14);
+    dummy.scale.set(sc, sc * (0.86 + hashCell2D(i, 3, 991) * 0.24), sc);
     dummy.updateMatrix();
     shrubMatrices.push(dummy.matrix.clone());
     const olive = hashCell2D(i, 4, 991);
-    shrubTints.push(new THREE.Color(0.84 + olive * 0.22, 0.9 + olive * 0.16, 0.78 + olive * 0.14));
+    shrubTints.push(new THREE.Color(0.88 + olive * 0.14, 0.92 + olive * 0.1, 0.84 + olive * 0.12));
   }
-  const shrubMesh = new THREE.Mesh(bakeMergedInstances(shrubGeo, shrubMatrices, shrubTints), shrubMat);
+  const shrubMesh = new THREE.Mesh(
+    bakeMergedPhenologyInstances([rosemaryTplA.geometry, rosemaryTplB.geometry], shrubMatrices, shrubTints),
+    rosemaryTplA.material
+  );
   shrubMesh.name = 'stahl.chaparral.scrubShrubs';
   shrubMesh.castShadow = shrubMesh.receiveShadow = true;
   cliffGroup.add(shrubMesh);
 
+  const cliffOlive = createTree({
+    species: 'olive-tree',
+    height: 3.35,
+    spread: 2.65,
+    exposure: 'outdoor',
+    groundLitter: false,
+    seed: 1962,
+    name: 'stahl.chaparral.californiaOliveTree',
+  });
+  cliffOlive.position.set(8.65, stahlTerrainSampler.sampleTerrainY(8.65, -3.15) - 0.04, -3.15);
+  cliffGroup.add(cliffOlive);
+
   tagCollisionRole(cliffGroup, 'ignore');
+  cliffGroup.traverse((obj) => {
+    if (obj instanceof THREE.Mesh) {
+      obj.userData.ignoreWalkthroughCollision = true;
+    }
+  });
   root.add(cliffGroup);
 }

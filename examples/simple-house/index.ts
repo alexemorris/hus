@@ -46,8 +46,8 @@ const SIMPLE_HOUSE_MODULE: SceneZoneModule = {
   zoneIds: Object.keys(SIMPLE_HOUSE_ROOM_ZONES) as SceneZoneModule['zoneIds'],
   cameraPresets: Object.values(SIMPLE_HOUSE_CAMERAS),
   build(ctx: SceneBuilderContext) {
-    buildSimpleHouseGrounds(ctx);
     const shell = buildSimpleHouseArchitecture(ctx, sharedStair);
+    buildSimpleHouseGrounds(ctx, shell);
     buildSimpleHouseStaircaseAndHall(ctx, sharedStair);
     buildSimpleHouseGroundInteriors(ctx, shell);
     buildSimpleHouseFirstInteriors(ctx, shell);

@@ -605,7 +605,7 @@ export function buildLivingKitchenAndHallInteriors(
   const figTree = buildFiddleLeafFigPlanter(livGroup, {
     namePrefix: 'simpleFlat.living.fiddleLeafFig',
     zone: 'flatLivingKitchen',
-    position: [3.74, 0, -2.05],
+    position: [3.74, 0.002, -2.05],
   });
   tagCutaway(figTree, shell.eastCut);
   const galleryArt = buildCuratedMirrorsArtAndRugs({

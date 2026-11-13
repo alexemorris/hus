@@ -18,7 +18,14 @@ import {
   tagCollisionRole,
   tagCutaway,
 } from 'husjs/objects';
-import { createEvergreenFoliagePbrMaterial } from 'husjs/catalog/architectural';
+import {
+  createClimber,
+  createFlowerBed,
+  createHedge,
+  createShrub,
+  createTopiary,
+  createTree,
+} from 'husjs/vegetation';
 
 export const COURTYARD_LEVEL_Y = -0.26;
 
@@ -353,12 +360,6 @@ export function buildCourtyardGrounds(
   const gravelMat = createCobblestoneMaterial({ preset: 'pea-gravel' });
   const yorkstoneMat = createCobblestoneMaterial({ preset: 'riven-yorkstone' });
   const cobbleMat = createCobblestoneMaterial({ preset: 'courtyard-cobble' });
-  const hedgeMat = createEvergreenFoliagePbrMaterial();
-  const terracottaMat = new THREE.MeshStandardMaterial({
-    name: 'simpleFlat.grounds.terracotta',
-    color: 0xb55c3e,
-    roughness: 0.72,
-  });
 
   // Outer plinth collar sits at X in [-4.62, 4.62], Z in [-3.82, 3.82] (60 mm beyond 360 mm London Stock brick)
   const gravelGeo = extrudePlanarSolidWithHoles({
@@ -446,36 +447,108 @@ export function buildCourtyardGrounds(
     addFlatBox(grounds, `simpleFlat.grounds.${pTag}Cap`, [0.44, 0.07, 0.44], [px, 0.658, 8.65], stoneMat, 1.0);
   }
 
-  addFlatBox(grounds, 'simpleFlat.grounds.hedgeWest', [0.65, 1.25, 14.2], [-7.75, 0.365, 1.3], hedgeMat, 1.2);
-  addFlatBox(grounds, 'simpleFlat.grounds.hedgeEast', [0.65, 1.25, 14.2], [7.75, 0.365, 1.3], hedgeMat, 1.2);
-  addFlatBox(grounds, 'simpleFlat.grounds.hedgeNorth', [14.8, 1.25, 0.65], [0, 0.365, -5.75], hedgeMat, 1.2);
-
-  for (const [idx, px, pz] of [
-    [1, -2.54, 4.08],
-    [2, -0.41, 4.08],
-    [3, 0.55, 4.08],
-    [4, 2.95, 4.08],
-  ] as const) {
-    const pot = new THREE.Mesh(prepGeo(new THREE.CylinderGeometry(0.22, 0.16, 0.42, 18)), terracottaMat);
-    pot.name = `simpleFlat.grounds.planterPot_${idx}`;
-    pot.position.set(px, -0.026, pz);
-    pot.castShadow = true;
-    grounds.add(pot);
-
-    const trunk = new THREE.Mesh(
-      prepGeo(new THREE.CylinderGeometry(0.022, 0.028, 0.46, 10)),
-      new THREE.MeshStandardMaterial({ color: 0x5c4632, roughness: 0.88 })
-    );
-    trunk.name = `simpleFlat.grounds.planterStem_${idx}`;
-    trunk.position.set(px, 0.38, pz);
-    grounds.add(trunk);
-
-    const crown = new THREE.Mesh(prepGeo(new THREE.SphereGeometry(0.27, 16, 12)), hedgeMat);
-    crown.name = `simpleFlat.grounds.planterCrown_${idx}`;
-    crown.position.set(px, 0.72, pz);
-    crown.castShadow = true;
-    grounds.add(crown);
+  for (const hSpec of [
+    { name: 'simpleFlat.grounds.hedgeWest', species: 'yew' as const, path: [[-7.75, -5.8], [-7.75, 8.4]] as const, seed: 301 },
+    { name: 'simpleFlat.grounds.hedgeEast', species: 'yew' as const, path: [[7.75, -5.8], [7.75, 8.4]] as const, seed: 317 },
+    { name: 'simpleFlat.grounds.hedgeNorth', species: 'boxwood' as const, path: [[-7.25, -5.75], [7.25, -5.75]] as const, seed: 331 },
+  ]) {
+    const hedge = createHedge({
+      species: hSpec.species,
+      path: hSpec.path,
+      height: 1.25,
+      thickness: 0.62,
+      exposure: 'outdoor',
+      seed: hSpec.seed,
+      name: hSpec.name,
+    });
+    hedge.position.y = -0.26;
+    grounds.add(hedge);
   }
+
+  for (const [idx, px, pz, form, seed] of [
+    [1, -2.54, 4.18, 'bay-standard', 401],
+    [2, -0.41, 4.18, 'olive-planter', 419],
+    [3, 0.55, 4.18, 'bay-standard', 433],
+    [4, 2.95, 4.18, 'olive-planter', 449],
+  ] as const) {
+    const planter = createTopiary({
+      form,
+      planter: 'terracotta',
+      radius: 0.25,
+      height: 1.32,
+      exposure: 'outdoor',
+      seed,
+      name: `simpleFlat.grounds.planterPot_${idx}`,
+    });
+    planter.position.set(px, -0.236, pz);
+    grounds.add(planter);
+  }
+
+  const courtyardBorder = createFlowerBed({
+    style: 'cottage-perennial-border',
+    width: 4.4,
+    depth: 0.56,
+    exposure: 'outdoor',
+    seed: 461,
+    name: 'simpleFlat.grounds.courtyardPerennialBorder',
+  });
+  courtyardBorder.position.set(2.55, -0.259, 8.16);
+  grounds.add(courtyardBorder);
+
+  for (const [lIdx, lx, lz] of [
+    [1, -2.62, 5.45],
+    [2, -2.62, 6.75],
+    [3, -0.34, 5.45],
+    [4, -0.34, 6.75],
+  ] as const) {
+    const lav = createShrub({
+      species: 'lavender',
+      radius: 0.28,
+      height: 0.42,
+      exposure: 'outdoor',
+      seed: 470 + lIdx * 11,
+      name: `simpleFlat.grounds.courtyardLavender_${lIdx}`,
+    });
+    lav.position.set(lx, -0.236, lz);
+    grounds.add(lav);
+  }
+
+  const gateJasmineArch = createClimber({
+    species: 'star-jasmine',
+    support: 'arch-trellis',
+    width: 1.75,
+    height: 2.32,
+    exposure: 'outdoor',
+    seed: 503,
+    name: 'simpleFlat.grounds.gateJasmineArch',
+  });
+  gateJasmineArch.position.set(-1.475, -0.26, 8.65);
+  grounds.add(gateJasmineArch);
+
+  const wallRose = createClimber({
+    species: 'climbing-rose',
+    support: 'wall-plane',
+    width: 2.5,
+    height: 0.56,
+    exposure: 'outdoor',
+    seed: 521,
+    name: 'simpleFlat.grounds.gardenWallRose',
+  });
+  wallRose.position.set(4.9, -0.258, 8.52);
+  wallRose.rotation.y = Math.PI;
+  grounds.add(wallRose);
+
+  const courtyardTree = createTree({
+    species: 'magnolia',
+    height: 3.05,
+    spread: 2.35,
+    exposure: 'outdoor',
+    groundLitter: true,
+    seed: 547,
+    name: 'simpleFlat.grounds.courtyardMagnolia',
+  });
+  courtyardTree.position.set(-4.35, -0.236, 5.95);
+  grounds.add(courtyardTree);
 
   parent.add(grounds);
 }

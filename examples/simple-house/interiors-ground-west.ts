@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { CircuitId, InteractiveUserData, RoomZoneId } from 'husjs';
 import { createPaintMaterial } from 'husjs/materials';
+import { createHouseplant } from 'husjs/vegetation';
 import {
   attachAudioEmitter,
   buildCastIronColumnRadiator,
@@ -218,7 +219,7 @@ export function buildSimpleHouseGroundWestAndCloakroom(
   ctx.addGlowPool(accentCircuit, -6.70, FFL_GROUND + 0.90, -2.575, 0.85, 0.30);
   ctx.addGlowPool(accentCircuit, -6.70, FFL_GROUND + 0.90, 2.575, 0.85, 0.30);
 
-  // 3.20 × 4.80 m antique Ziegler Oushak rug (tagged ignore for smooth first-person walkthrough)
+  // Antique 3.20 × 4.80 m antique Ziegler Oushak rug (tagged ignore for smooth first-person walkthrough)
   const drawingRug = buildCuratedMirrorsArtAndRugs({
     kind: 'zieglerOushak',
     name: 'simpleHouse.drawing.zieglerRug',
@@ -586,6 +587,18 @@ export function buildSimpleHouseGroundWestAndCloakroom(
       facing: 'west',
     })
   );
+
+  const drawingFern = createHouseplant({
+    species: 'boston-fern',
+    height: 0.68,
+    potStyle: 'glazed-ceramic',
+    exposure: 'indoor',
+    seed: 5207,
+    name: 'simpleHouse.drawing.bostonFern',
+  });
+  drawingFern.position.set(-6.32, FFL_GROUND + 0.002, 3.72);
+  tagCutaway(drawingFern, southCut);
+  drawingGroup.add(drawingFern);
 
   // Garden Boot & Mudroom Lobby (X ∈ [-1.65, -0.31], Z ∈ [-4.22, -1.77])
   const bootGroup = new THREE.Group();

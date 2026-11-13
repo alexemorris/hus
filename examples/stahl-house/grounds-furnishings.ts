@@ -2,108 +2,31 @@ import * as THREE from 'three';
 import { SeatInteractable, collectSeatClickableMeshes } from 'husjs/catalog/furniture';
 import { applyMetricBoxUVs } from 'husjs/materials';
 import { attachAssetMetadata, prepGeo } from 'husjs/objects';
+import { createHouseplant, createTree, createXerophyte } from 'husjs/vegetation';
 import type { SceneBuilderContext } from 'husjs/viewer';
 import { getMcmMaterials } from './mcm-materials.ts';
-import { getArchitecturalFinishPbr512, getVinylYachtCordPbr512, hashCell2D } from './pbr-textures.ts';
+import { getArchitecturalFinishPbr512, getVinylYachtCordPbr512 } from './pbr-textures.ts';
 import {
   bevelledBox,
-  buildAgaveAttenuataRosetteGeo,
   buildArchitecturalPotteryPlanterGeo,
   buildTuftedCushionGeo,
 } from './sculpted-geometry.ts';
 import type { StahlMaterials } from './structure.ts';
 
-function paintAgaveColors(geo: THREE.BufferGeometry): THREE.BufferGeometry {
-  const pos = geo.attributes.position as THREE.BufferAttribute;
-  let repaired = false;
-  for (let i = 0; i < pos.count; i++) {
-    if (!Number.isFinite(pos.getX(i)) || !Number.isFinite(pos.getZ(i))) {
-      const p1 = Math.max(0, i - 7);
-      const p2 = Math.max(0, i - 14);
-      pos.setXYZ(i, 2 * pos.getX(p1) - pos.getX(p2), Number.isFinite(pos.getY(i)) ? pos.getY(i) : pos.getY(p1), 2 * pos.getZ(p1) - pos.getZ(p2));
-      repaired = true;
-    }
+function extractPotlessPlantFoliage(
+  species: 'kentia-palm' | 'monstera-deliciosa',
+  height: number,
+  seed: number,
+  name: string
+): THREE.Group {
+  const full = createHouseplant({ species, height, exposure: 'outdoor', castShadow: true, seed, name });
+  const potChild = full.getObjectByName(`${name}.planter`);
+  if (potChild) full.remove(potChild);
+  const potOffset = species === 'kentia-palm' ? 0.36 * (height / 1.85) * 0.88 : 0.28 * (height / 1.05) * 0.88;
+  for (const child of full.children) {
+    child.position.y -= potOffset;
   }
-  if (repaired) {
-    pos.needsUpdate = true;
-    geo.computeVertexNormals();
-  }
-  const cols = new Float32Array(pos.count * 3);
-  const inner = new THREE.Color(0x88a674);
-  const outer = new THREE.Color(0x5b7650);
-  const c = new THREE.Color();
-  for (let i = 0; i < pos.count; i++) {
-    const r = Math.hypot(pos.getX(i), pos.getZ(i));
-    c.copy(inner).lerp(outer, Math.max(0, Math.min(1, r / 0.45)));
-    const shade = Math.max(0.76, Math.min(1.12, 0.88 + pos.getY(i) * 0.45));
-    cols[i * 3] = Math.min(1, c.r * shade);
-    cols[i * 3 + 1] = Math.min(1, c.g * shade);
-    cols[i * 3 + 2] = Math.min(1, c.b * shade);
-  }
-  geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
-  return prepGeo(geo);
-}
-
-function buildTropicalPlanterFoliageGeometry(variant: 'strelitzia' | 'philodendron', seed = 733): THREE.BufferGeometry {
-  const positions: number[] = [];
-  const colors: number[] = [];
-  const indices: number[] = [];
-  const stemCol = new THREE.Color(0x3f5e32);
-  const leafDark = new THREE.Color(variant === 'strelitzia' ? 0x2f5a31 : 0x295228);
-  const leafBright = new THREE.Color(variant === 'strelitzia' ? 0x528246 : 0x4b7d3b);
-  const tmpCol = new THREE.Color();
-  const leafCount = variant === 'strelitzia' ? 10 : 12;
-  const segs = 9;
-
-  for (let i = 0; i < leafCount; i++) {
-    const az = (i / leafCount) * Math.PI * 2 + (hashCell2D(i, 1, seed) - 0.5) * 0.42;
-    const dirX = Math.cos(az);
-    const dirZ = Math.sin(az);
-    const sideX = -dirZ;
-    const sideZ = dirX;
-    const stemH = (variant === 'strelitzia' ? 0.42 : 0.26) + hashCell2D(i, 2, seed) * 0.24;
-    const bladeLen = (variant === 'strelitzia' ? 0.52 : 0.36) + hashCell2D(i, 3, seed) * 0.16;
-    const maxW = variant === 'strelitzia' ? 0.125 : 0.145;
-    const pitch = (variant === 'strelitzia' ? 0.72 : 0.46) + hashCell2D(i, 4, seed) * 0.35;
-    const baseVert = positions.length / 3;
-
-    for (let s = 0; s <= segs; s++) {
-      const t = s / segs;
-      const inBlade = Math.max(0, (t - 0.28) / 0.72);
-      const r = 0.02 + t * (stemH * 0.35 + bladeLen * Math.cos(pitch * 0.75));
-      const y = t * stemH * 0.85 + Math.sin(inBlade * Math.PI * 0.72) * bladeLen * Math.sin(pitch) - inBlade * inBlade * 0.11;
-      const lobeMod = variant === 'philodendron' && inBlade > 0.15 ? 0.72 + 0.28 * Math.abs(Math.sin(inBlade * Math.PI * 3.5)) : 1.0;
-      const hw = t < 0.26 ? 0.014 : maxW * Math.sin(Math.pow(inBlade, 0.68) * Math.PI) * lobeMod;
-      const keel = t < 0.26 ? 0.012 : 0.02 * (1 - inBlade * 0.6);
-      tmpCol.copy(t < 0.28 ? stemCol : leafDark).lerp(leafBright, inBlade * 0.75);
-      const cx = dirX * r;
-      const cz = dirZ * r;
-      positions.push(
-        cx - sideX * hw, y + keel * 0.65, cz - sideZ * hw,
-        cx - sideX * hw * 0.48, y + keel * 0.28, cz - sideZ * hw * 0.48,
-        cx, y, cz,
-        cx + sideX * hw * 0.48, y + keel * 0.28, cz + sideZ * hw * 0.48,
-        cx + sideX * hw, y + keel * 0.65, cz + sideZ * hw
-      );
-      for (const shade of [1.0, 0.94, 0.84, 0.94, 1.0]) {
-        colors.push(tmpCol.r * shade, tmpCol.g * shade, tmpCol.b * shade);
-      }
-      if (s < segs) {
-        const r0 = baseVert + s * 5;
-        const r1 = r0 + 5;
-        for (let k = 0; k < 4; k++) {
-          indices.push(r0 + k, r1 + k, r0 + k + 1, r0 + k + 1, r1 + k, r1 + k + 1);
-        }
-      }
-    }
-  }
-
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  geo.setIndex(indices);
-  geo.computeVertexNormals();
-  return prepGeo(geo);
+  return full;
 }
 
 /**
@@ -418,12 +341,10 @@ function addArchitecturalPotteryPlanter(
     readonly ceramicMat: THREE.Material;
     readonly standMat: THREE.Material;
     readonly soilMat: THREE.Material;
-    readonly foliageMat: THREE.Material;
-    readonly agaveMat: THREE.Material;
     readonly seed: number;
   }
 ): void {
-  const { name, x, z, floorY = -0.0085, shape, species, ceramicMat, standMat, soilMat, foliageMat, agaveMat, seed } = options;
+  const { name, x, z, floorY = -0.0085, shape, species, ceramicMat, standMat, soilMat, seed } = options;
   const g = new THREE.Group();
   g.name = name;
   g.position.set(x, floorY, z);
@@ -468,13 +389,17 @@ function addArchitecturalPotteryPlanter(
   soil.position.y = soilY;
   g.add(soil);
 
-  const isAgave = species === 'agave';
-  const plantGeo = isAgave ? paintAgaveColors(buildAgaveAttenuataRosetteGeo(24, 0.72)) : buildTropicalPlanterFoliageGeometry(species, seed);
-  const plant = new THREE.Mesh(plantGeo, isAgave ? agaveMat : foliageMat);
-  plant.name = `${name}.foliage`;
+  const plant =
+    species === 'agave'
+      ? createXerophyte({ species: 'agave-attenuata', scale: 0.74, exposure: 'outdoor', seed, name: `${name}.plant` })
+      : extractPotlessPlantFoliage(
+          species === 'strelitzia' ? 'kentia-palm' : 'monstera-deliciosa',
+          species === 'strelitzia' ? 1.18 : 0.86,
+          seed,
+          `${name}.plant`
+        );
   plant.position.y = soilY + 0.011;
   plant.rotation.y = (seed % 7) * 0.9;
-  plant.castShadow = true;
   g.add(plant);
 
   const speciesLabel = species === 'strelitzia' ? 'Strelitzia nicolai' : species === 'philodendron' ? 'Split-Leaf Philodendron' : 'Agave attenuata';
@@ -899,19 +824,6 @@ export function buildStahlPatioFurnishingsAndRoadster(
     metalness: 0.0,
   });
   const pottingSoilMat = new THREE.MeshStandardMaterial({ color: 0x3b2d22, roughness: 0.95 });
-  const tropicalLeafMat = new THREE.MeshStandardMaterial({
-    name: 'stahl.planter.tropicalFoliage',
-    vertexColors: true,
-    side: THREE.DoubleSide,
-    roughness: 0.54,
-  });
-  const agavePlanterMat = new THREE.MeshStandardMaterial({
-    name: 'stahl.planter.agaveAttenuata',
-    vertexColors: true,
-    roughness: 0.56,
-    metalness: 0.0,
-  });
-
   for (const spec of [
     { name: 'stahl.planter.breezewayWest', x: -12.98, z: 0.72, shape: 'cylinder', species: 'strelitzia', standMat: mcm.walnut, seed: 101 },
     { name: 'stahl.planter.breezewayInnerCorner', x: -6.12, z: 0.74, shape: 'cylinder', species: 'philodendron', standMat: mcm.walnut, seed: 203 },
@@ -922,10 +834,29 @@ export function buildStahlPatioFurnishingsAndRoadster(
       ...spec,
       ceramicMat: ceramicWhiteMat,
       soilMat: pottingSoilMat,
-      foliageMat: tropicalLeafMat,
-      agaveMat: agavePlanterMat,
     });
   }
+
+  const terraceLemon = createTree({
+    species: 'lemon-tree',
+    height: 2.15,
+    spread: 1.55,
+    exposure: 'outdoor',
+    groundLitter: false,
+    seed: 1960,
+    name: 'stahl.terrace.californiaLemonTree',
+  });
+  const lemonPlanter = new THREE.Group();
+  lemonPlanter.name = 'stahl.terrace.lemonPlanterAssembly';
+  lemonPlanter.position.set(-9.55, -0.0085, 8.68);
+  const lemonPot = new THREE.Mesh(buildArchitecturalPotteryPlanterGeo(0.28, 0.22, 0.44, 0.018, 48), ceramicWhiteMat);
+  lemonPot.position.y = 0.002;
+  lemonPot.castShadow = lemonPot.receiveShadow = true;
+  const lemonSoil = new THREE.Mesh(prepGeo(new THREE.CylinderGeometry(0.252, 0.25, 0.018, 36)), pottingSoilMat);
+  lemonSoil.position.y = 0.376;
+  terraceLemon.position.y = 0.385;
+  lemonPlanter.add(lemonPot, lemonSoil, terraceLemon);
+  root.add(lemonPlanter);
 
   build1960CaliforniaRoadster(root, -15.38, -4.58, 0, stainlessMat, mats.plateGlass);
 }

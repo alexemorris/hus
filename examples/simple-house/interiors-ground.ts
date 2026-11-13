@@ -4,6 +4,7 @@ import {
   applyMetricBoxUVs,
   createPaintMaterial,
 } from 'husjs/materials';
+import { createHouseplant } from 'husjs/vegetation';
 import {
   buildCastIronColumnRadiator,
   buildCorstonPowerSocket,
@@ -593,6 +594,30 @@ export function buildSimpleHouseGroundInteriors(
       cutawayWall: eastCut,
     })
   );
+
+  const diningFig = createHouseplant({
+    species: 'fiddle-leaf-fig',
+    height: 1.54,
+    potStyle: 'stoneware',
+    exposure: 'indoor',
+    seed: 5101,
+    name: 'simpleHouse.kitchen.fiddleLeafFig',
+  });
+  diningFig.position.set(6.55, FFL_GROUND + 0.002, 3.72);
+  tagCutaway(diningFig, southCut);
+  kitchenGroup.add(diningFig);
+
+  const shelfTrailingIvy = createHouseplant({
+    species: 'trailing-ivy',
+    height: 0.30,
+    potStyle: 'terracotta',
+    exposure: 'indoor',
+    seed: 5113,
+    name: 'simpleHouse.kitchen.shelfTrailingIvy',
+  });
+  shelfTrailingIvy.position.set(6.83, FFL_GROUND + 1.574, -0.18);
+  tagCutaway(shelfTrailingIvy, eastCut);
+  kitchenGroup.add(shelfTrailingIvy);
 
   // West Drawing Room, Garden Boot Lobby & Guests' Powder Room
   buildSimpleHouseGroundWestAndCloakroom(ctx, shell, root, groundCeilingGroup);

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { CutawayWallDescriptor } from 'husjs';
 import { applyMetricBoxUVs } from 'husjs/materials';
+import { createXerophyte } from 'husjs/vegetation';
 import { attachAssetInteraction, attachAssetMetadata, prepGeo, tagCollisionRole, tagCutaway } from 'husjs/objects';
 import type { LightCircuitGroup, SceneBuilderContext } from 'husjs/viewer';
 import { addEamesDowelEiffelBase, addMesh, buildPlanarArtworkSlabGeo, makeLatheGeo, registerSeat } from './mcm-furniture.ts';
@@ -505,7 +506,9 @@ export function buildMasterAndBedroom2Furnishings(
   addMesh(desk, bevelledBox(0.28, 0.014, 0.21, 0.0025, 3, 0.5, 0.5), mcm.formicaWhite, [-0.08, dkSurfY + 0.007, 0.08], [0, 0.05, 0]);
   const dkPotGeo = buildArchitecturalPotteryPlanterGeo(0.068, 0.052, 0.12, 0.008, 44);
   addMesh(desk, dkPotGeo, mcm.stonewareWhite, [0.44, dkSurfY, -0.17], undefined, 'cast');
-  addMesh(desk, prepGeo(new THREE.SphereGeometry(0.046, 28, 18)), mcm.throwOlive, [0.44, dkSurfY + 0.105, -0.17]);
+  const deskAloe = createXerophyte({ species: 'aloe', scale: 0.35, exposure: 'indoor', seed: 507, castShadow: false, name: 'stahl.bed2.deskAloe' });
+  deskAloe.position.set(0.44, dkSurfY + 0.098, -0.17);
+  desk.add(deskAloe);
 
   attachAssetMetadata(desk, {
     name: 'George Nelson Action Office / Home Cantilevered Walnut & Chrome Desk',
@@ -517,7 +520,6 @@ export function buildMasterAndBedroom2Furnishings(
     dimensionsMm: [1320, 660, 740],
   });
   parent.add(desk);
-
   // Eames Molded Fiberglass `DAW` Armchair (`40 x 30` organic bucket + `24`-seg dowels + Eiffel wire struts)
   const daw = new THREE.Group();
   daw.name = 'stahl.bed2.eamesDawChair';
@@ -545,7 +547,6 @@ export function buildMasterAndBedroom2Furnishings(
     dimensionsMm: [625, 600, 805],
   });
   parent.add(daw);
-
   // Floating Walnut Wall Shelves on West `carportWall` (`X = -12.11`, tagged with `cuts.westCarportCut`)
   const shelves = new THREE.Group();
   shelves.name = 'stahl.bed2.floatingShelves';

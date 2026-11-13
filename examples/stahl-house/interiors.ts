@@ -23,9 +23,9 @@ import {
   buildWalnutTripodFloorLamp,
 } from './mcm-furniture.ts';
 import { getMcmMaterials, type McmMaterials } from './mcm-materials.ts';
+import { createHouseplant, createXerophyte } from 'husjs/vegetation';
 import {
   bevelledBox,
-  buildAgaveAttenuataRosetteGeo,
   buildArchitecturalPotteryPlanterGeo,
 } from './sculpted-geometry.ts';
 import type { StahlMaterials } from './structure.ts';
@@ -149,10 +149,14 @@ function addArchitecturalPotteryPlanter(parent: THREE.Object3D, x: number, z: nu
   const soil = new THREE.Mesh(prepGeo(new THREE.CylinderGeometry(0.164, 0.164, 0.016, 48)), mcm.formicaCharcoal);
   soil.position.y = potY + potH * 0.78 + 0.009;
 
-  const agaveMat = new THREE.MeshStandardMaterial({ color: 0x627e4c, roughness: 0.52, metalness: 0.02 });
-  const agave = new THREE.Mesh(buildAgaveAttenuataRosetteGeo(26, 0.78), agaveMat);
+  const agave = createXerophyte({
+    species: 'agave-attenuata',
+    scale: 0.76,
+    exposure: 'indoor',
+    seed: 1717,
+    name: 'stahl.living.mp17Agave',
+  });
   agave.position.y = potY + potH * 0.78 + 0.018;
-  agave.castShadow = true;
 
   g.add(pot, soil, agave);
   attachAssetMetadata(g, {
@@ -304,6 +308,28 @@ export function buildStahlInteriors(
   buildVkgSlingLoungeChair(ctx, root, mcm, { name: 'stahl.living.vkgSlingChairWest', position: [1.52, rugTopY, 8.72], rotationY: Math.PI * 0.44 });
 
   addArchitecturalPotteryPlanter(root, 5.54, 11.58, mcm);
+
+  const masterSansevieria = createHouseplant({
+    species: 'sansevieria',
+    height: 0.86,
+    potStyle: 'stoneware',
+    exposure: 'indoor',
+    seed: 601,
+    name: 'stahl.master.sansevieriaPlanter',
+  });
+  masterSansevieria.position.set(-4.15, 0.002, -0.58);
+  root.add(masterSansevieria);
+
+  const bathCalathea = createHouseplant({
+    species: 'calathea-pothos',
+    height: 0.56,
+    potStyle: 'glazed-ceramic',
+    exposure: 'indoor',
+    seed: 619,
+    name: 'stahl.bath.calatheaPlanter',
+  });
+  bathCalathea.position.set(-5.32, 0.005, -4.35);
+  root.add(bathCalathea);
   buildWalnutTripodFloorLamp(ctx, root, mcm, [4.76, rugTopY, 7.92]);
 
   addSheerPinchPleatDraperyStack(root, mcm, { name: 'stahl.living.draperyEastMid', axis: 'z', center: [5.95, 6.48], widthM: 0.62, ceilingTopY, cutaway: eastCliffCut });
