@@ -116,6 +116,7 @@ export function getDefaultDoorOpenAngle(
     door.overheadTrackZ !== undefined ||
     door.isFoldingFloorMat ||
     door.pivot.userData?.pocketRetractOffset !== undefined ||
+    door.pivot.userData?.linearSlideOffset !== undefined ||
     pivotChainLower.includes("tvcarrier") ||
     pivotChainLower.includes("safepanel")
   ) {

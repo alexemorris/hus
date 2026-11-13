@@ -733,7 +733,7 @@ export class RoomLodController {
     }
 
     const effectiveFloorMode: FloorViewMode =
-      usePortalCulling && options?.isWalkthrough ? 'all' : floorViewMode;
+      options?.isWalkthrough ? 'all' : floorViewMode;
 
     for (const room of this.rooms.values()) {
       const verticalWeight = effectiveFloorMode === 'all' ? 1.6 : 0.45;

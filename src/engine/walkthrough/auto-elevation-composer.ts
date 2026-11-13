@@ -138,7 +138,10 @@ const NON_WALKABLE_ANCESTOR_RE =
   /ceiling|roof|cornice|coving|ceilingRose|pendant|chandelier|downlight|sconce|wall|partition|skirting|dado|pictureRail|window|sash|architrave|lintel|balustrade|handrail|spindle|newel|fence|gate/i;
 
 const WALKABLE_SURFACE_NAME_RE =
-  /(?:^|[._-])(slab|floor|step|steps|tread|landing|terrace|patio|porch|portico|stoop|threshold|plinth|deck|decking|catwalk|bridge|walkway|paving|cobble|flagstone|driveway|path|showerTray|bathFloor)(?:$|[._A-Z0-9-])/i;
+  /(?:^|[._-])(slab|floor|step|steps|tread|landing|terrace|patio|stoop|threshold|deck|decking|catwalk|bridge|walkway|walk|paving|footway|lawn|gravel|cobble|flagstone|driveway|path|showerTray|bathFloor)(?:$|[._A-Z0-9-])|[a-z0-9](Step|Steps|Tread|Landing|Terrace|Patio|Stoop|Threshold|Deck|Decking|Catwalk|Bridge|Walkway|Walk|Paving|Footway|Lawn|Gravel|Cobble|Flagstone|Driveway|ShowerTray|BathFloor)(?:$|[._A-Z0-9-])/i;
+
+const WALKABLE_CONTAINER_NAME_RE =
+  /(?:^|[._-])(slab|floor|terrace|patio|deck|decking|catwalk|bridge|walkway|driveway)(?:$|[._A-Z0-9-])|[a-z0-9](Slab|Floor|Terrace|Patio|Deck|Decking|Catwalk|Bridge|Walkway|Driveway)(?:$|[._A-Z0-9-])/i;
 
 const FURNITURE_OR_FIXTURE_NAME_RE =
   /table|desk|chair|sofa|armchair|bed|mattress|pillow|duvet|wardrobe|cabinet|cupboard|carcass|worktop|island|counter|shelf|shelves|bookcase|dresser|sideboard|console|bench|stool|ottoman|tv|fridge|freezer|oven|cooker|range|sink|basin|washstand|toilet|wc|cistern|tub|radiator|towel|lamp|switch|socket|dimmer|rug|carpet|runner|mat\b/i;
@@ -254,6 +257,19 @@ export function collectRegisteredStaircases(root: THREE.Object3D): IndexedStairc
       if (vz < minZ) minZ = vz;
       if (vz > maxZ) maxZ = vz;
     }
+    if (sampler.bounds && !sampler.bounds.isEmpty()) {
+      for (const lx of [sampler.bounds.min.x, sampler.bounds.max.x]) {
+        for (const ly of [sampler.bounds.min.y, sampler.bounds.max.y]) {
+          for (const lz of [sampler.bounds.min.z, sampler.bounds.max.z]) {
+            tmpVec.set(lx, ly, lz).applyMatrix4(worldMat);
+            if (tmpVec.x < minX) minX = tmpVec.x;
+            if (tmpVec.x > maxX) maxX = tmpVec.x;
+            if (tmpVec.z < minZ) minZ = tmpVec.z;
+            if (tmpVec.z > maxZ) maxZ = tmpVec.z;
+          }
+        }
+      }
+    }
     const worldBox = new THREE.Box3().setFromObject(obj);
     if (!worldBox.isEmpty()) {
       minX = Math.min(minX, worldBox.min.x);
@@ -312,6 +328,7 @@ export function createAutoWalkthroughElevationComposer(
 
   let indexedScene: THREE.Object3D | null = null;
   let indexedNodeSignature = -1;
+  let indexedFromUnbatched = false;
   let indexedStairs: IndexedStaircaseEntry[] = [];
   const triangleGrid = new Map<number, WalkableTriangle[]>();
 
@@ -332,7 +349,8 @@ export function createAutoWalkthroughElevationComposer(
     const isDoubleSide = mat?.side === THREE.DoubleSide;
     const index = geom.getIndex();
     const triCount = index ? Math.floor(index.count / 3) : Math.floor(pos.count / 3);
-    if (triCount > 4096) return;
+    const maxTris = mesh.userData?.isBatchedStaticMesh === true ? 32768 : 4096;
+    if (triCount > maxTris) return;
 
     for (let t = 0; t < triCount; t++) {
       const i0 = index ? index.getX(t * 3) : t * 3;
@@ -397,14 +415,38 @@ export function createAutoWalkthroughElevationComposer(
     }
   };
 
+  const hasBatchedStaticMeshes = (root: THREE.Object3D): boolean => {
+    let found = false;
+    root.traverse((obj) => {
+      if (obj.userData?.isBatchedStaticMesh === true) {
+        found = true;
+      }
+    });
+    return found;
+  };
+
   const ensureIndexed = (): void => {
     const scene = options.getScene();
     if (!scene) return;
     const sig = countSceneNodesFast(scene);
     if (scene === indexedScene && sig === indexedNodeSignature) return;
 
+    const sceneIsBatched = hasBatchedStaticMeshes(scene);
+    if (
+      scene === indexedScene &&
+      indexedFromUnbatched &&
+      sceneIsBatched &&
+      (triangleGrid.size > 0 || indexedStairs.length > 0)
+    ) {
+      // Preserve full-fidelity pre-batch walkable triangles & staircases after SceneBatchOptimizer
+      // detaches original meshes into static batches.
+      indexedNodeSignature = sig;
+      return;
+    }
+
     indexedScene = scene;
     indexedNodeSignature = sig;
+    indexedFromUnbatched = !sceneIsBatched;
     triangleGrid.clear();
     indexedStairs = collectRegisteredStaircases(scene);
 
@@ -413,7 +455,7 @@ export function createAutoWalkthroughElevationComposer(
     const visit = (
       node: THREE.Object3D,
       inSlabLayer: boolean,
-      hasWalkableName: boolean
+      hasWalkableContainer: boolean
     ): void => {
       if (stairGroups.has(node)) return;
       const u = node.userData as Record<string, unknown> | undefined;
@@ -445,28 +487,41 @@ export function createAutoWalkthroughElevationComposer(
         u?.isFloorSlab === true ||
         u?.walkableSurface === true ||
         u?.collisionRole === 'walkable';
-      const nodeHasWalkableName = hasWalkableName || WALKABLE_SURFACE_NAME_RE.test(name);
+      const isSolidPlane =
+        u?.collisionRole === 'solidPlane' || u?.isWalkthroughSolidPlane === true;
+      const nodeHasWalkableContainer =
+        hasWalkableContainer ||
+        (!(node instanceof THREE.Mesh) && WALKABLE_CONTAINER_NAME_RE.test(name));
+      const leafHasWalkableName = WALKABLE_SURFACE_NAME_RE.test(name);
 
       if (
         node instanceof THREE.Mesh &&
         !(node instanceof THREE.InstancedMesh) &&
-        u?.isBatchedStaticMesh !== true
+        (u?.isBatchedStaticMesh !== true || (sceneIsBatched && (nodeIsSlabLayer || nodeHasWalkableContainer)))
       ) {
         if (!FURNITURE_OR_FIXTURE_NAME_RE.test(name) || /bathFloor|showerTray/i.test(name)) {
-          let qualifies = nodeIsSlabLayer || nodeHasWalkableName;
-          if (!qualifies && !NON_WALKABLE_ANCESTOR_RE.test(name)) {
-            if (!node.geometry.boundingBox) node.geometry.computeBoundingBox();
-            const gb = node.geometry.boundingBox;
-            if (gb && !gb.isEmpty()) {
-              tmpBox.copy(gb).applyMatrix4(node.matrixWorld);
-              const sizeX = tmpBox.max.x - tmpBox.min.x;
-              const sizeY = tmpBox.max.y - tmpBox.min.y;
-              const sizeZ = tmpBox.max.z - tmpBox.min.z;
-              const topY = tmpBox.max.y;
-              const nearDeclaredFloor = floorElevations.some((fy) => Math.abs(topY - fy) <= 0.12);
-              if (sizeY <= 0.45 && Math.min(sizeX, sizeZ) >= 1.6 && nearDeclaredFloor) {
-                qualifies = true;
-              }
+          if (!node.geometry.boundingBox) node.geometry.computeBoundingBox();
+          const gb = node.geometry.boundingBox;
+          let sizeX = 0;
+          let sizeY = 0;
+          let sizeZ = 0;
+          let topY = 0;
+          if (gb && !gb.isEmpty()) {
+            tmpBox.copy(gb).applyMatrix4(node.matrixWorld);
+            sizeX = tmpBox.max.x - tmpBox.min.x;
+            sizeY = tmpBox.max.y - tmpBox.min.y;
+            sizeZ = tmpBox.max.z - tmpBox.min.z;
+            topY = tmpBox.max.y;
+          }
+          let qualifies =
+            nodeIsSlabLayer ||
+            nodeHasWalkableContainer ||
+            leafHasWalkableName ||
+            (isSolidPlane && sizeY <= 0.45);
+          if (!qualifies && !NON_WALKABLE_ANCESTOR_RE.test(name) && gb && !gb.isEmpty()) {
+            const nearDeclaredFloor = floorElevations.some((fy) => Math.abs(topY - fy) <= 0.12);
+            if (sizeY <= 0.45 && Math.min(sizeX, sizeZ) >= 1.6 && nearDeclaredFloor) {
+              qualifies = true;
             }
           }
           if (qualifies) {
@@ -475,13 +530,13 @@ export function createAutoWalkthroughElevationComposer(
         }
       }
 
-      if (NON_WALKABLE_ANCESTOR_RE.test(name) && !nodeIsSlabLayer && !nodeHasWalkableName) {
+      if (NON_WALKABLE_ANCESTOR_RE.test(name) && !nodeIsSlabLayer && !nodeHasWalkableContainer && !leafHasWalkableName) {
         return;
       }
 
       const children = node.children;
       for (let i = 0; i < children.length; i++) {
-        visit(children[i]!, nodeIsSlabLayer, nodeHasWalkableName);
+        visit(children[i]!, nodeIsSlabLayer, nodeHasWalkableContainer);
       }
     };
 
@@ -491,7 +546,8 @@ export function createAutoWalkthroughElevationComposer(
   const isInsideUpperStairwellVoid = (
     x: number,
     z: number,
-    floorElevationY: number
+    floorElevationY: number,
+    hasActualSlabTriangle = false
   ): boolean => {
     ensureIndexed();
     if (floorElevationY <= lowestFloorY + 0.35) return false;
@@ -500,6 +556,12 @@ export function createAutoWalkthroughElevationComposer(
       if (Math.abs(floorElevationY - stair.worldTopY) > 0.35) continue;
       if (x < stair.minX || x > stair.maxX || z < stair.minZ || z > stair.maxZ) continue;
       if (isStrictlyInsidePolygonXZ(x, z, stair.worldVoidXZ, 0.015)) {
+        if (hasActualSlabTriangle) {
+          const stairY = stair.sampleWorldY(x, z);
+          if (stairY === null || floorElevationY - stairY >= 2.0) {
+            continue;
+          }
+        }
         return true;
       }
     }
@@ -591,7 +653,7 @@ export function createAutoWalkthroughElevationComposer(
         if (!pointInTriangleXZ(x, z, tri)) continue;
         const surfY = -(tri.nx * x + tri.nz * z + tri.planeD) / tri.ny;
         if (surfY > currentFootY + maxStepUpM) continue;
-        if (isInsideUpperStairwellVoid(x, z, surfY)) continue;
+        if (isInsideUpperStairwellVoid(x, z, surfY, true)) continue;
         if (bestSurfaceY === null || surfY > bestSurfaceY) {
           bestSurfaceY = surfY;
         }
@@ -625,6 +687,7 @@ export function createAutoWalkthroughElevationComposer(
     invalidate() {
       indexedScene = null;
       indexedNodeSignature = -1;
+      indexedFromUnbatched = false;
       indexedStairs = [];
       triangleGrid.clear();
     },

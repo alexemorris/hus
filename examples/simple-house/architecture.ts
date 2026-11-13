@@ -392,6 +392,8 @@ function addFrenchDoors(
   const leafW = half - 0.052;
   const leafH = 2.17;
   const y0 = 0.012;
+  let westPivot: THREE.Group | null = null;
+  let eastPivot: THREE.Group | null = null;
   for (const s of [-1, 1] as const) {
     const tag = s < 0 ? 'west' : 'east';
     const leaf = new THREE.Group();
@@ -418,13 +420,18 @@ function addFrenchDoors(
     leaf.add(knob);
     root.add(leaf);
     tagCutaway(leaf, cutaway);
-    registerHingedDoor(ctx, {
+    const pivot = registerHingedDoor(ctx, {
       parent: root,
       door: leaf,
       hingeOffset: [s * (0.001 + leafW), 0, 0],
       axis: 'y',
       openAngle: -s * 1.35,
     });
+    if (s < 0) westPivot = pivot;
+    else eastPivot = pivot;
+  }
+  if (westPivot && eastPivot) {
+    ctx.interactions?.linkDoorPair(westPivot, eastPivot);
   }
   tagCutaway(root, cutaway);
 }

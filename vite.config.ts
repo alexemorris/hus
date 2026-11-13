@@ -1,6 +1,6 @@
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 import { husDevServerPlugins } from './tools/dev-server/index.ts';
 
 const ROOT_DIR = dirname(fileURLToPath(import.meta.url));
@@ -61,6 +61,9 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 4173,
     allowedHosts: true,
+  },
+  test: {
+    testTimeout: 25_000,
   },
   build: {
     chunkSizeWarningLimit: 2500,

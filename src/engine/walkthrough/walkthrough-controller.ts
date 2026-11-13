@@ -274,7 +274,10 @@ export class WalkthroughController {
   public getFootPosition(): THREE.Vector3 { return this.footPos; }
   public getSpawns(): readonly WalkthroughSpawnPoint[] { return this.hooks.spawns ?? []; }
   public invalidateObstacleCache(): void { this.collisionAndBarge.invalidateObstacleCache(); }
-  public captureFurnitureColliders(): void { this.collisionAndBarge.captureFurnitureColliders(); }
+  public captureFurnitureColliders(): void {
+    this.collisionAndBarge.captureFurnitureColliders();
+    this.sampleElevation(this.footPos.x, this.footPos.y, this.footPos.z);
+  }
   public warmSpatialIndices(): void { this.collisionAndBarge.getObstacleCache(); }
   public getSpatialGridStats() { return this.collisionAndBarge.getSpatialGridStats(); }
   public pressKey(code: string): void { this.keysDown.add(code); }

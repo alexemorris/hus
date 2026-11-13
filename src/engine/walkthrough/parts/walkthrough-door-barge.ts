@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { accelerateStaticMeshRaycast, prebuildGeometryBvh } from '../../rendering/mesh-bvh.ts';
+import { getStaircaseWalkableSampler } from '../auto-elevation-composer.ts';
 import { sampleGenericWalkableElevation } from './walkthrough-elevation-solver.ts';
 
 function isColliderVisibleInHierarchy(object: THREE.Object3D): boolean {
@@ -179,12 +180,14 @@ function ensureGeometryBoundingBoxFast(geom: THREE.BufferGeometry): THREE.Box3 |
 
 function isDynamicNode(node: THREE.Object3D): boolean {
   const u = node.userData as Record<string, unknown> | undefined;
-  if (u?.isBifoldDoor === true || u?.isCarGate === true) {
+  if (u?.isBifoldDoor === true || u?.isCarGate === true || u?.doorRole === 'pivot') {
     return true;
   }
   if (
     typeof u?.interactableId === 'string' &&
-    (u.interactableId.startsWith('door-') || u.interactableId.startsWith('bifold-cupboard-'))
+    (u.interactableId.startsWith('door-') ||
+      u.interactableId.startsWith('door:') ||
+      u.interactableId.startsWith('bifold-cupboard-'))
   ) {
     return true;
   }
@@ -198,6 +201,10 @@ function shouldSkipSubtree(node: THREE.Object3D): boolean {
     u?.isWeatherOverlay === true ||
     u?.isEnvironmentGround === true ||
     u?.isShadowPassHook === true ||
+    u?.isLightGlowPool === true ||
+    u?.isFittingFx === true ||
+    u?.ignoreWalkthroughCollision === true ||
+    u?.isClimbableLadder === true ||
     u?.collisionRole === 'ignore' ||
     u?.collisionRole === 'climbable' ||
     Boolean(u?.ufhZoneId)
@@ -287,7 +294,11 @@ export class WalkthroughDoorBargeAndCollisionSolver {
 
   private resolveCollisionMeshRule(mesh: THREE.Mesh): WalkthroughCollisionMeshRule | null {
     const houseRule = this.hooks.classifyCollisionMesh?.(mesh) ?? null;
-    if ((mesh.userData as Record<string, unknown> | undefined)?.collisionRole === 'solidPlane') {
+    const u = mesh.userData as Record<string, unknown> | undefined;
+    if (u?.collisionRole === 'ignore' || u?.ignoreWalkthroughCollision === true) {
+      return { ignore: true };
+    }
+    if (u?.collisionRole === 'solidPlane' || u?.isWalkthroughSolidPlane === true) {
       return houseRule ? { ...houseRule, solidPlane: true } : SOLID_PLANE_RULE;
     }
     return houseRule;
@@ -702,10 +713,131 @@ export class WalkthroughDoorBargeAndCollisionSolver {
       });
     };
 
+    const emitFlightBalustradeObbs = (flightGroup: THREE.Object3D): void => {
+      if (!rebuildFurniture) return;
+      for (const side of ['left', 'right'] as const) {
+        const sideSuffix = `_${side}`;
+        const sideMeshes: THREE.Mesh[] = [];
+        for (let i = 0; i < flightGroup.children.length; i++) {
+          const ch = flightGroup.children[i]!;
+          const cName = typeof ch.name === 'string' ? ch.name : '';
+          if (
+            !cName.endsWith(sideSuffix) &&
+            !cName.includes(`spindle_${side}_`) &&
+            !cName.includes(`cutSpindle_${side}_`)
+          ) {
+            continue;
+          }
+          if (
+            /handrail_|shoeRail_|footNewel_|topNewel_|spindle_|cutSpindle_|understairsCupboardSpandrel_/.test(
+              cName
+            )
+          ) {
+            ch.traverse((m) => {
+              if (m instanceof THREE.Mesh) sideMeshes.push(m);
+            });
+          }
+        }
+        if (sideMeshes.length === 0) continue;
+
+        const me = flightGroup.matrixWorld.elements;
+        const lenAx = Math.hypot(me[0]!, me[2]!);
+        const lenAz = Math.hypot(me[8]!, me[10]!);
+        let ux = 1;
+        let uz = 0;
+        if (lenAx >= lenAz && lenAx > 1e-4) {
+          ux = me[0]! / lenAx;
+          uz = me[2]! / lenAx;
+        } else if (lenAz > 1e-4) {
+          ux = me[8]! / lenAz;
+          ux = me[8]! / lenAz;
+          uz = me[10]! / lenAz;
+        }
+        const vx = -uz;
+        const vz = ux;
+
+        let minU = Number.POSITIVE_INFINITY;
+        let maxU = Number.NEGATIVE_INFINITY;
+        let minV = Number.POSITIVE_INFINITY;
+        let maxV = Number.NEGATIVE_INFINITY;
+        let minY = Number.POSITIVE_INFINITY;
+        let maxY = Number.NEGATIVE_INFINITY;
+
+        for (let mIdx = 0; mIdx < sideMeshes.length; mIdx++) {
+          const m = sideMeshes[mIdx]!;
+          const gBox = ensureGeometryBoundingBoxFast(m.geometry);
+          if (!gBox || gBox.isEmpty()) continue;
+          for (let cxIdx = 0; cxIdx < 2; cxIdx++) {
+            const lx = cxIdx === 0 ? gBox.min.x : gBox.max.x;
+            for (let cyIdx = 0; cyIdx < 2; cyIdx++) {
+              const ly = cyIdx === 0 ? gBox.min.y : gBox.max.y;
+              for (let czIdx = 0; czIdx < 2; czIdx++) {
+                const lz = czIdx === 0 ? gBox.min.z : gBox.max.z;
+                this.tmpCorner.set(lx, ly, lz).applyMatrix4(m.matrixWorld);
+                const uCoord = this.tmpCorner.x * ux + this.tmpCorner.z * uz;
+                const vCoord = this.tmpCorner.x * vx + this.tmpCorner.z * vz;
+                if (uCoord < minU) minU = uCoord;
+                if (uCoord > maxU) maxU = uCoord;
+                if (vCoord < minV) minV = vCoord;
+                if (vCoord > maxV) maxV = vCoord;
+                if (this.tmpCorner.y < minY) minY = this.tmpCorner.y;
+                if (this.tmpCorner.y > maxY) maxY = this.tmpCorner.y;
+              }
+            }
+          }
+        }
+        if (!Number.isFinite(minU) || maxU <= minU || maxV <= minV) continue;
+        const midU = (minU + maxU) * 0.5;
+        const midV = (minV + maxV) * 0.5;
+        const furn: CachedFurnitureBox = {
+          mesh: sideMeshes[0]!,
+          visibilityNode: flightGroup,
+          centerX: midU * ux + midV * vx,
+          centerZ: midU * uz + midV * vz,
+          radiusXZ: Math.hypot(maxU - minU, maxV - minV) * 0.5,
+          minY,
+          maxY,
+          ux,
+          uz,
+          minU,
+          maxU,
+          minV,
+          maxV,
+          visitStamp: 0,
+        };
+        furnitureList.push(furn);
+        this.indexFurnitureIntoGrid(furn);
+      }
+    };
+
+    const isBuiltInCompositeGroup = (node: THREE.Object3D): boolean => {
+      if (node instanceof THREE.Mesh) return false;
+      const n = typeof node.name === 'string' ? node.name : '';
+      if (!n) return false;
+      // createBalustradeRun segments & newel posts (blocks walking through open spindle gaps!)
+      if (/\.segment_\d+$/.test(n) && node.children.some((c) => /handrail_|shoeRail_|spindle_/.test(c.name))) {
+        return true;
+      }
+      // buildGeorgianBrickRailingsAndGate railing bays & masonry piers
+      if (/\.(railingBay(?:Left|Right)?_\d+|(?:gate|end)?Pier(?:Left|Right)(?:_\d+)?)$/i.test(n)) {
+        return true;
+      }
+      // Cast-iron column radiators (multi-column sub-meshes < 0.29m deep individually)
+      if (/\.radiator\b|radiator$/i.test(n) && node.children.some((c) => /headerBarrel|sectionBoss|colTube/.test(c.name))) {
+        return true;
+      }
+      // Double-sided / architectural fireplace assemblies (includes low open hearth plinth!)
+      if (/fireplace\.assembly$/i.test(n)) {
+        return true;
+      }
+      return false;
+    };
+
     const visitNode = (
       node: THREE.Object3D,
       inheritedDynamic: boolean,
-      inheritedShell: boolean
+      inheritedShell: boolean,
+      inheritedStaircase: boolean
     ): void => {
       if (
         node !== this.scene &&
@@ -714,7 +846,26 @@ export class WalkthroughDoorBargeAndCollisionSolver {
         return;
       }
 
-      const compositeInset = this.hooks.getCompositeObbInset?.(node) ?? null;
+      const isRegisteredStair = node !== this.scene && getStaircaseWalkableSampler(node) !== undefined;
+      const inStaircase = inheritedStaircase || isRegisteredStair;
+
+      if (inStaircase && /^flight_\d+$/.test(node.name)) {
+        emitFlightBalustradeObbs(node);
+        return;
+      }
+      if (inStaircase && !isRegisteredStair) {
+        // Inside a registered staircase: quarter-landing & walkable treads/risers/runner/rods/soffit
+        // are handled by sampleWalkableElevation; only nested flight balustrades emit OBBs above.
+        const children = node.children;
+        for (let i = 0; i < children.length; i++) {
+          visitNode(children[i]!, inheritedDynamic, inheritedShell, true);
+        }
+        return;
+      }
+
+      const compositeInset =
+        this.hooks.getCompositeObbInset?.(node) ??
+        (isBuiltInCompositeGroup(node) ? 0 : null);
       if (compositeInset !== null) {
         emitCompositeGroupObb(node, compositeInset);
         return;
@@ -724,7 +875,7 @@ export class WalkthroughDoorBargeAndCollisionSolver {
       if (
         !inheritedDynamic &&
         typeof u?.interactableId === 'string' &&
-        u.interactableId.startsWith('door-')
+        (u.interactableId.startsWith('door-') || u.interactableId.startsWith('door:'))
       ) {
         recordDoorwayIfCandidate(node);
       }
@@ -742,7 +893,8 @@ export class WalkthroughDoorBargeAndCollisionSolver {
         !u?.circuitId &&
         u?.isMergedSourceMesh !== true &&
         u?.isBatchedStaticMesh !== true &&
-        u?.skipWalkthroughObstacle !== true
+        u?.skipWalkthroughObstacle !== true &&
+        u?.ignoreWalkthroughCollision !== true
       ) {
         const rule = this.resolveCollisionMeshRule(node);
         if (!(node.geometry instanceof THREE.PlaneGeometry) || rule?.solidPlane === true) {
@@ -761,11 +913,11 @@ export class WalkthroughDoorBargeAndCollisionSolver {
 
       const children = node.children;
       for (let i = 0; i < children.length; i++) {
-        visitNode(children[i]!, hasDynamic, hasShell);
+        visitNode(children[i]!, hasDynamic, hasShell, inStaircase);
       }
     };
 
-    visitNode(this.scene, false, false);
+    visitNode(this.scene, false, false, false);
 
     this.cachedObstacles = list;
     this.dynamicObstacles = dynList;
@@ -793,12 +945,28 @@ export class WalkthroughDoorBargeAndCollisionSolver {
       return;
     }
 
+    const u = obj.userData as Record<string, unknown> | undefined;
+    const parentName = obj.parent?.name ?? '';
+    const fullName = typeof name === 'string' ? `${parentName} ${name}` : parentName;
+    if (
+      u?.isFloorSlab === true ||
+      u?.walkableSurface === true ||
+      u?.collisionRole === 'walkable' ||
+      /\.(slab|finish|deck|ceiling)$|threshold|yorkstoneLowerStep|yorkstoneUpperLanding|frenchDoorLowerStep|frenchDoorUpperStep|pool\.water|waterSurface|skirting|cornice|coving|pictureRail|dado|architrave/i.test(
+        fullName
+      )
+    ) {
+      return;
+    }
+
     const isBlindOrCurtain = typeof name === 'string' && /curtain/i.test(name);
     const isSolidPlane = rule?.solidPlane === true;
     const isThinBarrier =
       rule?.thinBarrier === true ||
       (typeof name === 'string' &&
-        (name.includes('.picketFence.') || name.includes('.picketGate.')));
+        (name.includes('.picketFence.') ||
+          name.includes('.picketGate.') ||
+          /yewHedge|hedge|fence|parapet|retainingWall/i.test(fullName)));
     const isForcedSolid = rule?.solid === true;
     const forcedFurnitureHeadroomM = rule?.forceFurnitureHeadroomM;
     const isForcedFurniture = forcedFurnitureHeadroomM !== undefined;
@@ -815,6 +983,32 @@ export class WalkthroughDoorBargeAndCollisionSolver {
             ((mat as THREE.Material & { opacity?: number })?.opacity ?? 1) <= 0.5
         );
 
+    const isDoorFrameOrJamb =
+      typeof name === 'string' &&
+      (name.includes('.doorFrame') ||
+        name.includes('.sill') ||
+        /\.(jamb|head|casing|stop|horn)(?:_|$)/i.test(name));
+
+    const isWalkableOrFoliage =
+      rule?.noFurniture === true ||
+      (typeof name === 'string' &&
+        (name.includes('.botanical') ||
+          name.includes('trailingSpray') ||
+          name.includes('cropMound') ||
+          name.includes('vineClimber') ||
+          /terrace|patio|walkway|footway|lawn|gravel|driveway|catwalk|bridgePad/i.test(fullName)));
+
+    const isFloorRugOrSill =
+      typeof name === 'string' &&
+      /rug|runner|tiledFloor|thresholdSill|doorThresholdTile|doorThresholdStrip|carpet|bathMat|doormat|coirMat|romanBlind|window[XZ]?\\.\\d+\\.(glass|rail)/i.test(
+        fullName
+      );
+
+    // Extruded BufferGeometry walls/partitions (e.g. extrudePlanarSolidWithHoles), hedges, and
+    // sculpted furniture/sanitaryware are all eligible candidates!
+    const isExtrudedOrSolidMesh =
+      !isWalkableOrFoliage && !isFloorRugOrSill && !isDoorFrameOrJamb;
+
     const mayBeObstacle =
       isBlindOrCurtain ||
       isSolidPlane ||
@@ -823,24 +1017,8 @@ export class WalkthroughDoorBargeAndCollisionSolver {
       (!hasDynamicAncestor && isTransparentGlassMat) ||
       hasDynamicAncestor ||
       obj.geometry instanceof THREE.BoxGeometry ||
-      hasArchitecturalShellAncestor;
-
-    const isDoorFrameOrJamb =
-      typeof name === 'string' && (name.includes('.doorFrame') || name.includes('.sill'));
-
-    const isWalkableOrFoliage =
-      rule?.noFurniture === true ||
-      (typeof name === 'string' &&
-        (name.includes('.botanical') ||
-          name.includes('trailingSpray') ||
-          name.includes('cropMound') ||
-          name.includes('vineClimber')));
-
-    const isFloorRugOrSill =
-      typeof name === 'string' &&
-      /rug|tiledFloor|thresholdSill|doorThresholdTile|doorThresholdStrip|carpet|bathMat|romanBlind|window[XZ]?\\.\\d+\\.(glass|rail)/i.test(
-        name
-      );
+      hasArchitecturalShellAncestor ||
+      isExtrudedOrSolidMesh;
 
     const mayBeFurniture =
       rebuildFurniture &&
@@ -851,8 +1029,6 @@ export class WalkthroughDoorBargeAndCollisionSolver {
           !hasDynamicAncestor &&
           !isDoorFrameOrJamb));
 
-    // Skip raw vertex bounding-box scans entirely when a mesh can neither be an obstacle nor furniture,
-    // or when a non-shell prop lies far outside the house's walkable collision footprint.
     if (!mayBeObstacle && !mayBeFurniture) {
       return;
     }
@@ -883,12 +1059,25 @@ export class WalkthroughDoorBargeAndCollisionSolver {
     const centerZ = (this.tmpBox.min.z + this.tmpBox.max.z) * 0.5;
     const radiusXZ = Math.hypot(sizeX, sizeZ) * 0.5;
 
+    // Horizontal solidPlane slabs/steps (sizeY < 0.42 && min(sizeX, sizeZ) > 0.35) are walkable
+    // surfaces for elevation sampling, NOT horizontal blocking walls!
+    if (isSolidPlane && !isForcedSolid && sizeY < 0.42 && Math.min(sizeX, sizeZ) > 0.35) {
+      return;
+    }
+
     const isWindowGlass =
       !hasDynamicAncestor &&
       isTransparentGlassMat &&
       sizeY >= 0.45 &&
       Math.min(sizeX, sizeZ) <= 0.16 &&
       Math.max(sizeX, sizeZ) >= 0.35;
+
+    const isExtrudedWallOrBarrier =
+      isExtrudedOrSolidMesh &&
+      !(obj.geometry instanceof THREE.BoxGeometry) &&
+      sizeY >= 0.55 &&
+      Math.max(sizeX, sizeZ) >= 0.32 &&
+      (Math.min(sizeX, sizeZ) <= 0.85 || /hedge|wall|partition|divider|core|island|counter|vanity|tub|bath|wc|toilet|wardrobe/i.test(fullName));
 
     const isBoxOrShellWall =
       isBlindOrCurtain ||
@@ -898,24 +1087,28 @@ export class WalkthroughDoorBargeAndCollisionSolver {
       isWindowGlass ||
       hasDynamicAncestor ||
       obj.geometry instanceof THREE.BoxGeometry ||
-      hasArchitecturalShellAncestor;
+      hasArchitecturalShellAncestor ||
+      isExtrudedWallOrBarrier;
 
     const validObstacleSpan =
       Math.max(sizeX, sizeZ) >= 0.32 ||
       (sizeY >= 0.85 && Math.max(sizeX, sizeZ) >= 0.04) ||
       (isThinBarrier && sizeY >= 0.45 && Math.max(sizeX, sizeZ) >= 0.04) ||
-      (hasDynamicAncestor && sizeY >= 0.45 && Math.max(sizeX, sizeZ) >= 0.16);
+      (hasDynamicAncestor &&
+        ((sizeY >= 0.45 && Math.max(sizeX, sizeZ) >= 0.014) ||
+          (sizeY >= 0.012 && Math.max(sizeX, sizeZ) >= 0.28)));
 
     const validObstacleHeight =
       sizeY >= 0.45 ||
       (isBlindOrCurtain && sizeY >= 0.25) ||
-      (isThinBarrier && sizeY >= 0.04 && Math.max(sizeX, sizeZ) >= 0.32);
+      (isThinBarrier && sizeY >= 0.04 && Math.max(sizeX, sizeZ) >= 0.32) ||
+      (hasDynamicAncestor && sizeY >= 0.012 && Math.max(sizeX, sizeZ) >= 0.28);
 
     if (
       isBoxOrShellWall &&
       validObstacleHeight &&
       validObstacleSpan &&
-      (isSolidPlane || Math.min(sizeX, sizeZ) >= 0.008) &&
+      (isSolidPlane || hasDynamicAncestor || Math.min(sizeX, sizeZ) >= 0.008) &&
       Math.max(sizeX, sizeZ) <= 28.0
     ) {
       const obs: CachedObstacle = {
@@ -946,11 +1139,15 @@ export class WalkthroughDoorBargeAndCollisionSolver {
       const topAboveFloor = effectiveMaxY - floorY;
       const botAboveFloor = this.tmpBox.min.y - floorY;
 
+      const isOverheadFixture =
+        botAboveFloor >= 1.55 ||
+        /pendant|chandelier|lantern|downlight|spotlight|ceilingRose/i.test(fullName);
       if (
+        !isOverheadFixture &&
         (isForcedFurniture || !(sizeY <= 0.06 && topAboveFloor <= 0.09)) &&
-        topAboveFloor >= 0.34 &&
+        topAboveFloor >= 0.26 &&
         topAboveFloor <= 2.65 &&
-        botAboveFloor <= 1.65
+        botAboveFloor <= 1.55
       ) {
         const m = obj.matrixWorld.elements;
         const lenAx = Math.hypot(m[0]!, m[2]!);

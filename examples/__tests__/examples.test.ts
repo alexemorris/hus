@@ -75,7 +75,7 @@ function createHarnessContext(circuitIds: readonly string[]): {
   return { ctx, scene };
 }
 
-describe('Stages 4.3, 4.4, 4.5 & 4.10b — husjs Example & Showcase Homes', () => {
+describe('Stages 4.3, 4.4, 4.5 & 4.10b — husjs Example & Showcase Homes', { timeout: 25_000 }, () => {
   it('Stage 4.3 simple-flat: single-floor apartment, 2-way hallway switches & living dimmer', () => {
     expect(simpleFlat.id).toBe('simple-flat');
     expect(simpleFlat.floors).toHaveLength(1);

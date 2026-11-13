@@ -72,3 +72,5 @@ export * from '../engine/assets/smart-asset.ts';
 export { AssetInspectorController } from '../engine/assets/asset-inspector-controller.ts';
 
 export { CircuitLightingController } from '../engine/lighting/circuit-lighting.ts';
+
+export { CameraRig } from '../engine/camera/camera-rig.ts';

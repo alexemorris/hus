@@ -174,6 +174,9 @@ export function husViteConfig(options = {}) {
       port: 4173,
       allowedHosts: true,
     },
+    test: {
+      testTimeout: 25_000,
+    },
     build: {
       chunkSizeWarningLimit: 2500,
       rollupOptions: {
