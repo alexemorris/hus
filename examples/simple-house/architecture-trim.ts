@@ -16,10 +16,13 @@ import {
   GROUND_CEILING_SOFFIT_Y,
   SPINE_WALL_T,
 } from './electrical-and-rooms.ts';
-import type { FloorId } from './architecture-materials.ts';
+import { box, type FloorId } from './architecture-materials.ts';
 import {
+  BOOT_GARDEN_DOOR,
   DOORS,
   DOOR_CLEAR_W,
+  DRAWING_FRENCH_DOOR,
+  FRENCH_DOOR,
   HALL_PARTITION_X,
   IN_X,
   IN_Z,
@@ -32,6 +35,67 @@ import {
   type TrimAndStructureContext,
 } from './architecture-structure.ts';
 import { HALL_ROSE_XZ, LANDING_ROSE_XZ } from './staircase-and-hall.ts';
+
+/**
+ * Georgian 3-panel folded shutter & splayed reveal lining flanking a Ground-Floor South sash window.
+ * Positioned 2 mm clear of `Z = IN_Z` interior plaster (centered around `Z = IN_Z - 0.012`) and
+ * 4 mm outside sash architraves (`±0.610`) / 2.5 mm above window board (`0.7045`) so 0 z-fight!
+ */
+function buildSouthSashShutterReveal(opts: {
+  readonly id: string;
+  readonly centerX: number;
+  readonly zone: string;
+  readonly material: THREE.Material;
+  readonly cutaway: CutawayWallDescriptor;
+}): THREE.Group {
+  const { id, centerX, zone, material, cutaway } = opts;
+  const group = new THREE.Group();
+  group.name = `simpleHouse.trim.shutterReveal.${id}`;
+  group.userData.zoneId = zone;
+
+  const yBot = FFL_GROUND + 0.707;
+  const yTop = FFL_GROUND + 2.5;
+  const totalH = yTop - yBot; // 1.793 m
+  const innerOff = 0.614;
+  const outerOff = 0.754;
+  const leafW = outerOff - innerOff; // 0.140 m
+  const stileW = 0.026;
+  const panelW = leafW - stileW * 2 - 0.002;
+  const zFrame = IN_Z - 0.012; // 4.208 (z ∈ [4.198, 4.218], 2 mm clear of 4.220 plaster)
+  const zPanel = IN_Z - 0.011; // 4.209 (z ∈ [4.203, 4.215], 2 mm recessed from frame faces)
+
+  const railSpecs: readonly [string, number, number][] = [
+    ['railBot', yBot, 0.085],
+    ['railDado', yBot + 0.52, 0.068],
+    ['railMid', yBot + 1.16, 0.058],
+    ['railTop', yTop - 0.072, 0.072],
+  ];
+  const panelSpans: readonly [string, number, number][] = [
+    ['panelLow', yBot + 0.087, yBot + 0.518],
+    ['panelMid', yBot + 0.59, yBot + 1.158],
+    ['panelHigh', yBot + 1.22, yTop - 0.074],
+  ];
+
+  for (const [sideTag, s] of [['west', -1], ['east', 1]] as const) {
+    const cx = centerX + s * (innerOff + outerOff) * 0.5;
+    const innerStileX = centerX + s * (innerOff + stileW * 0.5);
+    const outerStileX = centerX + s * (outerOff - stileW * 0.5);
+    box(group, `${group.name}.${sideTag}.stileInner`, [stileW, totalH, 0.02], [innerStileX, yBot + totalH * 0.5, zFrame], material);
+    box(group, `${group.name}.${sideTag}.stileOuter`, [stileW, totalH, 0.02], [outerStileX, yBot + totalH * 0.5, zFrame], material);
+
+    for (const [rTag, ry, rh] of railSpecs) {
+      box(group, `${group.name}.${sideTag}.${rTag}`, [panelW, rh, 0.02], [cx, ry + rh * 0.5, zFrame], material);
+    }
+    for (const [pTag, py0, py1] of panelSpans) {
+      const ph = py1 - py0;
+      box(group, `${group.name}.${sideTag}.${pTag}`, [panelW, ph, 0.012], [cx, (py0 + py1) * 0.5, zPanel], material);
+      box(group, `${group.name}.${sideTag}.${pTag}Field`, [panelW - 0.028, ph - 0.036, 0.004], [cx, (py0 + py1) * 0.5, zFrame - 0.008], material);
+    }
+  }
+
+  tagCutaway(group, cutaway);
+  return group;
+}
 
 export function buildSimpleHouseTrim(tc: TrimAndStructureContext): void {
   const {
@@ -46,8 +110,8 @@ export function buildSimpleHouseTrim(tc: TrimAndStructureContext): void {
     cut,
   } = tc;
 
-  const pFace = HALL_PARTITION_X + SPINE_WALL_T * 0.5; // 1.39
-  const hFace = HALL_PARTITION_X - SPINE_WALL_T * 0.5; // 1.15
+  const pFace = HALL_PARTITION_X + SPINE_WALL_T * 0.5; // 1.89
+  const hFace = HALL_PARTITION_X - SPINE_WALL_T * 0.5; // 1.65
   const stairSouthFace = STAIRWELL_CROSS_Z + SPINE_WALL_T * 0.5; // -1.53
   const stairNorthFace = STAIRWELL_CROSS_Z - SPINE_WALL_T * 0.5; // -1.77
   const b = DRAWING_BREAST;
@@ -70,16 +134,16 @@ export function buildSimpleHouseTrim(tc: TrimAndStructureContext): void {
     [b.maxX, b.maxZ],
     [-IN_X + 0.118, b.maxZ],
   ];
-  // Wrap Kitchen West skirting cleanly around engaged masonry nib pier kitchenRsjPierWest
+  // Wrap Kitchen West skirting cleanly around engaged masonry nib pier kitchenRsjPierWest (`X ∈ [1.89, 2.08], Z ∈ [-0.306, -0.014]`)
   const kitchenSkirtingPath: [number, number][] = [
     [pFace, IN_Z],
     [IN_X, IN_Z],
     [IN_X, -IN_Z],
     [pFace, -IN_Z],
-    [pFace, -0.302],
-    [1.572, -0.302],
-    [1.572, -0.018],
-    [pFace, -0.018],
+    [pFace, -0.308],
+    [2.082, -0.308],
+    [2.082, -0.012],
+    [pFace, -0.012],
   ];
   const kitchenRectPath: [number, number][] = [
     [pFace, IN_Z],
@@ -88,28 +152,28 @@ export function buildSimpleHouseTrim(tc: TrimAndStructureContext): void {
     [pFace, -IN_Z],
   ];
   const kitchenPierEastPath: [number, number][] = [
-    [IN_X - 0.02, -0.038],
-    [5.278, -0.038],
-    [5.278, -0.282],
-    [IN_X - 0.02, -0.282],
+    [IN_X - 0.02, -0.032],
+    [6.9, -0.032],
+    [6.9, -0.288],
+    [IN_X - 0.02, -0.288],
   ];
   const kitchenBreastPath: [number, number][] = [
     [IN_X - 0.118, -0.82],
-    [4.752, -0.82],
-    [4.752, -2.46],
+    [6.392, -0.82],
+    [6.392, -2.46],
     [IN_X - 0.118, -2.46],
   ];
   const bootLobbyPath: [number, number][] = [
     [-hFace, stairNorthFace],
-    [-0.06, stairNorthFace],
-    [-0.06, -IN_Z],
+    [-0.31, stairNorthFace],
+    [-0.31, -IN_Z],
     [-hFace, -IN_Z],
   ];
   const cloakroomPath: [number, number][] = [
-    [0.06, stairNorthFace],
+    [-0.19, stairNorthFace],
     [hFace, stairNorthFace],
     [hFace, -IN_Z],
-    [0.06, -IN_Z],
+    [-0.19, -IN_Z],
   ];
   const principalPath: [number, number][] = [
     [-IN_X, IN_Z],
@@ -125,15 +189,15 @@ export function buildSimpleHouseTrim(tc: TrimAndStructureContext): void {
   ];
   const dressingPath: [number, number][] = [
     [-IN_X, -1.77],
-    [-3.59, -1.77],
-    [-3.59, -IN_Z],
+    [-4.45, -1.77],
+    [-4.45, -IN_Z],
     [-IN_X, -IN_Z],
   ];
   const ensuitePath: [number, number][] = [
-    [-3.47, -1.77],
+    [-4.33, -1.77],
     [-pFace, -1.77],
     [-pFace, -IN_Z],
-    [-3.47, -IN_Z],
+    [-4.33, -IN_Z],
   ];
   const guestPath: [number, number][] = [
     [pFace, IN_Z],
@@ -145,8 +209,8 @@ export function buildSimpleHouseTrim(tc: TrimAndStructureContext): void {
     [pFace, -0.22],
     [IN_X, -0.22],
     [IN_X, -IN_Z],
-    [2.47, -IN_Z],
-    [2.47, -1.53],
+    [2.87, -IN_Z],
+    [2.87, -1.53],
     [pFace, -1.53],
   ];
   const studyBreastPath: [number, number][] = [
@@ -157,16 +221,16 @@ export function buildSimpleHouseTrim(tc: TrimAndStructureContext): void {
   ];
   const bathroomPath: [number, number][] = [
     [-hFace, stairNorthFace],
-    [1.39, stairNorthFace],
-    [1.39, -2.45],
-    [2.35, -2.45],
-    [2.35, -IN_Z],
+    [1.89, stairNorthFace],
+    [1.89, -2.45],
+    [2.75, -2.45],
+    [2.75, -IN_Z],
     [-hFace, -IN_Z],
   ];
 
   const doorGap = (id: string, faceCoord: number) => {
     const d = DOORS.find((spec) => spec.id === id)!;
-    const width = (d.clearWidth ?? DOOR_CLEAR_W) + 0.14;
+    const width = (d.clearWidth ?? DOOR_CLEAR_W) + 0.144;
     return {
       at: [d.plane === 'x' ? faceCoord : d.at[0], d.plane === 'z' ? faceCoord : d.at[1]] as [number, number],
       width,
@@ -190,7 +254,7 @@ export function buildSimpleHouseTrim(tc: TrimAndStructureContext): void {
       path: opts.path,
       closed: opts.closed ?? true,
       roomSide: 'left',
-      elevationY: floorY[opts.floor] + 0.001,
+      elevationY: floorY[opts.floor] + 0.0015,
       profile: 'ogee',
       height: opts.height ?? (opts.floor === 'ground' ? 0.165 : 0.142),
       thickness: opts.thickness ?? 0.018,
@@ -237,7 +301,7 @@ export function buildSimpleHouseTrim(tc: TrimAndStructureContext): void {
     (opts.floor === 'ground' ? groundCeilingGroup : firstCeilingGroup).add(group);
   };
 
-  // Ground-floor skirtings
+  // Ground-floor skirtings, dado rail & Georgian shutter reveals
   addSkirting({
     name: 'simpleHouse.skirting.hall',
     floor: 'ground',
@@ -246,7 +310,9 @@ export function buildSimpleHouseTrim(tc: TrimAndStructureContext): void {
     material: schemes.houseHall.trim,
     gaps: [
       { box: { minX: -0.58, maxX: 0.58, minZ: 4.1, maxZ: 4.35 }, cap: 'selfReturn' },
-      { box: { minX: 1.05, maxX: 1.25, minZ: -0.72, maxZ: 3.95 }, cap: 'selfReturn' },
+      { box: { minX: 0.49, maxX: 1.66, minZ: -0.66, maxZ: 3.08 }, cap: 'selfReturn' },
+      doorGap('hallKitchen', hFace),
+      doorGap('hallWc', stairSouthFace),
       doorGap('hallBoot', stairSouthFace),
       doorGap('hallDrawing', -hFace),
     ],
@@ -261,7 +327,8 @@ export function buildSimpleHouseTrim(tc: TrimAndStructureContext): void {
     material: schemes.houseDrawing.trim,
     gaps: [
       doorGap('hallDrawing', -pFace),
-      { box: { minX: -5.5, maxX: -5.3, minZ: -4.23, maxZ: 4.23 } },
+      { box: { minX: DRAWING_FRENCH_DOOR.x - 0.815, maxX: DRAWING_FRENCH_DOOR.x + 0.815, minZ: -4.34, maxZ: -4.1 }, cap: 'selfReturn' },
+      { box: { minX: -7.15, maxX: -6.95, minZ: -4.23, maxZ: 4.23 } },
     ],
   });
   addSkirting({
@@ -285,13 +352,9 @@ export function buildSimpleHouseTrim(tc: TrimAndStructureContext): void {
     thickness: 0.018,
     material: schemes.houseKitchenDiner.trim,
     gaps: [
-      { box: { minX: 5.3, maxX: 5.5, minZ: -3.5, maxZ: -0.28 }, cap: 'selfReturn' },
-      { box: { minX: 5.3, maxX: 5.5, minZ: -0.285, maxZ: -0.035 } },
-      { box: { minX: 5.3, maxX: 5.5, minZ: 0.02, maxZ: 1.44 }, cap: 'selfReturn' },
-      { box: { minX: 1.88, maxX: 3.42, minZ: -4.32, maxZ: -4.12 }, cap: 'selfReturn' },
-      { box: { minX: 3.44, maxX: 5.06, minZ: -4.32, maxZ: -4.12 }, cap: 'selfReturn' },
-      { box: { minX: 1.3, maxX: 1.48, minZ: -3.2, maxZ: -1.9 }, cap: 'selfReturn' },
-      { box: { minX: 1.3, maxX: 1.48, minZ: 1.15, maxZ: 2.55 }, cap: 'selfReturn' },
+      { box: { minX: 6.95, maxX: 7.15, minZ: -2.47, maxZ: -0.81 }, cap: 'selfReturn' },
+      { box: { minX: 6.95, maxX: 7.15, minZ: -0.29, maxZ: -0.03 } },
+      { box: { minX: FRENCH_DOOR.x - 0.815, maxX: FRENCH_DOOR.x + 0.815, minZ: -4.34, maxZ: -4.1 }, cap: 'selfReturn' },
       doorGap('hallKitchen', pFace),
     ],
   });
@@ -321,9 +384,11 @@ export function buildSimpleHouseTrim(tc: TrimAndStructureContext): void {
       material: schemes.houseDrawing.trim,
       gaps: [
         doorGap('hallDrawing', -pFace),
-        { box: { minX: -4.06, maxX: -2.64, minZ: 4.1, maxZ: 4.32 }, cap: 'selfReturn' },
-        { box: { minX: -4.06, maxX: -2.64, minZ: -4.32, maxZ: -4.1 }, cap: 'selfReturn' },
-        { box: { minX: -5.5, maxX: -5.3, minZ: -4.23, maxZ: 4.23 } },
+        { box: { minX: -5.35 - 0.77, maxX: -5.35 + 0.77, minZ: 4.1, maxZ: 4.32 }, cap: 'selfReturn' },
+        { box: { minX: -2.95 - 0.77, maxX: -2.95 + 0.77, minZ: 4.1, maxZ: 4.32 }, cap: 'selfReturn' },
+        { box: { minX: DRAWING_FRENCH_DOOR.x - 0.82, maxX: DRAWING_FRENCH_DOOR.x + 0.82, minZ: -4.32, maxZ: -4.1 }, cap: 'selfReturn' },
+        { box: { minX: -2.95 - 0.71, maxX: -2.95 + 0.71, minZ: -4.32, maxZ: -4.1 }, cap: 'selfReturn' },
+        { box: { minX: -7.15, maxX: -6.95, minZ: -4.23, maxZ: 4.23 } },
       ],
       cutawayWalls: groundNet.cutaways,
       floor: 'ground',
@@ -331,20 +396,29 @@ export function buildSimpleHouseTrim(tc: TrimAndStructureContext): void {
     })
   );
 
+  // Georgian panelled shutter/reveal linings on all 4 Ground-Floor South front sash windows
+  const southGroundCut = cut('south', 'ground');
+  for (const sSpec of [
+    { id: 'drawingSouthWest', centerX: -5.35, zone: 'houseDrawing', material: schemes.houseDrawing.trim },
+    { id: 'drawingSouthEast', centerX: -2.95, zone: 'houseDrawing', material: schemes.houseDrawing.trim },
+    { id: 'diningSouthWest', centerX: 2.95, zone: 'houseKitchenDiner', material: schemes.houseKitchenDiner.trim },
+    { id: 'diningSouthEast', centerX: 5.35, zone: 'houseKitchenDiner', material: schemes.houseKitchenDiner.trim },
+  ] as const) {
+    groundGroup.add(buildSouthSashShutterReveal({ ...sSpec, cutaway: southGroundCut }));
+  }
+
   addSkirting({
     name: 'simpleHouse.skirting.bootLobby',
     floor: 'ground',
-    zone: 'houseCloakroom',
-    path: [
-      [-1.12, stairNorthFace],
-      [-0.06, stairNorthFace],
-      [-0.06, -4.185],
-    ],
-    closed: false,
+    zone: 'houseBootLobby',
+    path: bootLobbyPath,
     height: 0.135,
     thickness: 0.018,
     material: schemes.houseBootLobby.trim,
-    gaps: [doorGap('hallBoot', stairNorthFace), doorGap('bootWc', -0.06)],
+    gaps: [
+      doorGap('hallBoot', stairNorthFace),
+      { box: { minX: BOOT_GARDEN_DOOR.x - 0.5, maxX: BOOT_GARDEN_DOOR.x + 0.5, minZ: -4.34, maxZ: -4.1 }, cap: 'selfReturn' },
+    ],
   });
   addSkirting({
     name: 'simpleHouse.skirting.cloakroom',
@@ -354,7 +428,7 @@ export function buildSimpleHouseTrim(tc: TrimAndStructureContext): void {
     height: 0.135,
     thickness: 0.018,
     material: schemes.houseCloakroom.trim,
-    gaps: [doorGap('bootWc', 0.06)],
+    gaps: [doorGap('hallWc', stairNorthFace)],
   });
 
   // First-floor skirtings
@@ -366,7 +440,8 @@ export function buildSimpleHouseTrim(tc: TrimAndStructureContext): void {
     material: schemes.houseLanding.trim,
     gaps: [
       doorGap('landingGuest', hFace),
-      { box: { minX: 1.05, maxX: 1.25, minZ: -1.37, maxZ: 2.675 }, cap: 'selfReturn' },
+      doorGap('landingStudy', hFace),
+      { box: { minX: 0.46, maxX: 1.66, minZ: -0.66, maxZ: 2.66 }, cap: 'selfReturn' },
       doorGap('landingBathroom', stairSouthFace),
       doorGap('landingPrincipal', -hFace),
     ],
@@ -379,8 +454,9 @@ export function buildSimpleHouseTrim(tc: TrimAndStructureContext): void {
     material: schemes.housePrincipalBed.trim,
     gaps: [
       doorGap('landingPrincipal', -pFace),
+      doorGap('principalEnsuite', -1.65),
       doorGap('principalDressing', -1.65),
-      { box: { minX: -5.5, maxX: -5.3, minZ: PRINCIPAL_BREAST.minZ - 0.004, maxZ: PRINCIPAL_BREAST.maxZ + 0.004 } },
+      { box: { minX: -7.15, maxX: -6.95, minZ: PRINCIPAL_BREAST.minZ - 0.01, maxZ: PRINCIPAL_BREAST.maxZ + 0.01 } },
     ],
   });
   addSkirting({
@@ -401,8 +477,7 @@ export function buildSimpleHouseTrim(tc: TrimAndStructureContext): void {
     material: schemes.housePrincipalDressing.trim,
     gaps: [
       doorGap('principalDressing', -1.77),
-      doorGap('dressingEnsuite', -3.59),
-      { box: { minX: -5.5, maxX: -5.32, minZ: -4.17, maxZ: -1.85 }, cap: 'selfReturn' },
+      { box: { minX: -7.15, maxX: -6.95, minZ: -4.18, maxZ: -1.84 }, cap: 'selfReturn' },
     ],
   });
   addSkirting({
@@ -413,12 +488,7 @@ export function buildSimpleHouseTrim(tc: TrimAndStructureContext): void {
     height: 0.125,
     thickness: 0.016,
     material: schemes.housePrincipalEnsuite.trim,
-    gaps: [
-      { box: { minX: -2.75, maxX: -1.49, minZ: -1.86, maxZ: -1.68 }, cap: 'selfReturn' },
-      { box: { minX: -1.48, maxX: -1.3, minZ: -3.36, maxZ: -2.88 }, cap: 'selfReturn' },
-      { box: { minX: -3.55, maxX: -2.18, minZ: -4.3, maxZ: -2.64 }, cap: 'selfReturn' },
-      doorGap('dressingEnsuite', -3.47),
-    ],
+    gaps: [doorGap('principalEnsuite', -1.77)],
   });
   addSkirting({
     name: 'simpleHouse.skirting.guest',
@@ -439,7 +509,7 @@ export function buildSimpleHouseTrim(tc: TrimAndStructureContext): void {
     gaps: [
       doorGap('landingStudy', pFace),
       doorGap('airingCupboard', -1.53),
-      { box: { minX: 5.3, maxX: 5.5, minZ: STUDY_BREAST.minZ - 0.004, maxZ: STUDY_BREAST.maxZ + 0.004 } },
+      { box: { minX: 6.95, maxX: 7.15, minZ: STUDY_BREAST.minZ - 0.01, maxZ: STUDY_BREAST.maxZ + 0.01 } },
     ],
   });
   addSkirting({
@@ -450,28 +520,28 @@ export function buildSimpleHouseTrim(tc: TrimAndStructureContext): void {
     closed: false,
     thickness: 0.014,
     material: schemes.houseStudy.trim,
+    forceCutaway: cut('east', 'first'),
   });
   addSkirting({
     name: 'simpleHouse.skirting.bathroom',
     floor: 'first',
     zone: 'houseBathroom',
     path: [
-      [1.39, -1.8],
-      [1.39, -2.45],
+      [1.89, -1.8],
+      [1.89, -2.45],
     ],
     closed: false,
     height: 0.135,
     thickness: 0.016,
     material: schemes.houseBathroom.trim,
-    gaps: [{ box: { minX: 1.3, maxX: 1.48, minZ: -2.32, maxZ: -1.84 }, cap: 'selfReturn' }],
   });
   addSkirting({
     name: 'simpleHouse.skirting.bathroomNorth',
     floor: 'first',
     zone: 'houseBathroom',
     path: [
-      [1.44, -IN_Z],
-      [-1.11, -IN_Z],
+      [1.98, -IN_Z],
+      [-1.62, -IN_Z],
     ],
     closed: false,
     height: 0.135,
@@ -487,7 +557,7 @@ export function buildSimpleHouseTrim(tc: TrimAndStructureContext): void {
     path: hallPath,
     profile: 'georgian-cyma',
     material: schemes.houseHall.trim,
-    gaps: [{ box: { minX: 1.02, maxX: 1.25, minZ: -0.72, maxZ: 2.6 }, cap: 'selfReturn' }],
+    gaps: [{ box: { minX: 0.45, maxX: 1.66, minZ: -0.66, maxZ: 2.66 }, cap: 'selfReturn' }],
   });
   addCornice({
     name: 'simpleHouse.cornice.drawing',
@@ -498,7 +568,7 @@ export function buildSimpleHouseTrim(tc: TrimAndStructureContext): void {
     height: 0.12,
     projection: 0.115,
     material: schemes.houseDrawing.trim,
-    gaps: [{ box: { minX: -5.5, maxX: -5.3, minZ: b.minZ - 0.003, maxZ: b.maxZ + 0.003 } }],
+    gaps: [{ box: { minX: -7.15, maxX: -6.95, minZ: b.minZ - 0.01, maxZ: b.maxZ + 0.01 } }],
   });
   addCornice({
     name: 'simpleHouse.cornice.drawingBreast',
@@ -522,10 +592,10 @@ export function buildSimpleHouseTrim(tc: TrimAndStructureContext): void {
     projection: 0.115,
     material: schemes.houseKitchenDiner.trim,
     gaps: [
-      { box: { minX: 5.3, maxX: 5.5, minZ: -2.463, maxZ: -0.817 } },
-      { box: { minX: 5.25, maxX: 5.5, minZ: -0.29, maxZ: -0.03 }, cap: 'selfReturn' },
-      { box: { minX: 1.3, maxX: 1.6, minZ: -0.31, maxZ: -0.01 }, cap: 'selfReturn' },
-      { box: { minX: 1.3, maxX: 1.52, minZ: -1.68, maxZ: -1.5 }, cap: 'selfReturn' },
+      { box: { minX: 6.95, maxX: 7.15, minZ: -2.47, maxZ: -0.81 } },
+      { box: { minX: 6.88, maxX: 7.15, minZ: -0.295, maxZ: -0.025 }, cap: 'selfReturn' },
+      { box: { minX: 1.8, maxX: 2.1, minZ: -0.315, maxZ: -0.005 }, cap: 'selfReturn' },
+      { box: { minX: 1.8, maxX: 2.02, minZ: -1.7, maxZ: -1.48 }, cap: 'selfReturn' },
     ],
   });
   addCornice({
@@ -538,13 +608,13 @@ export function buildSimpleHouseTrim(tc: TrimAndStructureContext): void {
     height: 0.12,
     projection: 0.115,
     material: schemes.houseKitchenDiner.trim,
-    gaps: [{ box: { minX: 4.65, maxX: 4.86, minZ: -1.68, maxZ: -1.5 }, cap: 'selfReturn' }],
+    gaps: [{ box: { minX: 6.3, maxX: 6.5, minZ: -1.7, maxZ: -1.48 }, cap: 'selfReturn' }],
     forceCutaway: cut('east', 'ground'),
   });
   addCornice({
     name: 'simpleHouse.cornice.bootLobby',
     floor: 'ground',
-    zone: 'houseCloakroom',
+    zone: 'houseBootLobby',
     path: bootLobbyPath,
     profile: 'cove',
     height: 0.095,
@@ -573,7 +643,7 @@ export function buildSimpleHouseTrim(tc: TrimAndStructureContext): void {
     height: 0.12,
     projection: 0.115,
     material: schemes.housePrincipalBed.trim,
-    gaps: [{ box: { minX: -5.5, maxX: -5.3, minZ: PRINCIPAL_BREAST.minZ - 0.004, maxZ: PRINCIPAL_BREAST.maxZ + 0.004 } }],
+    gaps: [{ box: { minX: -7.15, maxX: -6.95, minZ: PRINCIPAL_BREAST.minZ - 0.01, maxZ: PRINCIPAL_BREAST.maxZ + 0.01 } }],
   });
   addCornice({
     name: 'simpleHouse.cornice.principalBreast',
@@ -599,7 +669,7 @@ export function buildSimpleHouseTrim(tc: TrimAndStructureContext): void {
     height: 0.11,
     projection: 0.105,
     material: schemes.houseStudy.trim,
-    gaps: [{ box: { minX: 5.3, maxX: 5.5, minZ: STUDY_BREAST.minZ - 0.004, maxZ: STUDY_BREAST.maxZ + 0.004 } }],
+    gaps: [{ box: { minX: 6.95, maxX: 7.15, minZ: STUDY_BREAST.minZ - 0.01, maxZ: STUDY_BREAST.maxZ + 0.01 } }],
   });
   addCornice({
     name: 'simpleHouse.cornice.studyBreast',
@@ -611,16 +681,18 @@ export function buildSimpleHouseTrim(tc: TrimAndStructureContext): void {
     height: 0.11,
     projection: 0.105,
     material: schemes.houseStudy.trim,
+    forceCutaway: cut('east', 'first'),
   });
   addCornice({ name: 'simpleHouse.cornice.bathroom', floor: 'first', zone: 'houseBathroom', path: bathroomPath, profile: 'cove', height: 0.095, projection: 0.09, material: schemes.houseBathroom.trim });
 
+  // Ceiling roses & Georgian panel mouldings centered on 5.16 m wings
   const roses: readonly { id: string; floor: FloorId; xz: readonly [number, number] }[] = [
-    { id: 'drawing', floor: 'ground', xz: [-3.39, 0] },
+    { id: 'drawing', floor: 'ground', xz: [-4.47, 0] },
     { id: 'hall', floor: 'ground', xz: HALL_ROSE_XZ },
-    { id: 'kitchenDining', floor: 'ground', xz: [3.39, 2.25] },
+    { id: 'kitchenDining', floor: 'ground', xz: [4.47, 2.25] },
     { id: 'landing', floor: 'first', xz: LANDING_ROSE_XZ },
-    { id: 'principal', floor: 'first', xz: [-3.39, 1.285] },
-    { id: 'guest', floor: 'first', xz: [3.39, 2.06] },
+    { id: 'principal', floor: 'first', xz: [-4.47, 1.285] },
+    { id: 'guest', floor: 'first', xz: [4.47, 2.06] },
   ];
   for (const r of roses) {
     const ceilY = r.floor === 'ground' ? GROUND_CEILING_SOFFIT_Y : FIRST_CEILING_SOFFIT_Y;
@@ -635,18 +707,18 @@ export function buildSimpleHouseTrim(tc: TrimAndStructureContext): void {
   groundCeilingGroup.add(
     buildGeorgianCeilingPanelMoulding({
       name: 'simpleHouse.ceilingPanel.drawing',
-      position: [-3.16, GROUND_CEILING_SOFFIT_Y, 0],
-      widthM: 2.4,
-      depthM: 5.6,
+      position: [-4.47, GROUND_CEILING_SOFFIT_Y, 0],
+      widthM: 3.4,
+      depthM: 6.2,
       zone: 'houseDrawing',
     })
   );
   firstCeilingGroup.add(
     buildGeorgianCeilingPanelMoulding({
       name: 'simpleHouse.ceilingPanel.principal',
-      position: [-3.39, FIRST_CEILING_SOFFIT_Y, 1.285],
-      widthM: 2.5,
-      depthM: 3.8,
+      position: [-4.47, FIRST_CEILING_SOFFIT_Y, 1.285],
+      widthM: 3.4,
+      depthM: 4.0,
       zone: 'housePrincipalBed',
     })
   );

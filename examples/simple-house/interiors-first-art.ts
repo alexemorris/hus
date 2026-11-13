@@ -1,20 +1,20 @@
 import * as THREE from 'three';
-import {
-  getOrCreateCachedTexture,
-} from 'husjs/materials';
+import type { CircuitId, RoomZoneId } from 'husjs';
+import { getOrCreateCachedTexture } from 'husjs/materials';
 import {
   attachAssetMetadata,
   prepGeo,
   sharedCylinderGeometry,
   tagHighLodDetail,
 } from 'husjs/objects';
-import {
-  buildCuratedMirrorsArtAndRugs,
-} from 'husjs/catalog/furniture';
+import { buildCuratedMirrorsArtAndRugs } from 'husjs/catalog/furniture';
+import type { SceneBuilderContext } from 'husjs/viewer';
 import { FFL_FIRST } from './electrical-and-rooms.ts';
-
-
-import { addBox, createTurnedWalnutMaterial } from './interiors-first-furniture.ts';
+import {
+  addBox,
+  createTurnedWalnutMaterial,
+  registerCircuitEmissive,
+} from './interiors-first-furniture.ts';
 
 function getSepiaFamilyPhotoTexture(variantIdx: number): THREE.DataTexture {
   return getOrCreateCachedTexture(`simpleHouse.landing.familyPhoto.${variantIdx}`, () => {
@@ -25,7 +25,6 @@ function getSepiaFamilyPhotoTexture(variantIdx: number): THREE.DataTexture {
       const ny = y / (h - 1);
       for (let x = 0; x < w; x++) {
         const nx = x / (w - 1);
-        // Wide cream conservation mount (`22%` margin) + warm charcoal inner wash line
         const inAperture = nx > 0.22 && nx < 0.78 && ny > 0.2 && ny < 0.8;
         const onBevelLine =
           !inAperture &&
@@ -51,7 +50,6 @@ function getSepiaFamilyPhotoTexture(variantIdx: number): THREE.DataTexture {
           const v = (ny - 0.2) / 0.6;
           const vignette = 1 - 0.28 * Math.hypot(u - 0.5, v - 0.5);
           if (variantIdx % 2 === 0) {
-            // Warm sepia portrait silhouette against soft studio backdrop
             const headDist = Math.hypot((u - 0.5) * 1.15, (v - 0.62) * 1.35);
             const shoulderDist = Math.hypot((u - 0.5) * 0.82, (v - 0.24) * 1.05);
             const isSubject = headDist < 0.16 || (v < 0.45 && shoulderDist < 0.31);
@@ -60,7 +58,6 @@ function getSepiaFamilyPhotoTexture(variantIdx: number): THREE.DataTexture {
             g = Math.round(212 * tone * vignette);
             b = Math.round(184 * tone * vignette);
           } else {
-            // Warm sepia coastal/countryside horizon vignette
             const horizon = 0.46 + 0.04 * Math.sin(u * Math.PI * 2 + variantIdx);
             const isLand = v < horizon;
             const tone = isLand
@@ -96,12 +93,7 @@ function getAntiquarianMapTexture(plateIdx: number): THREE.DataTexture {
       for (let x = 0; x < w; x++) {
         const nx = x / (w - 1);
         const inMap = nx > 0.15 && nx < 0.85 && ny > 0.16 && ny < 0.84;
-        const onRule =
-          nx > 0.13 &&
-          nx < 0.87 &&
-          ny > 0.14 &&
-          ny < 0.86 &&
-          !inMap;
+        const onRule = nx > 0.13 && nx < 0.87 && ny > 0.14 && ny < 0.86 && !inMap;
         let r = 240;
         let g = 234;
         let b = 219;
@@ -121,7 +113,7 @@ function getAntiquarianMapTexture(plateIdx: number): THREE.DataTexture {
             g = 136;
             b = 116;
           } else if (isShire) {
-            const parishTint = ((Math.floor(u * 4 + v * 3) + plateIdx) % 3);
+            const parishTint = (Math.floor(u * 4 + v * 3) + plateIdx) % 3;
             r = parishTint === 0 ? 222 : parishTint === 1 ? 210 : 226;
             g = parishTint === 0 ? 206 : parishTint === 1 ? 212 : 216;
             b = parishTint === 0 ? 178 : parishTint === 1 ? 184 : 192;
@@ -146,18 +138,16 @@ function getAntiquarianMapTexture(plateIdx: number): THREE.DataTexture {
 }
 
 /**
- * Curated organic/symmetrical 6-frame family photograph gallery cluster (`180x230 mm` to `240x300 mm`
- * dark walnut & brushed aged-brass frames with wide cream conservation mounts & warm sepia vignettes).
+ * Curated 6-frame family photograph gallery cluster (`180x230 mm` to `240x300 mm`
+ * dark walnut & brushed aged-brass frames with wide cream conservation mounts).
  * Local origin `(0, 0, 0)` is the cluster center (`z = 0` flush with wall, projecting into `+Z`).
  */
-export function buildFamilyPhotoGalleryCluster(
-  options: {
-    readonly name: string;
-    readonly position: readonly [number, number, number];
-    readonly rotationY: number;
-    readonly brassMat: THREE.Material;
-  }
-): THREE.Group {
+export function buildFamilyPhotoGalleryCluster(options: {
+  readonly name: string;
+  readonly position: readonly [number, number, number];
+  readonly rotationY: number;
+  readonly brassMat: THREE.Material;
+}): THREE.Group {
   const { name, position, rotationY, brassMat } = options;
   const root = new THREE.Group();
   root.name = name;
@@ -174,7 +164,6 @@ export function buildFamilyPhotoGalleryCluster(
     ior: 1.5,
   });
 
-  // Harmonious salon-hung 2-row x 3-column cluster of mixed portrait & landscape frames (`total span ~0.88 m W x 0.64 m H`)
   const frames: readonly {
     readonly dx: number;
     readonly dy: number;
@@ -208,9 +197,9 @@ export function buildFamilyPhotoGalleryCluster(
       roughness: 0.8,
     });
 
-    addBox(fg, `${fg.name}.backing`, [innerW, innerH, 0.006], [0, 0, 0.003], walnutFrameMat);
-    addBox(fg, `${fg.name}.printSheet`, [innerW, innerH, 0.002], [0, 0, 0.008], photoMat);
-    const glz = addBox(fg, `${fg.name}.glazing`, [innerW, innerH, 0.002], [0, 0, 0.012], glassMat);
+    addBox(fg, `${fg.name}.backing`, [innerW, innerH, 0.005], [0, 0, 0.0025], walnutFrameMat);
+    addBox(fg, `${fg.name}.printSheet`, [innerW, innerH, 0.002], [0, 0, 0.0075], photoMat);
+    const glz = addBox(fg, `${fg.name}.glazing`, [innerW, innerH, 0.002], [0, 0, 0.0115], glassMat);
     glz.castShadow = false;
 
     addBox(fg, `${fg.name}.railTop`, [spec.w, rim, depth], [0, spec.h * 0.5 - rim * 0.5, depth * 0.5], frameMat);
@@ -221,7 +210,7 @@ export function buildFamilyPhotoGalleryCluster(
 
   return attachAssetMetadata(root, {
     name: 'Curated 6-Piece Dark Walnut & Aged Brass Family Portrait Gallery',
-    brand: 'Bespoke Framing',
+    brand: 'Custom Framing',
     collection: 'Conservation Mount Series',
     sku: 'FRM-GAL-6PC',
     finish: 'Dark Waxed Walnut, Brushed Aged Brass & Cream Conservation Mounts',
@@ -232,16 +221,14 @@ export function buildFamilyPhotoGalleryCluster(
 
 /**
  * Framed pair of 18th-century English county & estate survey maps (`460 x 380 mm` each)
- * in dark walnut & gilt-slip Hogarth frames for the Study East wall.
+ * in dark walnut & gilt-slip Hogarth frames for the Study chimney breast.
  */
-export function buildAntiquarianMapDiptych(
-  options: {
-    readonly name: string;
-    readonly position: readonly [number, number, number];
-    readonly rotationY: number;
-    readonly brassMat: THREE.Material;
-  }
-): THREE.Group {
+export function buildAntiquarianMapDiptych(options: {
+  readonly name: string;
+  readonly position: readonly [number, number, number];
+  readonly rotationY: number;
+  readonly brassMat: THREE.Material;
+}): THREE.Group {
   const { name, position, rotationY, brassMat } = options;
   const root = new THREE.Group();
   root.name = name;
@@ -270,8 +257,8 @@ export function buildAntiquarianMapDiptych(
     });
     const innerW = w - rim * 2;
     const innerH = h - rim * 2;
-    addBox(mg, `${mg.name}.backing`, [innerW - 0.002, innerH - 0.002, 0.008], [0, 0, 0.004], walnutMat);
-    addBox(mg, `${mg.name}.engraving`, [innerW - 0.002, innerH - 0.002, 0.003], [0, 0, 0.011], mapMat);
+    addBox(mg, `${mg.name}.backing`, [innerW - 0.004, innerH - 0.004, 0.007], [0, 0, 0.0035], walnutMat);
+    addBox(mg, `${mg.name}.engraving`, [innerW - 0.004, innerH - 0.004, 0.003], [0, 0, 0.0105], mapMat);
     void brassMat;
     addBox(mg, `${mg.name}.railTop`, [w, rim, d], [0, h * 0.5 - rim * 0.5, d * 0.5], walnutMat);
     addBox(mg, `${mg.name}.railBottom`, [w, rim, d], [0, -(h * 0.5 - rim * 0.5), d * 0.5], walnutMat);
@@ -292,16 +279,14 @@ export function buildAntiquarianMapDiptych(
 
 /**
  * Single framed heritage botanical watercolour plate (`420 x 520 mm` with cream wash-line mount
- * & aged-brass/walnut Hogarth frame) centered above the Guest Bedroom headboard (`y = 0` center).
+ * & aged-brass/walnut Hogarth frame).
  */
-export function buildSingleBotanicalWatercolourFrame(
-  options: {
-    readonly name: string;
-    readonly position: readonly [number, number, number];
-    readonly rotationY: number;
-    readonly brassMat: THREE.Material;
-  }
-): THREE.Group {
+export function buildSingleBotanicalWatercolourFrame(options: {
+  readonly name: string;
+  readonly position: readonly [number, number, number];
+  readonly rotationY: number;
+  readonly brassMat: THREE.Material;
+}): THREE.Group {
   const fullGrid = buildCuratedMirrorsArtAndRugs({
     kind: 'curtisBotanicalGrid',
     name: `${options.name}_source`,
@@ -322,7 +307,6 @@ export function buildSingleBotanicalWatercolourFrame(
     root.add(plate);
   }
 
-  // Subtle brass hanging ring at top rail
   const ring = new THREE.Mesh(sharedCylinderGeometry(0.014, 0.014, 0.005, 16), options.brassMat);
   ring.name = `${options.name}.brassHangingRing`;
   ring.rotation.x = Math.PI * 0.5;
@@ -342,8 +326,10 @@ export function buildSingleBotanicalWatercolourFrame(
 }
 
 export function buildArticulatedBrassDeskLamp(
+  ctx: SceneBuilderContext,
   namePrefix: string,
   brassMat: THREE.Material,
+  circuitId: CircuitId,
   position: readonly [number, number, number],
   rotationY = 0
 ): THREE.Group {
@@ -356,9 +342,10 @@ export function buildArticulatedBrassDeskLamp(
     name: `${namePrefix}.bulb`,
     color: 0xfff3d6,
     emissive: new THREE.Color(0xffb85c),
-    emissiveIntensity: 0.9,
+    emissiveIntensity: 0.95,
     roughness: 0.3,
   });
+  registerCircuitEmissive(ctx, circuitId, bulbMat);
 
   const base = new THREE.Mesh(prepGeo(new THREE.CylinderGeometry(0.075, 0.082, 0.018, 20)), brassMat);
   base.name = `${namePrefix}.base`;
@@ -401,8 +388,9 @@ export function buildArticulatedBrassDeskLamp(
 }
 
 /**
- * Airing cupboard interior (`X in [1.45, 2.35], Z in [-2.33, -1.65]`):
- * slatted European oak linen shelves, folded White Company Hydrocotton towels & insulated copper DHW cylinder.
+ * Airing cupboard interior (`X in [2.01, 2.75], Z in [-2.33, -1.65]`):
+ * insulated copper DHW cylinder centered at `[2.38, FFL_FIRST, -2.02]` with slatted European oak
+ * airing shelves & folded White Company Hydrocotton towels above.
  */
 export function buildAiringCupboardFittings(
   parent: THREE.Object3D,
@@ -419,10 +407,9 @@ export function buildAiringCupboardFittings(
     roughness: 0.9,
   });
 
-  // Insulated copper domestic hot-water cylinder on West side of airing cupboard (`X = 1.66, Z = -2.08`)
   const cyl = new THREE.Mesh(prepGeo(new THREE.CylinderGeometry(0.18, 0.18, 1.04, 18)), copperMat);
   cyl.name = 'simpleHouse.airingCupboard.hotWaterCylinder';
-  cyl.position.set(1.71, FFL_FIRST + 0.522, -2.08);
+  cyl.position.set(2.38, FFL_FIRST + 0.522, -2.02);
   cyl.castShadow = true;
   airing.add(cyl);
 
@@ -431,20 +418,19 @@ export function buildAiringCupboardFittings(
     copperMat
   );
   dome.name = 'simpleHouse.airingCupboard.cylinderDome';
-  dome.position.set(1.71, FFL_FIRST + 1.042, -2.08);
+  dome.position.set(2.38, FFL_FIRST + 1.043, -2.02);
   airing.add(dome);
 
-  // Slatted oak linen shelving on East half & upper full-width tier (`Z in [-2.31, -1.96]`)
-  for (const [tierIdx, sy, minX] of [
-    [1, FFL_FIRST + 0.68, 1.94],
-    [2, FFL_FIRST + 1.12, 1.94],
-    [3, FFL_FIRST + 1.56, 1.54],
-    [4, FFL_FIRST + 1.96, 1.54],
+  // Full-width slatted oak linen shelving above cylinder (`X in [2.04, 2.72], Z in [-2.30, -1.86]`)
+  const sw = 0.68;
+  const cx = 2.38;
+  for (const [tierIdx, sy] of [
+    [1, FFL_FIRST + 1.32],
+    [2, FFL_FIRST + 1.66],
+    [3, FFL_FIRST + 2.00],
   ] as const) {
-    const sw = 2.33 - minX;
-    const cx = (minX + 2.33) * 0.5;
     for (let s = 0; s < 5; s++) {
-      const sz = -2.29 + s * 0.075;
+      const sz = -2.28 + s * 0.088;
       addBox(
         airing,
         `simpleHouse.airingCupboard.slat_${tierIdx}_${s + 1}`,
@@ -456,10 +442,69 @@ export function buildAiringCupboardFittings(
     addBox(
       airing,
       `simpleHouse.airingCupboard.foldedTowels_${tierIdx}`,
-      [Math.min(0.34, sw - 0.06), 0.11, 0.28],
-      [2.11, sy + 0.065, -2.14],
+      [0.34, 0.11, 0.28],
+      [2.38, sy + 0.065, -2.10],
       linenMat
     );
   }
+}
+
+export function buildFirstFloorRotaryDimmerPlate(
+  ctx: SceneBuilderContext,
+  opts: {
+    readonly name: string;
+    readonly zoneId: RoomZoneId;
+    readonly x: number;
+    readonly y: number;
+    readonly z: number;
+    readonly facing: 'east' | 'west' | 'north' | 'south';
+    readonly brassMat: THREE.Material;
+    readonly knurledBrassMat: THREE.Material;
+    readonly dimmerId: string;
+    readonly circuitId: CircuitId;
+    readonly label: string;
+    readonly parent: THREE.Object3D;
+  }
+): THREE.Group {
+  const group = new THREE.Group();
+  group.name = opts.name;
+  group.position.set(opts.x, opts.y, opts.z);
+  const rotByFacing: Record<'north' | 'south' | 'east' | 'west', number> = {
+    south: 0,
+    north: Math.PI,
+    east: Math.PI * 0.5,
+    west: -Math.PI * 0.5,
+  };
+  group.rotation.y = rotByFacing[opts.facing];
+  opts.parent.add(group);
+
+  addBox(group, `${opts.name}.plate`, [0.086, 0.086, 0.005], [0, 0, 0.0035], opts.brassMat);
+
+  const collar = new THREE.Mesh(
+    prepGeo(new THREE.CylinderGeometry(0.022, 0.024, 0.004, 18)),
+    opts.brassMat
+  );
+  collar.name = `${opts.name}.collar`;
+  collar.rotation.x = Math.PI * 0.5;
+  collar.position.set(0, 0, 0.0085);
+  group.add(collar);
+
+  const knob = new THREE.Mesh(
+    prepGeo(new THREE.CylinderGeometry(0.017, 0.019, 0.018, 18)),
+    opts.knurledBrassMat
+  );
+  knob.name = opts.dimmerId;
+  knob.rotation.x = Math.PI * 0.5;
+  knob.position.set(0, 0, 0.02);
+  knob.userData = {
+    type: 'dimmer',
+    electricalDimmerId: opts.dimmerId,
+    zoneId: opts.zoneId,
+    circuitId: opts.circuitId,
+    label: opts.label,
+  };
+  ctx.interactiveMeshes.push(knob);
+  group.add(knob);
+  return group;
 }
 

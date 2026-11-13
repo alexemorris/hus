@@ -49,6 +49,36 @@ export function deconflictCurtainBrackets(curtains: THREE.Group, inwardSignX: 1 
   return curtains;
 }
 
+export function registerCircuitEmissive(
+  ctx: SceneBuilderContext,
+  circuitId: CircuitId,
+  mat: THREE.MeshStandardMaterial
+): void {
+  const maybeReg = (
+    ctx as unknown as {
+      registerEmissive?: (id: CircuitId, m: THREE.MeshStandardMaterial) => void;
+    }
+  ).registerEmissive;
+  if (typeof maybeReg === 'function') {
+    maybeReg.call(ctx, circuitId, mat);
+    return;
+  }
+  ctx.lightGroups[circuitId]?.emissives.push(mat);
+}
+
+export function createWarm2700kLedMaterial(
+  name: string,
+  emissiveIntensity = 1.4
+): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({
+    name,
+    color: 0xfff1d6,
+    emissive: new THREE.Color(0xffb86b),
+    emissiveIntensity,
+    roughness: 0.3,
+  });
+}
+
 export const NEPTUNE_SALT = 0xe8e3d7;
 export const FB_MIZZLE = 0xc0c6b8;
 
@@ -613,7 +643,7 @@ export function buildWideChichesterBedsideChest(
   root.position.set(position[0], position[1], position[2]);
   root.rotation.y = rotationY;
 
-  const w = 0.65;
+  const w = 0.64;
   const d = 0.44;
   const h = 0.67;
   const topT = 0.028;
@@ -756,18 +786,8 @@ export function buildCompactPleatedBedsideLamp(
     roughness: 0.25,
   });
 
-  const circuitMap = (
-    ctx as unknown as {
-      readonly circuitGroups?: ReadonlyMap<
-        string,
-        { readonly emissives: THREE.Material[] }
-      >;
-    }
-  ).circuitGroups;
-  const cg = circuitMap?.get(circuitId);
-  if (cg) {
-    cg.emissives.push(bulbMat, shadeMat);
-  }
+  registerCircuitEmissive(ctx, circuitId, bulbMat);
+  registerCircuitEmissive(ctx, circuitId, shadeMat);
 
   // Stepped brass plinth (`y = 0 .. 0.022`) + delicate turned baluster (`y = 0.022 .. 0.228`)
   const plinth = new THREE.Mesh(sharedCylinderGeometry(0.056, 0.062, 0.022, 22), brassMat);

@@ -1,10 +1,12 @@
 /**
  * Stage 4.10b — `examples/simple-house`
  *
- * Double-Fronted Symmetrical Georgian Country House (5-bay Flemish-bond brick,
- * Bath-stone Tuscan portico, hipped Welsh-slate roof, Neptune Olive-Moss/Oak/Carrara
- * Chichester kitchen, Georgian bolection drawing room, galleried Roger Oates staircase,
- * Principal suite w/ Walk-In Dressing & Parisian Manoir Ensuite, Family Bathroom & Airing Cupboard).
+ * 14.82 m Symmetrical 5-Bay Georgian Country House (360 mm Flemish-bond brick,
+ * Bath-stone Tuscan portico, hipped Welsh-slate roof, 3.30 m Entrance Hall
+ * with fitted under-stairs cloak cupboard, Golden-Ratio 5.16 × 8.44 m Drawing Room &
+ * Neptune Chichester Kitchen-Diner with character-oak-clad flitch beam, twin rear
+ * garden French doors onto a dressed 15.0 m Yorkstone terrace, direct Guests' Powder Room,
+ * Galleried Roger Oates landing, Principal Suite w/ Walk-In Dressing & non-blocking Ensuite).
  */
 
 import { defineHouse, type HouseDefinition } from 'husjs';
@@ -38,7 +40,7 @@ const sharedStair = createSimpleHouseStair();
 
 const SIMPLE_HOUSE_MODULE: SceneZoneModule = {
   id: 'simple-house-main',
-  name: 'Georgian Double-Fronted Country House',
+  name: '5-Bay Georgian Country House',
   buildingId: SIMPLE_HOUSE_BUILDING_ID,
   floorId: 'ground',
   zoneIds: Object.keys(SIMPLE_HOUSE_ROOM_ZONES) as SceneZoneModule['zoneIds'],
@@ -87,10 +89,10 @@ export const simpleHouse: HouseDefinition = defineHouse({
   },
   walkthrough: {
     spawns: [
-      { id: 'front-hall', label: 'Marble Entrance Hall', zoneId: 'houseHall', position: [-0.45, FFL_GROUND, 3.1], yawDeg: 0 },
-      { id: 'drawing-hearth', label: 'Georgian Drawing Room', zoneId: 'houseDrawing', position: [-2.2, FFL_GROUND, 1.9], yawDeg: 50 },
-      { id: 'chichester-kitchen', label: 'Chichester Kitchen & Dining', zoneId: 'houseKitchenDiner', position: [2.15, FFL_GROUND, -0.85], yawDeg: -90 },
-      { id: 'principal-bedroom', label: 'Principal Bedroom', zoneId: 'housePrincipalBed', position: [-2.35, FFL_FIRST, 1.4], yawDeg: 65 },
+      { id: 'front-hall', label: 'Entrance Hall', zoneId: 'houseHall', position: [-0.45, FFL_GROUND, 3.1], yawDeg: 0 },
+      { id: 'drawing-hearth', label: 'Georgian Drawing Room', zoneId: 'houseDrawing', position: [-3.1, FFL_GROUND, 1.9], yawDeg: 50 },
+      { id: 'chichester-kitchen', label: 'Chichester Kitchen & Dining', zoneId: 'houseKitchenDiner', position: [2.85, FFL_GROUND, -0.85], yawDeg: -90 },
+      { id: 'principal-bedroom', label: 'Principal Suite', zoneId: 'housePrincipalBed', position: [-3.15, FFL_FIRST, 1.4], yawDeg: 65 },
     ],
     sampleTerrainY: (x, z) => simpleHouseTerrainSampler.sampleTerrainY(x, z),
     classifyCollisionMesh: (mesh) => (mesh.userData?.isArchitecturalShell === true ? { noFurniture: true } : null),

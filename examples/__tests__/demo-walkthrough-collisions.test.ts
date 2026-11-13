@@ -291,71 +291,75 @@ describe('1PV Post-Batch Walkthrough Collisions, Door Auto-Barge & Staircase Asc
     expect(afterFrontDoor.z).toBeLessThan(3.2);
     expect(Math.abs(afterFrontDoor.y - 0.0)).toBeLessThan(0.03);
 
-    // Wall containment: Hall -> West partition wall (solid section away from drawing door at Z = 0.9)
-    const wallWest = rig.teleportAndWalk([-0.4, 0, 2.4], -2.5, 2.4, 2.2);
-    expect(wallWest.x).toBeGreaterThan(-1.21);
+    // Wall containment: Hall -> West spine partition wall (X = -1.65 inner face, solid section away from hallDrawing at Z = 3.52)
+    const wallWest = rig.teleportAndWalk([-0.4, 0, 1.8], -2.5, 1.8, 2.2);
+    expect(wallWest.x).toBeGreaterThan(-1.74);
 
-    // Drawing Room exterior West brick wall (X = -5.42 inner face)
-    const extWest = rig.teleportAndWalk([-4.5, 0, 0.0], -6.5, 0.0, 2.2);
-    expect(extWest.x).toBeGreaterThan(-5.42);
+    // Drawing Room exterior West brick wall (X = -7.05 inner face, north of bolection fireplace)
+    const extWest = rig.teleportAndWalk([-6.1, 0, -2.0], -7.6, -2.0, 2.2);
+    expect(extWest.x).toBeGreaterThan(-7.15);
 
-    // Exterior front brick railings & yew hedge containment
+    // Exterior front brick railings & yew hedge containment (expanded 14.82 m house curtilage)
     const railingHit = rig.teleportAndWalk([2.1, -0.16, 9.8], 2.1, 12.2, 2.5);
     expect(railingHit.z).toBeLessThan(11.1);
-    const hedgeEast = rig.teleportAndWalk([9.2, -0.16, 2.0], 12.0, 2.0, 2.5);
-    expect(hedgeEast.x).toBeLessThan(10.8);
+    const hedgeEast = rig.teleportAndWalk([9.8, -0.16, 2.0], 13.0, 2.0, 2.5);
+    expect(hedgeEast.x).toBeLessThan(11.8);
 
     // Furniture & joinery blocking in simple-house:
-    // Kitchen island ([3.38, 0, -0.95], rotated 90 deg -> 0.94 W x 1.88 D -> X in [2.91, 3.85], Z in [-1.89, -0.01])
-    const islandHit = rig.teleportAndWalk([1.9, 0, -0.95], 3.38, -0.95, 2.5);
-    expect(islandHit.x).toBeLessThan(2.9);
+    // Kitchen Ink prep island ([4.25, 0, -1.55], rotated 90 deg -> 1.08 W x 2.20 D -> X in [3.71, 4.79], Z in [-2.65, -0.45])
+    const islandHit = rig.teleportAndWalk([2.85, 0, -1.55], 4.4, -1.55, 2.5);
+    expect(islandHit.x).toBeLessThan(3.75);
 
-    // Drawing Room sofa ([-3.0, 0, -1.35]) & coffee table ([-3.0, 0, 0.0])
-    const sofaHit = rig.teleportAndWalk([-3.0, 0, -2.5], -3.0, -1.35, 2.0);
-    expect(sofaHit.z).toBeLessThan(-1.7);
-    const coffeeHit = rig.teleportAndWalk([-1.8, 0, 0.0], -3.0, 0.0, 2.0);
-    expect(coffeeHit.x).toBeGreaterThan(-2.5);
+    // Drawing Room sofa ([-4.22, 0, -1.45]) & coffee table ([-4.22, 0, 0.0])
+    const sofaHit = rig.teleportAndWalk([-4.22, 0, -2.6], -4.22, -1.45, 2.0);
+    expect(sofaHit.z).toBeLessThan(-1.8);
+    const coffeeHit = rig.teleportAndWalk([-2.7, 0, 0.0], -4.22, 0.0, 2.2);
+    expect(coffeeHit.x).toBeGreaterThan(-3.7);
 
-    // Dining table ([3.48, 0, 2.35])
-    const diningHit = rig.teleportAndWalk([1.9, 0, 2.35], 3.48, 2.35, 2.5);
-    expect(diningHit.x).toBeLessThan(2.85);
+    // Arundel dining table ([4.55, 0, 2.05])
+    const diningHit = rig.teleportAndWalk([2.95, 0, 2.05], 4.55, 2.05, 2.5);
+    expect(diningHit.x).toBeLessThan(3.95);
 
-    // Principal Bed ([-4.24, 3.05, 1.285]) & Guest Bed ([3.35, 3.05, 0.9])
-    const principalBedHit = rig.teleportAndWalk([-2.1, 3.05, 1.285], -4.3, 1.285, 2.5);
-    expect(principalBedHit.x).toBeGreaterThan(-3.3);
-    const guestBedHit = rig.teleportAndWalk([3.35, 3.05, 2.5], 3.35, 0.6, 2.5);
-    expect(guestBedHit.z).toBeGreaterThan(1.4);
+    // Principal Bed ([-6.99.. -4.8, 3.05, 2.38]) & Guest Bed ([4.47, 3.05, -0.08..2.0])
+    const principalBedHit = rig.teleportAndWalk([-3.4, 3.05, 2.38], -5.8, 2.38, 2.5);
+    expect(principalBedHit.x).toBeGreaterThan(-4.55);
+    const guestBedHit = rig.teleportAndWalk([4.47, 3.05, 3.1], 4.47, 0.8, 2.5);
+    expect(guestBedHit.z).toBeGreaterThan(1.8);
 
-    // Study desk ([3.95, 3.05, -3.82]) & Family Bathroom copper boat bath ([0.18, 3.05, -3.74])
-    const deskHit = rig.teleportAndWalk([3.95, 3.05, -2.4], 3.95, -3.9, 2.2);
-    expect(deskHit.z).toBeGreaterThan(-3.45);
-    const bathHit = rig.teleportAndWalk([0.18, 3.05, -2.4], 0.18, -3.8, 2.2);
-    expect(bathHit.z).toBeGreaterThan(-3.4);
+    // Study desk ([4.48, 3.05, -3.72]) & Family Bathroom copper boat bath ([-0.05, 3.05, -3.72])
+    const deskHit = rig.teleportAndWalk([4.48, 3.05, -2.3], 4.48, -3.9, 2.2);
+    expect(deskHit.z).toBeGreaterThan(-3.35);
+    const bathHit = rig.teleportAndWalk([-0.05, 3.05, -2.3], -0.05, -3.8, 2.2);
+    expect(bathHit.z).toBeGreaterThan(-3.35);
 
-    // Doorway auto-barge across interior & French doors
-    const hallToDrawing = rig.teleportAndWalk([-0.4, 0, 0.9], -2.0, 0.9, 2.5);
-    expect(hallToDrawing.x).toBeLessThan(-1.65);
-    const hallToKitchen = rig.teleportAndWalk([0.4, 0, 3.45], 2.0, 3.45, 2.5);
-    expect(hallToKitchen.x).toBeGreaterThan(1.65);
-    const kitchenFrenchOut = rig.teleportAndWalk([4.25, 0, -3.2], 4.25, -5.6, 3.2);
+    // Doorway auto-barge across bilaterally symmetric Hall doors, direct Cloakroom WC door & twin rear French doors
+    const hallToDrawing = rig.teleportAndWalk([-0.6, 0, 3.52], -2.6, 3.52, 2.5);
+    expect(hallToDrawing.x).toBeLessThan(-2.15);
+    const hallToKitchen = rig.teleportAndWalk([0.6, 0, 3.52], 2.6, 3.52, 2.5);
+    expect(hallToKitchen.x).toBeGreaterThan(2.15);
+    const hallToDirectWc = rig.teleportAndWalk([0.32, 0, -0.95], 0.32, -2.55, 2.5);
+    expect(hallToDirectWc.z).toBeLessThan(-2.05);
+    const kitchenFrenchOut = rig.teleportAndWalk([5.35, 0, -3.2], 5.35, -5.6, 3.2);
     expect(kitchenFrenchOut.z).toBeLessThan(-5.0);
+    const drawingFrenchOut = rig.teleportAndWalk([-5.35, 0, -3.2], -5.35, -5.6, 3.2);
+    expect(drawingFrenchOut.z).toBeLessThan(-5.0);
 
-    const landingToPrincipal = rig.teleportAndWalk([-0.55, 3.05, 1.3], -2.0, 1.3, 2.5);
-    expect(landingToPrincipal.x).toBeLessThan(-1.65);
-    const landingToGuest = rig.teleportAndWalk([-0.3, 3.05, 3.45], 2.0, 3.45, 3.0);
-    expect(landingToGuest.x).toBeGreaterThan(1.65);
-    const landingToStudy = rig.teleportAndWalk([0.4, 3.05, -0.88], 2.0, -0.88, 2.5);
-    expect(landingToStudy.x).toBeGreaterThan(1.65);
-    const landingToBath = rig.teleportAndWalk([-0.55, 3.05, -0.95], -0.55, -2.35, 2.5);
-    expect(landingToBath.z).toBeLessThan(-1.95);
+    const landingToPrincipal = rig.teleportAndWalk([-0.6, 3.05, 3.48], -2.6, 3.48, 2.5);
+    expect(landingToPrincipal.x).toBeLessThan(-2.15);
+    const landingToGuest = rig.teleportAndWalk([-0.3, 3.05, 3.48], 2.6, 3.48, 3.2);
+    expect(landingToGuest.x).toBeGreaterThan(2.15);
+    const landingToStudy = rig.teleportAndWalk([0.6, 3.05, -0.84], 2.5, -0.84, 2.5);
+    expect(landingToStudy.x).toBeGreaterThan(2.1);
+    const landingToBath = rig.teleportAndWalk([-1.05, 3.05, -0.95], -1.05, -2.45, 2.5);
+    expect(landingToBath.z).toBeLessThan(-2.0);
 
-    // Full Staircase Ascent & Descent + Stair/Landing Balustrade Guarding
-    // Side of staircase spandrel/balustrade from Hall is blocked
-    const stairSideBlocked = rig.teleportAndWalk([-0.55, 0, 1.2], 0.61, 1.2, 2.0);
-    expect(stairSideBlocked.x).toBeLessThan(0.08);
+    // Full Staircase Ascent & Descent + Fitted Under-Stairs Cupboard / Landing Balustrade Guarding
+    // Side of under-stairs spandrel/balustrade (X = 0.53) from Hall is blocked
+    const stairSideBlocked = rig.teleportAndWalk([-0.4, 0, 1.2], 1.09, 1.2, 2.0);
+    expect(stairSideBlocked.x).toBeLessThan(0.54);
 
-    // Ascend from houseHall [0.61, 0, 3.35] all the way up simpleHouse.stair to houseLanding (Y = 3.05)
-    rig.teleportAndWalk([0.61, 0, 3.35], 0.61, 3.1, 0.5);
+    // Ascend from houseHall [1.09, 0, 3.35] all the way up simpleHouse.stair (STAIR_WIDTH_M = 1.12) to houseLanding (Y = 3.05)
+    rig.teleportAndWalk([1.09, 0, 3.35], 1.09, 3.1, 0.5);
     let prevY = rig.walkthrough.getFootPosition().y;
     const dt = 1 / 60;
     (rig.walkthrough as unknown as { yawRad: number; targetYawRad: number }).yawRad = 0;
@@ -380,26 +384,26 @@ describe('1PV Post-Batch Walkthrough Collisions, Door Auto-Barge & Staircase Asc
     expect(atTopLanding.z).toBeLessThan(-0.75);
     expect(Math.abs(atTopLanding.y - 3.05)).toBeLessThan(0.02);
 
-    // First-floor landingGuard MUST be visible & block walking East/North into the stairwell void!
+    // First-floor landingGuard (X = 0.475, Z = 2.62) MUST be visible & block walking East/North into the stairwell void!
     const guardObj = rig.scene.getObjectByName('simpleHouse.landingGuard');
     expect(guardObj?.visible ?? true).toBe(true);
-    const guardWestBlocked = rig.teleportAndWalk([-0.56, 3.05, 1.0], 0.61, 1.0, 2.2);
-    expect(guardWestBlocked.x).toBeLessThan(0.035);
-    const guardSouthBlocked = rig.teleportAndWalk([0.55, 3.05, 3.2], 0.55, 2.0, 2.2);
+    const guardWestBlocked = rig.teleportAndWalk([-0.4, 3.05, 1.0], 1.09, 1.0, 2.2);
+    expect(guardWestBlocked.x).toBeLessThan(0.49);
+    const guardSouthBlocked = rig.teleportAndWalk([1.0, 3.05, 3.2], 1.0, 2.0, 2.2);
     expect(guardSouthBlocked.z).toBeGreaterThan(2.62);
 
     // Mid-stair open West balustrade MUST block walking sideways off the stairs into houseHall!
-    rig.teleportAndWalk([0.61, 0, 3.35], 0.61, 1.2, 2.5);
+    rig.teleportAndWalk([1.09, 0, 3.35], 1.09, 1.2, 2.5);
     const midStair = rig.walkthrough.getFootPosition().clone();
     expect(midStair.y).toBeGreaterThan(1.1);
-    const offStairAttempt = rig.walkTowards(-0.6, midStair.z, 1.8);
-    expect(offStairAttempt.x).toBeGreaterThan(0.11);
+    const offStairAttempt = rig.walkTowards(-0.4, midStair.z, 1.8);
+    expect(offStairAttempt.x).toBeGreaterThan(0.53);
 
-    // Descend from houseLanding [0.61, 3.05, -0.95] smoothly back down to houseHall [0.61, 0, 3.35]
-    const backInHall = rig.teleportAndWalk([0.61, 3.05, -0.95], 0.61, 3.35, 4.5);
+    // Descend from houseLanding [1.09, 3.05, -0.95] smoothly back down to houseHall [1.09, 0, 3.35]
+    const backInHall = rig.teleportAndWalk([1.09, 3.05, -0.95], 1.09, 3.35, 4.5);
     expect(backInHall.z).toBeGreaterThan(3.15);
     expect(Math.abs(backInHall.y - 0.0)).toBeLessThan(0.02);
-  }, 30_000);
+  }, 60_000);
 
   it('simple-flat: blocks extruded walls & furniture and auto-barges all apartment doors post-batch', () => {
     const rig = buildPostBatchWalkthroughRig(simpleFlat);

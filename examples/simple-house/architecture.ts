@@ -28,7 +28,6 @@ import {
   HALF_D,
   HALF_W,
   INT_WALL_T,
-  SPINE_WALL_T,
 } from './electrical-and-rooms.ts';
 import {
   box,
@@ -39,7 +38,9 @@ import {
   type SimpleHouseRoomSchemeKey,
 } from './architecture-materials.ts';
 import {
+  BOOT_GARDEN_DOOR,
   DOORS,
+  DRAWING_FRENCH_DOOR,
   DRESSING_STANDOFF_M,
   FRENCH_DOOR,
   FRONT_DOOR,
@@ -51,6 +52,7 @@ import {
   WINDOWS,
   addFrenchDoors,
   addInteriorDoor,
+  addRearGardenBootDoor as addRearBootGardenDoor,
   buildFrontDoorInteriorSurround,
   buildSplitRainwaterDownpipeSegment,
   partitionOpenings,
@@ -90,6 +92,58 @@ const INTERFLOOR_BAND_H = FFL_FIRST - GROUND_CEILING_SOFFIT_Y; // 0.22
 const FIRST_WALL_H = 2.57;
 const FIRST_PARTITION_H = FIRST_CEILING_SOFFIT_Y - FFL_FIRST - 0.002;
 
+/**
+ * Classical Georgian window-tax blind sash relief (`2 mm` stepped depth planes so 0 z-fight!)
+ * balancing the East-flank sash windows without piercing interior West-flank alcove joinery.
+ */
+function buildGeorgianBlindSashRelief(opts: {
+  readonly name: string;
+  readonly width: number;
+  readonly height: number;
+  readonly trimMat: THREE.Material;
+  readonly stoneMat: THREE.Material;
+  readonly slateBlindMat: THREE.Material;
+  readonly lintelBrickMat: THREE.Material;
+}): THREE.Group {
+  const { name, width, height, trimMat, stoneMat, slateBlindMat, lintelBrickMat } = opts;
+  const group = new THREE.Group();
+  group.name = name;
+
+  // Local +Z projects outward from West brick face (`X = -HALF_W - 0.003` with `rotationY = -Math.PI / 2`)
+  box(group, `${name}.yorkstoneSill`, [width + 0.14, 0.075, 0.068], [0, -0.0385, 0.034], stoneMat, 1.0);
+  box(group, `${name}.flatArchLintel`, [width + 0.16, 0.21, 0.032], [0, height + 0.106, 0.016], lintelBrickMat, 1.0);
+  box(group, `${name}.stoneKeystone`, [0.13, 0.23, 0.04], [0, height + 0.111, 0.022], stoneMat, 1.0);
+
+  // Outer ovolo box frame: z ∈ [0.000, 0.024]
+  const stileW = 0.058;
+  const innerW = width - stileW * 2;
+  const innerH = height - stileW * 2;
+  box(group, `${name}.frameHead`, [width, stileW, 0.024], [0, height - stileW * 0.5, 0.012], trimMat);
+  box(group, `${name}.frameSill`, [width, stileW, 0.024], [0, stileW * 0.5, 0.012], trimMat);
+  for (const [tag, s] of [['left', -1], ['right', 1]] as const) {
+    box(group, `${name}.frameStile_${tag}`, [stileW, innerH - 0.002, 0.024], [s * (width - stileW) * 0.5, height * 0.5, 0.012], trimMat);
+  }
+
+  // Dark Welsh-slate blind backing: z ∈ [0.004, 0.018] (front 0.018)
+  box(group, `${name}.slateBacking`, [innerW - 0.004, innerH - 0.004, 0.014], [0, height * 0.5, 0.011], slateBlindMat);
+
+  // Horizontal glazing bars: z ∈ [0.020, 0.028] (2 mm clear of slate 0.018)
+  for (const [tag, sy] of [['bot', height * 0.26], ['top', height * 0.74]] as const) {
+    box(group, `${name}.glazingBarH_${tag}`, [innerW - 0.006, 0.018, 0.008], [0, sy, 0.024], trimMat);
+  }
+
+  // Vertical glazing bars: z ∈ [0.030, 0.036] (2 mm proud of horizontal bars 0.028 -> 0 crossing z-fight)
+  const colStep = innerW / 3;
+  for (const [tag, sx] of [['a', -colStep * 0.5], ['b', colStep * 0.5]] as const) {
+    box(group, `${name}.glazingBarV_${tag}`, [0.018, innerH - 0.006, 0.006], [sx, height * 0.5, 0.033], trimMat);
+  }
+
+  // Meeting rail: z ∈ [0.038, 0.046] (2 mm proud of vertical bars 0.036)
+  box(group, `${name}.meetingRail`, [innerW - 0.002, 0.034, 0.008], [0, height * 0.5, 0.042], trimMat);
+
+  return group;
+}
+
 export interface SimpleHouseShell {
   /** Whole-elevation cutaway descriptor for wall-hung fittings. */
   cut(side: Side, floor: FloorId): CutawayWallDescriptor;
@@ -100,7 +154,7 @@ export interface SimpleHouseShell {
 
 export function buildSimpleHouseArchitecture(
   ctx: SceneBuilderContext,
-  stair: SimpleHouseStair
+  _stair: SimpleHouseStair
 ): SimpleHouseShell {
   const groundGroup = ctx.floor ? ctx.floor('ground').group : ctx.scene;
   const groundSlabGroup = ctx.floor ? ctx.floor('ground').slabGroup : ctx.scene;
@@ -138,6 +192,12 @@ export function buildSimpleHouseArchitecture(
     color: 0x383c3f,
     roughness: 0.44,
     metalness: 0.68,
+  });
+  const slateBlindMat = new THREE.MeshStandardMaterial({
+    name: 'simpleHouse.blindSash.welshSlate',
+    color: 0x2b3036,
+    roughness: 0.72,
+    metalness: 0.04,
   });
   const brassMat = getBathroomBrassMaterials('AB').primary;
   const glassMat = new THREE.MeshPhysicalMaterial({
@@ -243,7 +303,11 @@ export function buildSimpleHouseArchitecture(
               ? [{ id: 'frontDoor', centerOffset: HALF_W, width: FRONT_DOOR.width, sillY: 0, height: FRONT_DOOR.height, archRiseM: FRONT_DOOR.archRiseM }]
               : []),
             ...(floor === 'ground' && side === 'north'
-              ? [{ id: 'frenchDoors', centerOffset: wallOffset('north', FRENCH_DOOR.x), width: FRENCH_DOOR.width, sillY: 0, height: FRENCH_DOOR.height }]
+              ? [
+                  { id: 'frenchDoors', centerOffset: wallOffset('north', FRENCH_DOOR.x), width: FRENCH_DOOR.width, sillY: 0, height: FRENCH_DOOR.height },
+                  { id: 'drawingFrenchDoors', centerOffset: wallOffset('north', DRAWING_FRENCH_DOOR.x), width: DRAWING_FRENCH_DOOR.width, sillY: 0, height: DRAWING_FRENCH_DOOR.height },
+                  { id: 'bootGardenDoor', centerOffset: wallOffset('north', BOOT_GARDEN_DOOR.x), width: BOOT_GARDEN_DOOR.width, sillY: 0, height: BOOT_GARDEN_DOOR.height },
+                ]
               : []),
           ],
         })),
@@ -267,7 +331,6 @@ export function buildSimpleHouseArchitecture(
   firstGroup.add(firstNet.group);
 
   // Inter-floor exterior brick joist-band course (Y = 2.83..3.05 m) parented in `firstSlabGroup`
-  // so `Ground Floor` cutaway exposes a level Y = 2.83 m poché plane, while `All` view is 100% seamless!
   const interfloorBandNet = createWallNetwork({
     floor: 'ground',
     baseY: GROUND_CEILING_SOFFIT_Y,
@@ -285,62 +348,55 @@ export function buildSimpleHouseArchitecture(
       align: 'exterior' as const,
       kind: 'exterior' as const,
       outwardSide: side,
-      openings:
-        side === 'south'
-          ? [
-              // Subtract top of semicircular fanlight arch rising to Y = 2.675 < 2.83 (none needed),
-              // keep solid continuous Flemish brick band behind portico pediment & Bath-stone stringcourse
-            ]
-          : [],
+      openings: [],
     })),
   });
   firstSlabGroup.add(interfloorBandNet.group);
 
-  // Opening-free interior wall linings in rooms whose exterior shell shares multiple rooms
-  const drawLiningN = box(groundGroup, 'simpleHouse.drawing.cromartyLiningNorthAlcove', [0.004, 2.675, 3.23], [-IN_X + 0.002, 0.145 + 2.675 * 0.5, -2.585], schemes.houseDrawing.walls);
+  // Opening-free interior wall linings in rooms whose exterior shell shares multiple rooms (1 mm clear of IN_X)
+  const drawLiningN = box(groundGroup, 'simpleHouse.drawing.cromartyLiningNorthAlcove', [0.004, 2.675, 3.23], [-IN_X + 0.003, 0.145 + 2.675 * 0.5, -2.585], schemes.houseDrawing.walls);
   drawLiningN.castShadow = false;
   tagCutaway(drawLiningN, cut('west', 'ground'));
 
-  const drawLiningS = box(groundGroup, 'simpleHouse.drawing.cromartyLiningSouthAlcove', [0.004, 2.675, 3.23], [-IN_X + 0.002, 0.145 + 2.675 * 0.5, 2.585], schemes.houseDrawing.walls);
+  const drawLiningS = box(groundGroup, 'simpleHouse.drawing.cromartyLiningSouthAlcove', [0.004, 2.675, 3.23], [-IN_X + 0.003, 0.145 + 2.675 * 0.5, 2.585], schemes.houseDrawing.walls);
   drawLiningS.castShadow = false;
   tagCutaway(drawLiningS, cut('west', 'ground'));
 
-  // Split Kitchen East lining around kitchenRsjPierEast (`Z in [-0.28, -0.04]`)
-  const kitLiningENorth = box(groundGroup, 'simpleHouse.kitchen.joasWhiteLiningEastNorth', [0.004, 2.675, 3.89], [IN_X - 0.002, 0.145 + 2.675 * 0.5, -2.245], schemes.houseKitchenDiner.walls);
+  // Split Kitchen East lining around kitchenRsjPierEast (`Z ∈ [-0.286, -0.034]`) & diningEast sash (`Z = +2.10`)
+  const kitLiningENorth = box(groundGroup, 'simpleHouse.kitchen.joasWhiteLiningEastNorth', [0.004, 2.675, 3.89], [IN_X - 0.003, 0.145 + 2.675 * 0.5, -2.245], schemes.houseKitchenDiner.walls);
   kitLiningENorth.castShadow = false;
   tagCutaway(kitLiningENorth, cut('east', 'ground'));
-  const kitLiningESouth = box(groundGroup, 'simpleHouse.kitchen.joasWhiteLiningEastSouth', [0.004, 2.675, 0.91], [IN_X - 0.002, 0.145 + 2.675 * 0.5, 0.435], schemes.houseKitchenDiner.walls);
+  const kitLiningESouth = box(groundGroup, 'simpleHouse.kitchen.joasWhiteLiningEastSouth', [0.004, 2.675, 0.91], [IN_X - 0.003, 0.145 + 2.675 * 0.5, 0.435], schemes.houseKitchenDiner.walls);
   kitLiningESouth.castShadow = false;
   tagCutaway(kitLiningESouth, cut('east', 'ground'));
 
-  const prinLiningW = box(firstGroup, 'simpleHouse.principal.skimmingStoneLiningWest', [0.004, 2.395, 4.65], [-IN_X + 0.002, FFL_FIRST + 0.145 + 2.395 * 0.5, 1.875], schemes.housePrincipalBed.walls);
-  prinLiningW.castShadow = false;
-  tagCutaway(prinLiningW, cut('west', 'first'));
+  // Principal Bedroom West lining split around PRINCIPAL_BREAST (`Z ∈ [-0.65, 0.65]`)
+  const prinLiningWSouth = box(firstGroup, 'simpleHouse.principal.skimmingStoneLiningWest', [0.004, 2.395, 3.53], [-IN_X + 0.003, FFL_FIRST + 0.145 + 2.395 * 0.5, 2.435], schemes.housePrincipalBed.walls);
+  prinLiningWSouth.castShadow = false;
+  tagCutaway(prinLiningWSouth, cut('west', 'first'));
+  const prinLiningWNorth = box(firstGroup, 'simpleHouse.principal.skimmingStoneLiningWestNorth', [0.004, 2.395, 0.96], [-IN_X + 0.003, FFL_FIRST + 0.145 + 2.395 * 0.5, -1.15], schemes.housePrincipalBed.walls);
+  prinLiningWNorth.castShadow = false;
+  tagCutaway(prinLiningWNorth, cut('west', 'first'));
 
-  const studyLiningENorth = box(firstGroup, 'simpleHouse.study.cardRoomGreenLiningEastNorth', [0.004, 2.395, 1.83], [IN_X - 0.002, FFL_FIRST + 0.145 + 2.395 * 0.5, -3.265], schemes.houseStudy.walls);
+  // Study East lining split around STUDY_BREAST (`Z ∈ [-2.34, -0.94]`)
+  const studyLiningENorth = box(firstGroup, 'simpleHouse.study.cardRoomGreenLiningEastNorth', [0.004, 2.395, 1.84], [IN_X - 0.003, FFL_FIRST + 0.145 + 2.395 * 0.5, -3.28], schemes.houseStudy.walls);
   studyLiningENorth.castShadow = false;
   tagCutaway(studyLiningENorth, cut('east', 'first'));
-  const studyLiningESouth = box(firstGroup, 'simpleHouse.study.cardRoomGreenLiningEastSouth', [0.004, 2.395, 0.7], [IN_X - 0.002, FFL_FIRST + 0.145 + 2.395 * 0.5, -0.58], schemes.houseStudy.walls);
+  const studyLiningESouth = box(firstGroup, 'simpleHouse.study.cardRoomGreenLiningEastSouth', [0.004, 2.395, 0.68], [IN_X - 0.003, FFL_FIRST + 0.145 + 2.395 * 0.5, -0.58], schemes.houseStudy.walls);
   studyLiningESouth.castShadow = false;
   tagCutaway(studyLiningESouth, cut('east', 'first'));
 
-  // Family Bathroom Wet-Zone Handmade Olive Metro Tile Alcove (`X in [1.51, 2.35], Z in [-4.22, -2.45]`)
+  // Family Bathroom Wet-Zone Handmade Olive Metro Tiles (`X ∈ [2.01, 2.75], Z ∈ [-4.22, -2.45]`, 2 mm inset from plaster faces so 0 z-fight)
   const oliveMetroMat = createHandmadeOliveMetroTileMaterial();
   const wetAlcoveH = 2.18;
   const wetAlcoveCy = FFL_FIRST + wetAlcoveH * 0.5 + 0.002;
-  const northWetTile = box(firstGroup, 'simpleHouse.bathroom.wetZoneOliveMetroNorth', [0.832, wetAlcoveH, 0.01], [1.93, wetAlcoveCy, -IN_Z + 0.006], oliveMetroMat, 1.0);
+  const northWetTile = box(firstGroup, 'simpleHouse.bathroom.wetZoneOliveMetroNorth', [0.736, wetAlcoveH, 0.01], [2.38, wetAlcoveCy, -IN_Z + 0.007], oliveMetroMat, 1.0);
   northWetTile.castShadow = false;
   tagCutaway(northWetTile, cut('north', 'first'));
-  box(firstGroup, 'simpleHouse.bathroom.wetZoneOliveMetroEast', [0.01, wetAlcoveH, 1.756], [2.344, wetAlcoveCy, -3.332], oliveMetroMat, 1.0).castShadow = false;
-  box(firstGroup, 'simpleHouse.bathroom.wetZoneOliveMetroSouth', [0.832, wetAlcoveH, 0.01], [1.93, wetAlcoveCy, -2.456], oliveMetroMat, 1.0).castShadow = false;
+  box(firstGroup, 'simpleHouse.bathroom.wetZoneOliveMetroEast', [0.01, wetAlcoveH, 1.742], [2.743, wetAlcoveCy, -3.335], oliveMetroMat, 1.0).castShadow = false;
+  box(firstGroup, 'simpleHouse.bathroom.wetZoneOliveMetroSouth', [0.724, wetAlcoveH, 0.01], [2.374, wetAlcoveCy, -2.457], oliveMetroMat, 1.0).castShadow = false;
 
-  // --- Floors & ceilings ---------------------------------------------------------------------
-  const wingX0 = HALL_PARTITION_X + SPINE_WALL_T * 0.5 + 0.002; // 1.392
-  const hallX = HALL_PARTITION_X - SPINE_WALL_T * 0.5 - 0.002; // 1.148
-  const stairNorthZ = STAIRWELL_CROSS_Z - SPINE_WALL_T * 0.5 - 0.002; // -1.772
-  const stairSouthZ = STAIRWELL_CROSS_Z + SPINE_WALL_T * 0.5 + 0.002; // -1.528
-  const inX = IN_X - 0.002; // 5.418
-  const inZ = IN_Z - 0.002; // 4.218
+  // Floors & ceilings
   const rect = (x0: number, x1: number, z0: number, z1: number): [number, number][] => [
     [x0, z0],
     [x1, z0],
@@ -362,30 +418,39 @@ export function buildSimpleHouseArchitecture(
       name,
     });
 
-  groundSlab('simpleHouse.floor.drawingOak', 'houseDrawing', rect(-inX, -wingX0, -inZ, inZ), drawingHoneyOakFloorMat);
-  groundSlab('simpleHouse.floor.kitchenHerringbone', 'houseKitchenDiner', rect(wingX0, inX, -inZ, inZ), kitchenHerringboneOakMat);
-  groundSlab('simpleHouse.floor.bootTerracotta', 'houseCloakroom', rect(-hallX, -0.062, -inZ, stairNorthZ), bootTerracottaQuarryMat);
-  groundSlab('simpleHouse.floor.wcVitoriaChequer', 'houseCloakroom', rect(0.062, hallX, -inZ, stairNorthZ), wcVitoriaChequerMat);
+  groundSlab('simpleHouse.floor.drawingOak', 'houseDrawing', rect(-7.048, -1.892, -4.218, 4.218), drawingHoneyOakFloorMat);
+  groundSlab('simpleHouse.floor.kitchenHerringbone', 'houseKitchenDiner', rect(1.892, 7.048, -4.218, 4.218), kitchenHerringboneOakMat);
+  groundSlab('simpleHouse.floor.bootTerracotta', 'houseBootLobby', rect(-1.648, -0.312, -4.218, -1.772), bootTerracottaQuarryMat);
+  groundSlab('simpleHouse.floor.wcVitoriaChequer', 'houseCloakroom', rect(-0.188, 1.648, -4.218, -1.772), wcVitoriaChequerMat);
 
+  // `buildChequerboardMarbleFloor` builds local y ∈ [0, thicknessM], so `FFL_GROUND - 0.02` aligns top finished face at `Y = FFL_GROUND`
   const hallFloor = buildChequerboardMarbleFloor({
     name: 'simpleHouse.floor.hallChequer',
-    position: [0, FFL_GROUND - 0.02, 1.345],
-    widthM: 2.29,
-    depthM: 5.74,
+    position: [0, FFL_GROUND - 0.02, (-1.53 + 4.22) * 0.5],
+    widthM: 3.296,
+    depthM: 5.746,
     thicknessM: 0.02,
   });
   tagCollisionRole(hallFloor, 'solidPlane');
   groundSlabGroup.add(hallFloor);
-  box(groundSlabGroup, 'simpleHouse.floor.hallSubBase', [2.78, 0.1385, 5.99], [0, -0.09075, 1.22], subBaseMat).castShadow = false;
+  box(groundSlabGroup, 'simpleHouse.floor.hallSubBase', [3.76, 0.1385, 5.99], [0, -0.09075, 1.22], subBaseMat).castShadow = false;
 
-  const trimmedStairVoidXZ: [number, number][] = stair.voidOpeningXZ.map(([vx, vz]) => [
-    vx,
-    Math.min(vz, 2.565),
-  ]);
+  const stairVoidDeckXZ: [number, number][] = [
+    [0.475, -0.62],
+    [1.65, -0.62],
+    [1.65, 2.62],
+    [0.475, 2.62],
+  ];
+  const stairVoidLandingFinishXZ: [number, number][] = [
+    [0.473, -0.622],
+    [1.65, -0.622],
+    [1.65, 2.622],
+    [0.473, 2.622],
+  ];
 
   createFloorSlab({
     wallNetwork: firstNet,
-    voids: [trimmedStairVoidXZ],
+    voids: [stairVoidDeckXZ],
     elevationY: FFL_FIRST - 0.022,
     thickness: 0.198,
     finishThickness: 0,
@@ -420,24 +485,32 @@ export function buildSimpleHouseArchitecture(
       name,
     });
 
-  firstRoomFinishSlab('simpleHouse.floor.principalOatmealCarpet', 'housePrincipalBed', rect(-inX, -wingX0, -1.648, inZ), principalOatmealCarpetMat);
-  firstRoomFinishSlab('simpleHouse.floor.dressingOatmealCarpet', 'housePrincipalBed', rect(-inX, -3.592, -inZ, -1.772), principalOatmealCarpetMat);
-  firstRoomFinishSlab('simpleHouse.floor.ensuiteParisianManoir', 'housePrincipalEnsuite', rect(-3.468, -wingX0, -inZ, -1.772), ensuiteParisianManoirMat);
-  firstRoomFinishSlab('simpleHouse.floor.landingSmokedOak', 'houseLanding', rect(-hallX, hallX, stairSouthZ, inZ), landingSmokedOakMat, [trimmedStairVoidXZ]);
-  firstRoomFinishSlab('simpleHouse.floor.guestHoneySisal', 'houseBedroom2', rect(wingX0, inX, -0.098, inZ), guestHoneySisalMat);
+  firstRoomFinishSlab('simpleHouse.floor.principalOatmealCarpet', 'housePrincipalBed', rect(-7.048, -1.892, -1.648, 4.218), principalOatmealCarpetMat);
+  firstRoomFinishSlab('simpleHouse.floor.dressingOatmealCarpet', 'housePrincipalBed', rect(-7.048, -4.452, -4.218, -1.772), principalOatmealCarpetMat);
+  firstRoomFinishSlab('simpleHouse.floor.ensuiteParisianManoir', 'housePrincipalEnsuite', rect(-4.328, -1.892, -4.218, -1.772), ensuiteParisianManoirMat);
+  firstRoomFinishSlab('simpleHouse.floor.landingSmokedOak', 'houseLanding', rect(-1.648, 1.648, -1.528, 4.218), landingSmokedOakMat, [stairVoidLandingFinishXZ]);
+  firstRoomFinishSlab('simpleHouse.floor.guestHoneySisal', 'houseBedroom2', rect(1.892, 7.048, -0.098, 4.218), guestHoneySisalMat);
 
   const studyPolygon: [number, number][] = [
-    [2.472, -inZ],
-    [inX, -inZ],
-    [inX, -0.222],
-    [wingX0, -0.222],
-    [wingX0, -1.528],
-    [2.472, -1.528],
+    [1.892, -0.222],
+    [7.048, -0.222],
+    [7.048, -4.218],
+    [2.872, -4.218],
+    [2.872, -1.528],
+    [1.892, -1.528],
   ];
   firstRoomFinishSlab('simpleHouse.floor.studyFumedWalnutOak', 'houseStudy', studyPolygon, studyFumedWalnutOakMat);
-  firstRoomFinishSlab('simpleHouse.floor.bathroomLimestone', 'houseBathroom', rect(-hallX, 1.388, -inZ, stairNorthZ), bathroomCotswoldLimestoneMat);
-  firstRoomFinishSlab('simpleHouse.floor.bathroomWetAlcoveLimestone', 'houseBathroom', rect(1.512, 2.348, -inZ, -2.452), bathroomCotswoldLimestoneMat);
-  firstRoomFinishSlab('simpleHouse.floor.airingCupboardOak', 'houseBathroom', rect(1.512, 2.348, -2.328, -1.652), landingSmokedOakMat);
+
+  const bathroomPolygon: [number, number][] = [
+    [-1.648, -1.772],
+    [1.888, -1.772],
+    [1.888, -2.452],
+    [2.748, -2.452],
+    [2.748, -4.218],
+    [-1.648, -4.218],
+  ];
+  firstRoomFinishSlab('simpleHouse.floor.bathroomLimestone', 'houseBathroom', bathroomPolygon, bathroomCotswoldLimestoneMat);
+  firstRoomFinishSlab('simpleHouse.floor.airingCupboardOak', 'houseBathroom', rect(2.012, 2.748, -2.328, -1.652), landingSmokedOakMat);
 
   createFloorSlab({
     wallNetwork: firstNet,
@@ -452,7 +525,7 @@ export function buildSimpleHouseArchitecture(
     name: 'simpleHouse.ceiling.first',
   });
 
-  // --- Roof & vertically continuous masonry chimney stacks -----------------------------------
+  // Roof & vertically continuous masonry chimney stacks
   const roof = createHippedRoof({
     footprint: { minX: -HALF_W, maxX: HALF_W, minZ: -HALF_D, maxZ: HALF_D },
     eavesY: ROOF_EAVES_Y,
@@ -463,23 +536,23 @@ export function buildSimpleHouseArchitecture(
   });
   roofGroup.add(roof.group);
 
-  // Align roof stacks directly over West (Drawing/Principal) & East (Kitchen Range/Study, Z = -1.64) breasts
+  // Align roof stacks directly over West (Drawing/Principal, Z = 0.00) & East (Kitchen Range/Study, Z = -1.64) breasts
   roofGroup.add(
     buildGeorgianFacadeDressings({
       kind: 'chimneyStack',
       name: 'simpleHouse.chimney.west',
-      position: [-5.24, 6.05, -1.05],
+      position: [-6.87, 6.05, 0.0],
       rotationY: Math.PI / 2,
     }),
     buildGeorgianFacadeDressings({
       kind: 'chimneyStack',
       name: 'simpleHouse.chimney.east',
-      position: [5.24, 6.05, -1.64],
+      position: [6.87, 6.05, -1.64],
       rotationY: Math.PI / 2,
     })
   );
 
-  // --- Facade dressings ----------------------------------------------------------------------
+  // Facade dressings
   const sides: readonly Side[] = ['south', 'north', 'east', 'west'];
   const facadeLen: Record<Side, number> = {
     south: HALF_W * 2,
@@ -499,7 +572,9 @@ export function buildSimpleHouseArchitecture(
           ]
         : side === 'north'
           ? [
-              [-HALF_W - 0.042, FRENCH_DOOR.x - 0.76],
+              [-HALF_W - 0.042, DRAWING_FRENCH_DOOR.x - 0.76],
+              [DRAWING_FRENCH_DOOR.x + 0.76, BOOT_GARDEN_DOOR.x - 0.45],
+              [BOOT_GARDEN_DOOR.x + 0.45, FRENCH_DOOR.x - 0.76],
               [FRENCH_DOOR.x + 0.76, HALF_W + 0.042],
             ]
           : [[-HALF_D, HALF_D]];
@@ -582,7 +657,27 @@ export function buildSimpleHouseArchitecture(
     firstGroup.add(firstPipe);
   }
 
-  // --- Entrance ------------------------------------------------------------------------------
+  // Classical Georgian Blind Sash Windows on West Flank (`Z = +2.10`) balancing `diningEast` & `guestEast`
+  for (const spec of [
+    { id: 'westGround', floor: 'ground' as const, y: FFL_GROUND + 0.68, height: 1.82, width: 1.12 },
+    { id: 'westFirst', floor: 'first' as const, y: FFL_FIRST + 0.62, height: 1.54, width: 1.12 },
+  ]) {
+    const blindSash = buildGeorgianBlindSashRelief({
+      name: `simpleHouse.blindSash.${spec.id}`,
+      width: spec.width,
+      height: spec.height,
+      trimMat: schemes.houseHall.trim,
+      stoneMat,
+      slateBlindMat,
+      lintelBrickMat: brickMat,
+    });
+    blindSash.position.set(-HALF_W - 0.003, spec.y, 2.1);
+    blindSash.rotation.y = -Math.PI / 2;
+    tagCutaway(blindSash, cut('west', spec.floor));
+    floorGroups[spec.floor].add(blindSash);
+  }
+
+  // Entrance & Rear Garden Coach Lanterns
   const portico = buildGeorgianTuscanPorticoAndDoor(ctx, {
     name: 'simpleHouse.portico',
     position: [0, FFL_GROUND - 0.3, HALF_D + 0.004],
@@ -606,7 +701,26 @@ export function buildSimpleHouseArchitecture(
     groundGroup.add(lantern);
   }
 
-  // --- Sash windows & French doors -----------------------------------------------------------
+  // 4 Rear Garden Brass Coach Lanterns (`houseExteriorGarden` circuit) flanking twin French doors; 1 point light for budget
+  const gardenLanternSpecs: readonly { tag: string; x: number; light: boolean }[] = [
+    { tag: 'drawingWest', x: -6.32, light: false },
+    { tag: 'drawingEast', x: -4.38, light: false },
+    { tag: 'kitchenWest', x: 4.38, light: true },
+    { tag: 'kitchenEast', x: 6.32, light: false },
+  ];
+  for (const lSpec of gardenLanternSpecs) {
+    const gardenLantern = buildGeorgianCoachLantern(ctx, {
+      name: `simpleHouse.gardenLantern.${lSpec.tag}`,
+      position: [lSpec.x, 1.95, -HALF_D - 0.006],
+      rotationY: Math.PI,
+      circuitId: 'houseExteriorGarden' as CircuitId,
+      createPointLight: lSpec.light,
+    });
+    tagCutaway(gardenLantern, cut('north', 'ground'));
+    groundGroup.add(gardenLantern);
+  }
+
+  // Sash windows, Twin French Doors & Rear Boot Garden Door
   for (const w of WINDOWS) {
     const net = w.floor === 'ground' ? groundNet : firstNet;
     const y = floorY[w.floor] + w.sillY;
@@ -638,6 +752,7 @@ export function buildSimpleHouseArchitecture(
     });
     floorGroups[w.floor].add(sash.group);
   }
+
   addFrenchDoors(
     ctx,
     groundGroup,
@@ -646,10 +761,44 @@ export function buildSimpleHouseArchitecture(
     glassMat,
     brassMat,
     stoneMat,
-    steelMat
+    steelMat,
+    FRENCH_DOOR,
+    'simpleHouse.frenchDoors'
   );
+  const kitchenFrenchGroup = groundGroup.getObjectByName('simpleHouse.frenchDoors');
+  if (kitchenFrenchGroup) kitchenFrenchGroup.userData.zoneId = 'houseKitchenDiner';
 
-  // --- Interior doors ------------------------------------------------------------------------
+  addFrenchDoors(
+    ctx,
+    groundGroup,
+    groundNet.getWallCutaway('north', wallOffset('north', DRAWING_FRENCH_DOOR.x)) ?? cut('north', 'ground'),
+    schemes.houseDrawing.trim,
+    glassMat,
+    brassMat,
+    stoneMat,
+    steelMat,
+    DRAWING_FRENCH_DOOR,
+    'simpleHouse.drawingFrenchDoors'
+  );
+  const drawingFrenchGroup = groundGroup.getObjectByName('simpleHouse.drawingFrenchDoors');
+  if (drawingFrenchGroup) drawingFrenchGroup.userData.zoneId = 'houseDrawing';
+
+  addRearBootGardenDoor(
+    ctx,
+    groundGroup,
+    groundNet.getWallCutaway('north', wallOffset('north', BOOT_GARDEN_DOOR.x)) ?? cut('north', 'ground'),
+    schemes.houseBootLobby.trim,
+    schemes.houseBootLobby.trim,
+    glassMat,
+    brassMat,
+    stoneMat
+  );
+  const bootDoorGroup = groundGroup.getObjectByName('simpleHouse.bootGardenDoor');
+  if (bootDoorGroup) bootDoorGroup.userData.zoneId = 'houseBootLobby';
+  const bootBarV = groundGroup.getObjectByName('simpleHouse.bootGardenDoor.leaf.glazingBarV');
+  if (bootBarV) bootBarV.scale.z = 34 / 30;
+
+  // Interior doors
   for (const d of DOORS) {
     addInteriorDoor(
       ctx,
@@ -665,7 +814,7 @@ export function buildSimpleHouseArchitecture(
     );
   }
 
-  // --- Structural steel UB RSJs, nib piers, padstones, chimney breasts & joinery trim ---------
+  // Structural steel UB RSJs, nib piers, padstones, chimney breasts & joinery trim
   const trimAndStructureCtx: TrimAndStructureContext = {
     groundGroup,
     groundCeilingGroup,

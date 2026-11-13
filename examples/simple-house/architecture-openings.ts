@@ -22,15 +22,19 @@ import {
   type SimpleHouseRoomSchemeKey,
 } from './architecture-materials.ts';
 
-/** Interior faces of the 360 mm exterior masonry shell (invariant!). */
-export const IN_X = HALF_W - EXT_WALL_T; // 5.42
+/** Interior faces of the 360 mm exterior masonry shell (`14.82 × 9.16 m` exterior -> `±7.05 × ±4.22 m` interior). */
+export const IN_X = HALF_W - EXT_WALL_T; // 7.05
 export const IN_Z = HALF_D - EXT_WALL_T; // 4.22
-/** 240 mm load-bearing spine partition centreline (Hall/Landing faces fixed at ±1.15, Wing faces at ±1.39). */
-export const HALL_PARTITION_X = 1.15 + SPINE_WALL_T * 0.5; // 1.27
-/** 240 mm stairwell cross-wall centreline (Hall/Stairwell face fixed at Z = -1.53, North face at Z = -1.77). */
+/** 240 mm load-bearing spine partition centreline (Hall/Landing clear faces at ±1.65 = 3.30 m wide; Wing faces at ±1.89 = 5.16 m wide). */
+export const HALL_PARTITION_X = 1.65 + SPINE_WALL_T * 0.5; // 1.77
+/** 240 mm stairwell cross-wall centreline (Hall/Stairwell face at Z = -1.53, North service/bathroom face at Z = -1.77). */
 export const STAIRWELL_CROSS_Z = -1.53 - SPINE_WALL_T * 0.5; // -1.65
 
-export const FRENCH_DOOR = { x: 4.25, width: 1.48, height: 2.25 } as const;
+/** Twin Rear Garden French Doors opening from both Golden-Ratio reception wings onto the 15.0 m Yorkstone terrace. */
+export const FRENCH_DOOR = { x: 5.35, width: 1.48, height: 2.25 } as const;
+export const DRAWING_FRENCH_DOOR = { x: -5.35, width: 1.48, height: 2.25 } as const;
+/** Half-glazed Georgian rear garden boot door leading directly from terrace into Boot & Mudroom Lobby. */
+export const BOOT_GARDEN_DOOR = { x: -0.95, width: 0.86, height: 2.16 } as const;
 export const FRONT_DOOR = { width: 0.98, height: 2.205, archRiseM: 0.47 } as const;
 export const DOOR_CLEAR_W = 0.86;
 export const DOOR_CLEAR_H = 2.07;
@@ -54,19 +58,42 @@ export interface WindowSpec {
 const G = { width: 1.12, height: 1.82, sillY: 0.68, floor: 'ground' } as const;
 const F = { width: 1.12, height: 1.54, sillY: 0.62, floor: 'first' } as const;
 
+/**
+ * Strict Palladian 5-Bay Front (`South`: `X = -5.35, -2.95, 0.00, +2.95, +5.35`)
+ * and 100% Plumb Void-over-Void Rear (`North`: `X = -5.35, -2.65, -0.95, +0.85, +3.55, +5.35`)
+ * & East Flank (`Z = +2.10`) fenestration.
+ */
 export const WINDOWS: readonly WindowSpec[] = [
-  { ...G, id: 'drawingSouth', label: 'Drawing Room Sash (Front)', zone: 'houseDrawing', room: 'houseDrawing', side: 'south', at: -3.35 },
-  { ...G, id: 'diningSouth', label: 'Dining Sash (Front)', zone: 'houseKitchenDiner', room: 'houseKitchenDiner', side: 'south', at: 3.35 },
-  { ...G, id: 'drawingNorth', label: 'Drawing Room Sash (Garden)', zone: 'houseDrawing', room: 'houseDrawing', side: 'north', at: -3.35 },
-  { id: 'cloakroomNorth', label: 'Cloakroom Frosted Sash', zone: 'houseCloakroom', room: 'houseCloakroom', floor: 'ground', side: 'north', at: 0.66, width: 0.68, height: 1.15, sillY: 1.15, frosted: true },
-  { id: 'kitchenSinkNorth', label: 'Kitchen Sink Sash', zone: 'houseKitchenDiner', room: 'houseKitchenDiner', floor: 'ground', side: 'north', at: 2.35, width: 1.18, height: 1.42, sillY: 1.02 },
+  // Ground Floor South (5-Bay Palladian Front flanking central Tuscan portico at X = 0)
+  { ...G, id: 'drawingSouthWest', label: 'Drawing Room Sash (South-West)', zone: 'houseDrawing', room: 'houseDrawing', side: 'south', at: -5.35 },
+  { ...G, id: 'drawingSouthEast', label: 'Drawing Room Sash (South-East)', zone: 'houseDrawing', room: 'houseDrawing', side: 'south', at: -2.95 },
+  { ...G, id: 'diningSouthWest', label: 'Dining Sash (South-West)', zone: 'houseKitchenDiner', room: 'houseKitchenDiner', side: 'south', at: 2.95 },
+  { ...G, id: 'diningSouthEast', label: 'Dining Sash (South-East)', zone: 'houseKitchenDiner', room: 'houseKitchenDiner', side: 'south', at: 5.35 },
+
+  // Ground Floor North (Rear Garden Elevation — flanked by twin French doors at X = ±5.35 & boot door at X = -0.95)
+  { ...G, id: 'drawingNorth', label: 'Drawing Room Writing-Bay Sash (Garden)', zone: 'houseDrawing', room: 'houseDrawing', side: 'north', at: -2.65 },
+  { id: 'cloakroomNorth', label: 'Powder Room Frosted Sash', zone: 'houseCloakroom', room: 'houseCloakroom', floor: 'ground', side: 'north', at: 0.85, width: 0.76, height: 1.15, sillY: 1.15, frosted: true },
+  { id: 'kitchenSinkNorth', label: 'Kitchen Belfast Sink Sash', zone: 'houseKitchenDiner', room: 'houseKitchenDiner', floor: 'ground', side: 'north', at: 3.62, width: 1.12, height: 1.42, sillY: 1.02 },
+
+  // Ground Floor East Flank
   { ...G, id: 'diningEast', label: 'Dining Sash (East)', zone: 'houseKitchenDiner', room: 'houseKitchenDiner', side: 'east', at: 2.1 },
-  { ...F, id: 'principalSouth', label: 'Principal Bedroom Sash', zone: 'housePrincipalBed', room: 'housePrincipalBed', side: 'south', at: -3.35 },
-  { ...F, id: 'landingSouth', label: 'Landing Sash', zone: 'houseLanding', room: 'houseLanding', side: 'south', at: 0 },
-  { ...F, id: 'guestSouth', label: 'Guest Bedroom Sash (Front)', zone: 'houseBedroom2', room: 'houseBedroom2', side: 'south', at: 3.35 },
-  { id: 'ensuiteNorth', label: 'Ensuite Frosted Sash', zone: 'housePrincipalEnsuite', room: 'housePrincipalEnsuite', floor: 'first', side: 'north', at: -1.72, width: 0.68, height: 0.94, sillY: 1.15, topRows: 1, frosted: true },
-  { ...F, id: 'bathroomNorth', label: 'Family Bathroom Sash', zone: 'houseBathroom', room: 'houseBathroom', side: 'north', at: 0.15, topRows: 1, frosted: true },
-  { ...F, id: 'studyNorth', label: 'Study Sash', zone: 'houseStudy', room: 'houseStudy', side: 'north', at: 3.95 },
+
+  // First Floor South (Strict 5-Bay Plumb Void-over-Void)
+  { ...F, id: 'principalSouthWest', label: 'Principal Bedroom Sash (South-West)', zone: 'housePrincipalBed', room: 'housePrincipalBed', side: 'south', at: -5.35 },
+  { ...F, id: 'principalSouthEast', label: 'Principal Bedroom Sash (South-East)', zone: 'housePrincipalBed', room: 'housePrincipalBed', side: 'south', at: -2.95 },
+  { ...F, id: 'landingSouth', label: 'Galleried Landing Sash (Centre Bay)', zone: 'houseLanding', room: 'houseLanding', side: 'south', at: 0 },
+  { ...F, id: 'guestSouthWest', label: 'Guest Bedroom Sash (South-West)', zone: 'houseBedroom2', room: 'houseBedroom2', side: 'south', at: 2.95 },
+  { ...F, id: 'guestSouthEast', label: 'Guest Bedroom Sash (South-East)', zone: 'houseBedroom2', room: 'houseBedroom2', side: 'south', at: 5.35 },
+
+  // First Floor North (Strict Plumb Void-over-Void over GF North French doors, sashes & boot door)
+  { ...F, id: 'dressingNorth', label: 'Walk-In Dressing Sash (North)', zone: 'housePrincipalBed', room: 'housePrincipalDressing', side: 'north', at: -5.35 },
+  { id: 'ensuiteNorth', label: 'Principal Ensuite Frosted Sash', zone: 'housePrincipalEnsuite', room: 'housePrincipalEnsuite', floor: 'first', side: 'north', at: -2.65, width: 0.78, height: 0.94, sillY: 1.15, topRows: 1, frosted: true },
+  { id: 'bathroomNorthWest', label: 'Family Bathroom Frosted Sash (West)', zone: 'houseBathroom', room: 'houseBathroom', floor: 'first', side: 'north', at: -0.95, width: 0.86, height: 1.54, sillY: 0.62, topRows: 1, frosted: true },
+  { id: 'bathroomNorth', label: 'Family Bathroom Frosted Sash (East)', zone: 'houseBathroom', room: 'houseBathroom', floor: 'first', side: 'north', at: 0.85, width: 0.86, height: 1.54, sillY: 0.62, topRows: 1, frosted: true },
+  { ...F, id: 'studyNorthWest', label: 'Library Sash (North-West)', zone: 'houseStudy', room: 'houseStudy', side: 'north', at: 3.62 },
+  { ...F, id: 'studyNorth', label: 'Library Sash (North-East)', zone: 'houseStudy', room: 'houseStudy', side: 'north', at: 5.35 },
+
+  // First Floor East Flank (Plumb over diningEast)
   { ...F, id: 'guestEast', label: 'Guest Bedroom Sash (East)', zone: 'houseBedroom2', room: 'houseBedroom2', side: 'east', at: 2.1 },
 ];
 
@@ -86,19 +113,21 @@ export interface DoorSpec {
 }
 
 export const DOORS: readonly DoorSpec[] = [
-  // Ground floor (240 mm spine & stairwell cross-wall doorways get full-depth linings)
-  { id: 'hallDrawing', floor: 'ground', wall: 'pW_south', plane: 'x', at: [-HALL_PARTITION_X, 0.9], openAngle: -1.45, hinge: -1, wallThickness: SPINE_WALL_T, backRoom: 'houseDrawing', frontRoom: 'houseHall' },
-  { id: 'hallKitchen', floor: 'ground', wall: 'pE_south', plane: 'x', at: [HALL_PARTITION_X, 3.56], openAngle: 1.45, hinge: 1, wallThickness: SPINE_WALL_T, backRoom: 'houseHall', frontRoom: 'houseKitchenDiner' },
-  { id: 'hallBoot', floor: 'ground', wall: 'pZ', plane: 'z', at: [-0.6, STAIRWELL_CROSS_Z], openAngle: 1.45, hinge: -1, wallThickness: SPINE_WALL_T, backRoom: 'houseBootLobby', frontRoom: 'houseHall' },
-  { id: 'bootWc', floor: 'ground', wall: 'pX', plane: 'x', at: [0, -2.42], openAngle: 1.45, hinge: 1, backRoom: 'houseBootLobby', frontRoom: 'houseCloakroom' },
-  // First floor
-  { id: 'landingPrincipal', floor: 'first', wall: 'pW_south', plane: 'x', at: [-HALL_PARTITION_X, 1.3], openAngle: -1.45, hinge: -1, wallThickness: SPINE_WALL_T, backRoom: 'housePrincipalBed', frontRoom: 'houseLanding' },
-  { id: 'principalDressing', floor: 'first', wall: 'pN_west', plane: 'z', at: [-4.48, -1.71], openAngle: 0, hinge: 1, leaf: false, clearWidth: 0.88, backRoom: 'housePrincipalDressing', frontRoom: 'housePrincipalBed' },
-  { id: 'dressingEnsuite', floor: 'first', wall: 'pDress', plane: 'x', at: [-3.53, -2.85], openAngle: 1.4, hinge: 1, clearWidth: 0.82, backRoom: 'housePrincipalDressing', frontRoom: 'housePrincipalEnsuite' },
-  { id: 'landingGuest', floor: 'first', wall: 'pE_south', plane: 'x', at: [HALL_PARTITION_X, 3.45], openAngle: 1.45, hinge: 1, wallThickness: SPINE_WALL_T, backRoom: 'houseLanding', frontRoom: 'houseBedroom2' },
-  { id: 'landingStudy', floor: 'first', wall: 'pE_north', plane: 'x', at: [HALL_PARTITION_X, -0.88], openAngle: 1.38, hinge: 1, wallThickness: SPINE_WALL_T, backRoom: 'houseLanding', frontRoom: 'houseStudy' },
-  { id: 'landingBathroom', floor: 'first', wall: 'pZ_bath', plane: 'z', at: [-0.55, STAIRWELL_CROSS_Z], openAngle: 1.45, hinge: 1, wallThickness: SPINE_WALL_T, backRoom: 'houseBathroom', frontRoom: 'houseLanding' },
-  { id: 'airingCupboard', floor: 'first', wall: 'pZ_air', plane: 'z', at: [1.93, -1.59], openAngle: -1.4, hinge: -1, clearWidth: 0.68, backRoom: 'houseBathroom', frontRoom: 'houseStudy' },
+  // Ground floor: Bilaterally symmetric paired Hall reception doors at Z = +3.52 (South of stair curtail step)
+  { id: 'hallDrawing', floor: 'ground', wall: 'pW_south', plane: 'x', at: [-HALL_PARTITION_X, 3.52], openAngle: -1.45, hinge: 1, wallThickness: SPINE_WALL_T, backRoom: 'houseDrawing', frontRoom: 'houseHall' },
+  { id: 'hallKitchen', floor: 'ground', wall: 'pE_south', plane: 'x', at: [HALL_PARTITION_X, 3.52], openAngle: 1.45, hinge: 1, wallThickness: SPINE_WALL_T, backRoom: 'houseHall', frontRoom: 'houseKitchenDiner' },
+  // Separate Boot Lobby door (swings South into empty North-West Hall corner) & DIRECT Guests' Powder Room WC door
+  { id: 'hallBoot', floor: 'ground', wall: 'pZ', plane: 'z', at: [-1.08, STAIRWELL_CROSS_Z], openAngle: -1.4, hinge: -1, clearWidth: 0.78, wallThickness: SPINE_WALL_T, backRoom: 'houseBootLobby', frontRoom: 'houseHall' },
+  { id: 'hallWc', floor: 'ground', wall: 'pZ', plane: 'z', at: [0.32, STAIRWELL_CROSS_Z], openAngle: 1.4, hinge: -1, clearWidth: 0.78, wallThickness: SPINE_WALL_T, backRoom: 'houseCloakroom', frontRoom: 'houseHall' },
+
+  // First floor: Bilaterally symmetric Principal & Guest suite doors at Z = +3.48 + Non-blocking Direct Ensuite door
+  { id: 'landingPrincipal', floor: 'first', wall: 'pW_south', plane: 'x', at: [-HALL_PARTITION_X, 3.48], openAngle: -1.45, hinge: 1, wallThickness: SPINE_WALL_T, backRoom: 'housePrincipalBed', frontRoom: 'houseLanding' },
+  { id: 'principalDressing', floor: 'first', wall: 'pN_west', plane: 'z', at: [-5.55, -1.71], openAngle: 0, hinge: 1, leaf: false, clearWidth: 0.94, backRoom: 'housePrincipalDressing', frontRoom: 'housePrincipalBed' },
+  { id: 'principalEnsuite', floor: 'first', wall: 'pN_east', plane: 'z', at: [-3.82, -1.71], openAngle: 1.4, hinge: -1, clearWidth: 0.80, backRoom: 'housePrincipalEnsuite', frontRoom: 'housePrincipalBed' },
+  { id: 'landingGuest', floor: 'first', wall: 'pE_south', plane: 'x', at: [HALL_PARTITION_X, 3.48], openAngle: 1.45, hinge: 1, wallThickness: SPINE_WALL_T, backRoom: 'houseLanding', frontRoom: 'houseBedroom2' },
+  { id: 'landingStudy', floor: 'first', wall: 'pE_north', plane: 'x', at: [HALL_PARTITION_X, -0.84], openAngle: -1.38, hinge: -1, clearWidth: 0.82, wallThickness: SPINE_WALL_T, backRoom: 'houseLanding', frontRoom: 'houseStudy' },
+  { id: 'landingBathroom', floor: 'first', wall: 'pZ_bath', plane: 'z', at: [-1.05, STAIRWELL_CROSS_Z], openAngle: 1.4, hinge: -1, clearWidth: 0.84, wallThickness: SPINE_WALL_T, backRoom: 'houseBathroom', frontRoom: 'houseLanding' },
+  { id: 'airingCupboard', floor: 'first', wall: 'pZ_air', plane: 'z', at: [2.38, -1.59], openAngle: 1.38, hinge: 1, clearWidth: 0.68, backRoom: 'houseBathroom', frontRoom: 'houseStudy' },
 ];
 
 export interface PartitionSpec {
@@ -115,21 +144,21 @@ export const PARTITIONS: Readonly<Record<FloorId, readonly PartitionSpec[]>> = {
     { id: 'pE_south', from: [HALL_PARTITION_X, IN_Z], to: [HALL_PARTITION_X, 0.28], thickness: SPINE_WALL_T },
     { id: 'pE_north', from: [HALL_PARTITION_X, 0.28], to: [HALL_PARTITION_X, -IN_Z], thickness: SPINE_WALL_T },
     { id: 'pZ', from: [-HALL_PARTITION_X, STAIRWELL_CROSS_Z], to: [HALL_PARTITION_X, STAIRWELL_CROSS_Z], thickness: SPINE_WALL_T },
-    { id: 'pX', from: [0, -IN_Z], to: [0, STAIRWELL_CROSS_Z] },
+    { id: 'pX', from: [-0.25, -IN_Z], to: [-0.25, STAIRWELL_CROSS_Z] },
   ],
   first: [
     { id: 'pW_south', from: [-HALL_PARTITION_X, IN_Z], to: [-HALL_PARTITION_X, STAIRWELL_CROSS_Z], thickness: SPINE_WALL_T },
     { id: 'pW_north', from: [-HALL_PARTITION_X, STAIRWELL_CROSS_Z], to: [-HALL_PARTITION_X, -IN_Z], thickness: SPINE_WALL_T },
-    { id: 'pN_west', from: [-IN_X, -1.71], to: [-3.53, -1.71] },
-    { id: 'pN_east', from: [-3.53, -1.71], to: [-1.39, -1.71] },
-    { id: 'pDress', from: [-3.53, -IN_Z], to: [-3.53, -1.71] },
+    { id: 'pN_west', from: [-IN_X, -1.71], to: [-4.39, -1.71] },
+    { id: 'pN_east', from: [-4.39, -1.71], to: [-1.89, -1.71] },
+    { id: 'pDress', from: [-4.39, -IN_Z], to: [-4.39, -1.71] },
     { id: 'pE_south', from: [HALL_PARTITION_X, IN_Z], to: [HALL_PARTITION_X, -0.16], thickness: SPINE_WALL_T },
     { id: 'pE_north', from: [HALL_PARTITION_X, -0.16], to: [HALL_PARTITION_X, STAIRWELL_CROSS_Z], thickness: SPINE_WALL_T },
-    { id: 'pZ_bath', from: [-HALL_PARTITION_X, STAIRWELL_CROSS_Z], to: [HALL_PARTITION_X, STAIRWELL_CROSS_Z], thickness: SPINE_WALL_T },
-    { id: 'pZ_air', from: [1.45, -1.59], to: [2.41, -1.59] },
-    { id: 'pAirW', from: [1.45, -1.59], to: [1.45, -2.39] },
-    { id: 'pAirS', from: [1.45, -2.39], to: [2.41, -2.39] },
-    { id: 'pS', from: [2.41, -IN_Z], to: [2.41, -1.59] },
+    { id: 'pZ_bath', from: [-HALL_PARTITION_X, STAIRWELL_CROSS_Z], to: [1.89, STAIRWELL_CROSS_Z], thickness: SPINE_WALL_T },
+    { id: 'pZ_air', from: [1.89, -1.59], to: [2.81, -1.59] },
+    { id: 'pAirW', from: [1.95, -1.59], to: [1.95, -2.39] },
+    { id: 'pAirS', from: [1.95, -2.39], to: [2.81, -2.39] },
+    { id: 'pS', from: [2.81, -IN_Z], to: [2.81, -1.59] },
     { id: 'pG', from: [HALL_PARTITION_X, -0.16], to: [IN_X, -0.16] },
   ],
 };
@@ -237,7 +266,6 @@ export function addInteriorDoor(
         faceMat
       );
       if (wallT > 0.16) {
-        // Georgian fielded reveal panel relief inside 240 mm load-bearing masonry door linings
         box(
           root,
           `${root.name}.liningField_${faceTag}_${s < 0 ? 'a' : 'b'}`,
@@ -320,11 +348,6 @@ export function addInteriorDoor(
 
   if (spec.leaf === false) return;
 
-  // Position hinged leaf toward the swing-face side of 240 mm spine walls so it opens 83° cleanly past the deep reveal
-  const swingSign = spec.openAngle >= 0 ? (spec.hinge > 0 ? 1 : -1) : (spec.hinge > 0 ? -1 : 1);
-  // Wait: let's compute exact swing face! In Three.js Y-rotation of point (dx, 0, 0) by theta:
-  // z' = -dx * sin(theta). Since dx = -hinge * leafW/2:
-  // z' = +hinge * sin(openAngle) * leafW/2!
   const actualSwingSign = Math.sign(spec.hinge * Math.sin(spec.openAngle)) || 1;
   const leafZ = wallT > 0.16 ? actualSwingSign * (wallHalf - 0.045) : 0;
 
@@ -352,7 +375,6 @@ export function addInteriorDoor(
     leaf.add(knob);
   }
   leaf.position.z = leafZ;
-  void swingSign;
   root.add(leaf);
   registerHingedDoor(ctx, {
     parent: root,
@@ -371,26 +393,27 @@ export function addFrenchDoors(
   glassMat: THREE.Material,
   brassMat: THREE.Material,
   stoneMat: THREE.Material,
-  steelMat: THREE.Material
+  steelMat: THREE.Material,
+  doorSpec: { readonly x: number; readonly width: number; readonly height: number } = FRENCH_DOOR,
+  name = 'simpleHouse.frenchDoors'
 ): void {
-  const half = FRENCH_DOOR.width * 0.5;
-  const outerRebate = 0.125; // Authentic 1/2-brick Georgian masonry reveal rebate in 360 mm wall
+  const half = doorSpec.width * 0.5;
+  const outerRebate = 0.125;
   const root = new THREE.Group();
-  root.name = 'simpleHouse.frenchDoors';
-  root.position.set(FRENCH_DOOR.x, FFL_GROUND, -HALF_D + outerRebate);
+  root.name = name;
+  root.position.set(doorSpec.x, FFL_GROUND, -HALF_D + outerRebate);
   parent.add(root);
 
   for (const s of [-1, 1] as const) {
     box(root, `${root.name}.jamb_${s < 0 ? 'w' : 'e'}`, [0.06, 2.199, 0.1], [s * (half - 0.02), 1.1005, 0], trimMat);
   }
-  box(root, `${root.name}.head`, [FRENCH_DOOR.width + 0.028, 0.07, 0.104], [0, 2.225, 0], trimMat);
+  box(root, `${root.name}.head`, [doorSpec.width + 0.028, 0.07, 0.104], [0, 2.225, 0], trimMat);
 
-  // Structural Bath-stone external lintel + steel inner leaf box-lintel bearing plate over 1.48 m French doors (360 mm masonry)
   box(
     root,
     `${root.name}.bathStoneLintel`,
-    [FRENCH_DOOR.width + 0.3, 0.215, 0.115],
-    [0, FRENCH_DOOR.height + 0.109, -outerRebate + 0.0575 - 0.002],
+    [doorSpec.width + 0.3, 0.215, 0.115],
+    [0, doorSpec.height + 0.109, -outerRebate + 0.0575 - 0.002],
     stoneMat,
     1.0
   );
@@ -398,16 +421,16 @@ export function addFrenchDoors(
   box(
     root,
     `${root.name}.steelRevealLintelFlange`,
-    [FRENCH_DOOR.width - 0.008, 0.012, steelFlangeD],
-    [0, FRENCH_DOOR.height - 0.007, 0.056 + steelFlangeD * 0.5],
+    [doorSpec.width - 0.008, 0.012, steelFlangeD],
+    [0, doorSpec.height - 0.007, 0.056 + steelFlangeD * 0.5],
     steelMat
   );
 
-  const sillDepth = EXT_WALL_T + 0.061; // 0.421 m across 360 mm wall + drip projection
+  const sillDepth = EXT_WALL_T + 0.061;
   const sill = box(
     root,
     `${root.name}.stoneThreshold`,
-    [FRENCH_DOOR.width - 0.004, 0.05, sillDepth],
+    [doorSpec.width - 0.004, 0.05, sillDepth],
     [0, -0.0258, -outerRebate + EXT_WALL_T * 0.5 - 0.0295],
     stoneMat,
     1.0
@@ -459,9 +482,8 @@ export function addFrenchDoors(
     ctx.interactions?.linkDoorPair(westPivot, eastPivot);
   }
 
-  // Deep 360 mm wall reveal lining, pedestal plinth blocks & stepped architrave on Kitchen/Diner face
-  const intWallZ = EXT_WALL_T - outerRebate; // +0.235 -> world Z = -4.22
-  const revealD = intWallZ - 0.056; // 0.259 m deep reveal
+  const intWallZ = EXT_WALL_T - outerRebate;
+  const revealD = intWallZ - 0.056;
   const revealCz = 0.054 + revealD * 0.5;
   for (const s of [-1, 1] as const) {
     box(
@@ -475,7 +497,7 @@ export function addFrenchDoors(
   box(
     root,
     `${root.name}.interiorHeadReveal`,
-    [FRENCH_DOOR.width - 0.004, 0.018, revealD],
+    [doorSpec.width - 0.004, 0.018, revealD],
     [0, 2.231, revealCz],
     trimMat
   );
@@ -528,6 +550,120 @@ export function addFrenchDoors(
   tagCutaway(root, cutaway);
 }
 
+/** Half-glazed Georgian rear garden boot door (`simpleHouse.bootGardenDoor`) opening outward onto the Yorkstone terrace. */
+export function addRearGardenBootDoor(
+  ctx: SceneBuilderContext,
+  parent: THREE.Object3D,
+  cutaway: CutawayWallDescriptor,
+  trimMat: THREE.Material,
+  doorExteriorMat: THREE.Material,
+  glassMat: THREE.Material,
+  brassMat: THREE.Material,
+  stoneMat: THREE.Material
+): void {
+  const half = BOOT_GARDEN_DOOR.width * 0.5;
+  const outerRebate = 0.125;
+  const root = new THREE.Group();
+  root.name = 'simpleHouse.bootGardenDoor';
+  root.position.set(BOOT_GARDEN_DOOR.x, FFL_GROUND, -HALF_D + outerRebate);
+  parent.add(root);
+
+  for (const s of [-1, 1] as const) {
+    box(root, `${root.name}.jamb_${s < 0 ? 'w' : 'e'}`, [0.052, 2.115, 0.096], [s * (half - 0.018), 1.059, 0], trimMat);
+  }
+  box(root, `${root.name}.head`, [BOOT_GARDEN_DOOR.width + 0.024, 0.062, 0.1], [0, 2.138, 0], trimMat);
+  box(
+    root,
+    `${root.name}.bathStoneLintel`,
+    [BOOT_GARDEN_DOOR.width + 0.24, 0.195, 0.115],
+    [0, BOOT_GARDEN_DOOR.height + 0.099, -outerRebate + 0.055],
+    stoneMat,
+    1.0
+  );
+  const sill = box(
+    root,
+    `${root.name}.stoneThreshold`,
+    [BOOT_GARDEN_DOOR.width - 0.004, 0.05, EXT_WALL_T + 0.061],
+    [0, -0.0258, -outerRebate + EXT_WALL_T * 0.5 - 0.0295],
+    stoneMat,
+    1.0
+  );
+  tagCollisionRole(sill, 'solidPlane');
+
+  const leafW = BOOT_GARDEN_DOOR.width - 0.092;
+  const leafH = 2.09;
+  const leaf = new THREE.Group();
+  leaf.name = `${root.name}.leaf`;
+  const stile = 0.072;
+  box(leaf, `${leaf.name}.stileW`, [stile, leafH, 0.044], [-(leafW - stile) * 0.5, 0.012 + leafH * 0.5, 0], doorExteriorMat);
+  box(leaf, `${leaf.name}.stileE`, [stile, leafH, 0.044], [(leafW - stile) * 0.5, 0.012 + leafH * 0.5, 0], doorExteriorMat);
+  const railW = leafW - stile * 2;
+  box(leaf, `${leaf.name}.railBot`, [railW, 0.22, 0.044], [0, 0.122, 0], doorExteriorMat);
+  box(leaf, `${leaf.name}.lowerPanel`, [railW - 0.008, 0.62, 0.032], [0, 0.545, 0], doorExteriorMat);
+  box(leaf, `${leaf.name}.lockRail`, [railW, 0.12, 0.044], [0, 0.918, 0], doorExteriorMat);
+  box(leaf, `${leaf.name}.railTop`, [railW, 0.075, 0.044], [0, 0.012 + leafH - 0.0375, 0], doorExteriorMat);
+  const glassH = leafH - 1.055;
+  const glassCy = 0.98 + glassH * 0.5;
+  const glass = box(leaf, `${leaf.name}.glass`, [railW + 0.008, glassH + 0.008, 0.006], [0, glassCy, 0], glassMat);
+  glass.castShadow = false;
+  glass.userData.isExteriorGlazedPortal = true;
+  box(leaf, `${leaf.name}.glazingBarV`, [0.018, glassH, 0.03], [0, glassCy, 0], doorExteriorMat);
+  box(leaf, `${leaf.name}.glazingBarH`, [railW, 0.018, 0.03], [0, glassCy, 0], doorExteriorMat);
+  for (const s of [-1, 1] as const) {
+    const knob = new THREE.Mesh(prepGeo(new THREE.SphereGeometry(0.024, 14, 10)), brassMat);
+    knob.name = `${leaf.name}.knob_${s < 0 ? 'ext' : 'int'}`;
+    knob.position.set(leafW * 0.5 - 0.055, 0.96, s * 0.044);
+    leaf.add(knob);
+  }
+  root.add(leaf);
+  tagCutaway(leaf, cutaway);
+  // Hinged on West (-X) jamb, opening outward (-Z) onto rear terrace so 0 interior mudroom clash
+  registerHingedDoor(ctx, {
+    parent: root,
+    door: leaf,
+    hingeOffset: [-leafW * 0.5, 0, -0.02],
+    axis: 'y',
+    openAngle: 1.38,
+  });
+
+  const intWallZ = EXT_WALL_T - outerRebate;
+  const revealD = intWallZ - 0.054;
+  for (const s of [-1, 1] as const) {
+    box(root, `${root.name}.interiorReveal_${s < 0 ? 'w' : 'e'}`, [0.016, 2.138, revealD], [s * (half - 0.009), 1.071, 0.052 + revealD * 0.5], trimMat);
+    box(root, `${root.name}.architraveLeg_${s < 0 ? 'w' : 'e'}`, [0.068, 2.155, 0.016], [s * (half + 0.024), 1.08, intWallZ + 0.009], trimMat);
+  }
+  box(root, `${root.name}.interiorHeadReveal`, [BOOT_GARDEN_DOOR.width - 0.004, 0.016, revealD], [0, 2.148, 0.052 + revealD * 0.5], trimMat);
+  box(root, `${root.name}.architraveHead`, [BOOT_GARDEN_DOOR.width + 0.12, 0.068, 0.016], [0, 2.192, intWallZ + 0.009], trimMat);
+
+  tagCutaway(root, cutaway);
+}
+
+/** Classical Georgian window-tax architectural blind sash relief for the West Flank (`X = -HALF_W`). */
+export function buildGeorgianBlindSashRelief(
+  name: string,
+  width: number,
+  height: number,
+  trimMat: THREE.Material,
+  stoneMat: THREE.Material,
+  slateBlindMat: THREE.Material
+): THREE.Group {
+  const group = new THREE.Group();
+  group.name = name;
+  // Local frame placed on facade via `placeOnFacade(group, 'west', along, y)`: +Z projects outward
+  box(group, `${name}.yorkstoneSill`, [width + 0.14, 0.075, 0.068], [0, -0.038, 0.034], stoneMat, 1.0);
+  box(group, `${name}.stoneKeystoneLintel`, [width + 0.18, 0.21, 0.036], [0, height + 0.106, 0.018], stoneMat, 1.0);
+  box(group, `${name}.boxFrameOuter`, [width, height, 0.028], [0, height * 0.5, 0.014], trimMat);
+  box(group, `${name}.blindSlateRecess`, [width - 0.12, height - 0.12, 0.016], [0, height * 0.5, 0.022], slateBlindMat);
+  box(group, `${name}.meetingRail`, [width - 0.1, 0.034, 0.026], [0, height * 0.5, 0.028], trimMat);
+  for (const sx of [-width / 6 + 0.02, width / 6 - 0.02] as const) {
+    box(group, `${name}.muntinV_${sx < 0 ? 'a' : 'b'}`, [0.018, height - 0.12, 0.022], [sx, height * 0.5, 0.026], trimMat);
+  }
+  for (const sy of [height * 0.25, height * 0.75] as const) {
+    box(group, `${name}.muntinH_${sy < height * 0.5 ? 'bot' : 'top'}`, [width - 0.12, 0.018, 0.022], [0, sy, 0.026], trimMat);
+  }
+  return group;
+}
+
 export function buildFrontDoorInteriorSurround(
   trimMat: THREE.Material,
   cutaway: CutawayWallDescriptor
@@ -541,8 +677,7 @@ export function buildFrontDoorInteriorSurround(
   const archCx = (archInner + archOuter) * 0.5;
   const plinthH = 0.182;
 
-  // Deep 360 mm wall reveal jamb linings inside portico entrance (`Z in [IN_Z + 0.002, HALF_D - 0.075]`)
-  const revealD = EXT_WALL_T - 0.08; // 0.28 m deep panelled reveal
+  const revealD = EXT_WALL_T - 0.08;
   const revealCz = IN_Z + 0.002 + revealD * 0.5;
   for (const s of [-1, 1] as const) {
     const tag = s < 0 ? 'west' : 'east';
@@ -648,7 +783,6 @@ export function buildSplitRainwaterDownpipeSegment(
   };
 
   if (segment === 'ground') {
-    // Placed at Y = 0.02 -> spans Y = 0.02..2.828 m (flush below Y = 2.83 m GF cutaway plane!)
     const shoeH = 0.14;
     const shoe = addCyl(`${name}.bottomDischargeShoe`, pipeR + 0.003, pipeR + 0.005, shoeH, 0.04 + shoeH * 0.5, pipeZ + 0.025);
     shoe.rotation.x = 0.36;
@@ -659,7 +793,6 @@ export function buildSplitRainwaterDownpipeSegment(
       box(group, `${name}.pipeEarBracket_${idx + 1}`, [0.165, 0.036, 0.016], [0, cy, 0.01], castIronMat);
     });
   } else {
-    // Placed at Y = 2.83 -> spans Y = 2.83..5.36 m with Georgian moulded hopper head under eaves
     const shaftLen = 2.32;
     addCyl(`${name}.castIronPipeShaft`, pipeR, pipeR, shaftLen, shaftLen * 0.5, pipeZ);
     [0.07, 1.14, 2.20].forEach((cy, idx) => {

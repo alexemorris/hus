@@ -399,9 +399,9 @@ describe('Stages 4.3, 4.4, 4.5 & 4.10b — husjs Example & Showcase Homes', { ti
         if (!(node instanceof THREE.Mesh)) return;
         box.setFromObject(node);
         if (box.isEmpty()) return;
-        const minXLimit = node.name.includes('bolectionFireplace') ? -5.68 : -5.46;
+        const minXLimit = node.name.includes('bolectionFireplace') ? -7.31 : -7.09;
         expect(box.min.x, `${node.name} protrudes past West brick shell`).toBeGreaterThanOrEqual(minXLimit);
-        expect(box.max.x, `${node.name} protrudes past East brick shell`).toBeLessThanOrEqual(5.46);
+        expect(box.max.x, `${node.name} protrudes past East brick shell`).toBeLessThanOrEqual(7.09);
         expect(box.min.z, `${node.name} protrudes past North brick shell`).toBeGreaterThanOrEqual(-4.26);
         expect(box.max.z, `${node.name} protrudes past South brick shell`).toBeLessThanOrEqual(4.26);
       });

@@ -7,6 +7,7 @@ import {
   buildTraditionalWindowCurtains,
   buildWindowRomanBlind,
   createDadoRun,
+  tagCollisionRole,
   tagCutaway,
 } from 'husjs/objects';
 import {
@@ -19,9 +20,11 @@ import {
   buildCuratedMirrorsArtAndRugs,
   buildGeorgianAntiqueCasework,
   buildNeptuneOakTablesAndBedsides,
-  buildWhiteCompanyAccessories,
 } from 'husjs/catalog/furniture';
-import { buildHeritageInteriorLighting } from 'husjs/catalog/lighting';
+import {
+  buildFlutedBrassPictureLight,
+  buildHeritageInteriorLighting,
+} from 'husjs/catalog/lighting';
 import {
   buildArmstrongConcealedShowerSet,
   buildArmstrongFreestandingBathMixer,
@@ -36,15 +39,15 @@ import {
 import type { SceneBuilderContext } from 'husjs/viewer';
 import { IN_X, IN_Z, type SimpleHouseShell } from './architecture.ts';
 import { FFL_FIRST, FIRST_CEILING_SOFFIT_Y } from './electrical-and-rooms.ts';
-
-
 import {
   FB_MIZZLE,
   addBox,
   buildEnglishLibraryLoveseat,
   buildWalnutLibrarySideTableAndLamp,
+  createWarm2700kLedMaterial,
   deconflictCurtainBrackets,
   deconflictRomanBlind,
+  registerCircuitEmissive,
 } from './interiors-first-furniture.ts';
 import {
   buildAiringCupboardFittings,
@@ -56,29 +59,30 @@ import { buildSimpleHouseFirstWestAndLanding } from './interiors-first-west.ts';
 
 export function buildSimpleHouseFirstInteriors(
   ctx: SceneBuilderContext,
-  shell: SimpleHouseShell
-): void {
+  shell: SimpleHouseShell,
+  firstCeilingGroupArg?: THREE.Object3D
+): THREE.Group {
   const firstGroup = ctx.floor ? ctx.floor('first').group : ctx.firstFloorMeshGroup;
-  const firstCeilingGroup = ctx.floor ? ctx.floor('first').ceilingGroup : ctx.ceilingMeshGroup;
+  const firstCeilingGroup =
+    firstCeilingGroupArg ?? (ctx.floor ? ctx.floor('first').ceilingGroup : ctx.ceilingMeshGroup);
 
   const root = new THREE.Group();
   root.name = 'simpleHouse.interiors.first';
   firstGroup.add(root);
 
-  const brassMats = getBathroomBrassMaterials('SB');
+  const brassMats = getBathroomBrassMaterials('AB');
   const polishedBrassMats = getBathroomBrassMaterials('BR');
-  const carraraMat = getHonedCarraraMarbleMaterial();
   const oakMat = getPaleEuropeanOakJoineryMaterial();
-  const westCut = shell.cut('west', 'first');
-  const northCut = shell.cut('north', 'first');
+  const carraraMat = getHonedCarraraMarbleMaterial();
+
   const eastCut = shell.cut('east', 'first');
+  const northCut = shell.cut('north', 'first');
   const southCut = shell.cut('south', 'first');
 
+  // 1-4. Principal Bedroom, Walk-In Dressing, Landing Gallery & Principal Ensuite
   buildSimpleHouseFirstWestAndLanding(ctx, shell, root, firstCeilingGroup);
 
-  // =========================================================================
-  // 4. Guest Double Bedroom (houseBedroom2: F&B Setting Plaster + Honey Sisal)
-  // =========================================================================
+  // Guest Bedroom 2 (X in [+1.89, +7.05], Z in [-0.10, +4.22])
   const guestGroup = new THREE.Group();
   guestGroup.name = 'simpleHouse.guestBedroom';
   guestGroup.userData.zoneId = 'houseBedroom2';
@@ -87,102 +91,107 @@ export function buildSimpleHouseFirstInteriors(
   const guestRug = buildCuratedMirrorsArtAndRugs({
     kind: 'zieglerOushak',
     name: 'simpleHouse.guest.zieglerRug',
-    widthM: 2.3,
-    lengthM: 1.65,
-    position: [3.35, FFL_FIRST + 0.002, 1.12],
-    rotationY: Math.PI / 2,
+    widthM: 2.4,
+    lengthM: 2.9,
+    position: [4.47, FFL_FIRST + 0.003, 1.65],
   });
+  tagCollisionRole(guestRug, 'ignore');
   guestGroup.add(guestRug);
 
+  // Double Danica bed (headboard back at Z = -0.08 against North partition pG Z = -0.10, center at Z = +0.97)
   buildCoxDanicaBed(guestGroup, {
     name: 'simpleHouse.guest.danicaDoubleBed',
     zone: 'houseBedroom2',
     size: 'ukDouble',
-    position: [3.35, FFL_FIRST + 0.019, -0.09],
+    position: [4.47, FFL_FIRST + 0.02, -0.08],
     rotationY: -Math.PI / 2,
   });
 
+  // Twin Chichester bedsides topped with Portobello ceramic bedside lamps on houseBed2Lamps
+  const bed2LampsCircuit = 'houseBed2Lamps' as CircuitId;
   for (const [tag, bx] of [
-    ['west', 2.2],
-    ['east', 4.5],
+    ['west', 3.32],
+    ['east', 5.62],
   ] as const) {
     const bedside = buildNeptuneOakTablesAndBedsides({
       name: `simpleHouse.guest.bedside_${tag}`,
       kind: 'chichesterBedsideTable',
-      position: [bx, FFL_FIRST + 0.001, 0.16],
+      position: [bx, FFL_FIRST + 0.001, 0.18],
       rotationY: 0,
       interactions: ctx.interactions,
     });
     const gourdLamp = buildHeritageInteriorLighting(ctx, {
       kind: 'whiteCoCeramicLamp',
       name: `simpleHouse.guest.portobelloLamp_${tag}`,
-      position: [bx, FFL_FIRST + 0.722, 0.16],
-      circuitId: 'houseBed2Pendant' as CircuitId,
+      position: [bx, FFL_FIRST + 0.722, 0.18],
+      circuitId: bed2LampsCircuit,
       createPointLight: false,
     });
+    ctx.addGlowPool(bed2LampsCircuit, bx, FFL_FIRST + 0.726, 0.18, 0.62, 0.3);
     guestGroup.add(bedside, gourdLamp);
   }
 
+  // George III bow-front mahogany chest on East wall South of guestEast sash (Z = +2.10)
+  const guestBowChest = buildGeorgianAntiqueCasework(ctx, {
+    kind: 'bowFrontChest',
+    name: 'simpleHouse.guest.bowFrontChest',
+    position: [6.75, FFL_FIRST + 0.001, 3.45],
+    rotationY: -Math.PI / 2,
+  });
+  guestGroup.add(guestBowChest);
+
+  const guestHeadboardArt = buildSingleBotanicalWatercolourFrame({
+    name: 'simpleHouse.guest.headboardBotanicalArt',
+    position: [4.47, FFL_FIRST + 1.48, -0.096],
+    rotationY: 0,
+    brassMat: brassMats.primary,
+  });
   const guestBotanicals = buildCuratedMirrorsArtAndRugs({
     kind: 'curtisBotanicalGrid',
     name: 'simpleHouse.guest.botanicalPrints',
     botanicalLayout: '1x4',
-    position: [1.394, FFL_FIRST + 1.32, 1.55],
+    position: [1.894, FFL_FIRST + 1.34, 1.35],
     rotationY: Math.PI / 2,
   });
-  guestGroup.add(guestBotanicals);
+  guestGroup.add(guestHeadboardArt, guestBotanicals);
 
-  // Pin #26: Framed botanical watercolour study centered above the Guest Bed headboard on `pG` South face (`Z = -0.100 m`)
-  const guestHeadboardArt = buildSingleBotanicalWatercolourFrame({
-    name: 'simpleHouse.guest.headboardBotanicalArt',
-    position: [3.35, FFL_FIRST + 1.48, -0.096],
-    rotationY: 0,
-    brassMat: brassMats.primary,
-  });
-  guestGroup.add(guestHeadboardArt);
-
-  // Pin #27: Full-length Cox & Cox arched aged-brass pier mirror on South exterior wall SE pier (`Z = +4.212 m`),
-  // facing `-Z` North into Guest Bedroom and tagged with First-Floor South `cutawayWall`!
-  const guestArchedMirror = buildCuratedMirrorsArtAndRugs({
-    kind: 'coxArchedBrass',
-    name: 'simpleHouse.guest.archedBrassMirror',
-    widthM: 0.64,
-    heightM: 1.58,
-    position: [4.72, FFL_FIRST + 0.165, IN_Z - 0.006],
-    rotationY: Math.PI,
-  });
-  tagCutaway(guestArchedMirror, southCut);
-
-  // Full-length blush-oatmeal pinch-pleat linen curtains on Guest Bedroom South & East sashes + cast-iron radiator
-  const guestCurtainsSouth = buildTraditionalWindowCurtains({
-    groupName: 'simpleHouse.guest.curtainsSouth',
-    poleName: 'simpleHouse.guest.curtainsSouth.pole',
-    finialName: 'simpleHouse.guest.curtainsSouth.finial',
-    bracketName: 'simpleHouse.guest.curtainsSouth.bracket',
-    panelName: 'simpleHouse.guest.curtainsSouth.panel',
-    headerName: 'simpleHouse.guest.curtainsSouth.header',
-    hemName: 'simpleHouse.guest.curtainsSouth.hem',
-    tieBackName: 'simpleHouse.guest.curtainsSouth.tieBack',
-    centerZ: 0,
-    halfWindowSpanZ: 0.62,
-    poleExtensionZ: 0.25,
-    stackWidthZ: 0.29,
-    stackInnerInsetZ: 0.04,
-    poleX: 0.086,
-    wallFaceX: 0,
-    inwardSignX: 1,
-    poleY: FFL_FIRST + 2.34,
-    floorY: FFL_FIRST,
-    tieBackY: FFL_FIRST + 0.96,
-    mainColorHex: 0xe4d7cc,
-    shadowColorHex: 0xbdaea2,
-    trimColorHex: 0xd1c2b5,
-    brassMat: brassMats.primary,
-  });
-  guestCurtainsSouth.position.set(3.35, 0, IN_Z);
-  guestCurtainsSouth.rotation.y = Math.PI / 2;
-  deconflictCurtainBrackets(guestCurtainsSouth, 1);
-  tagCutaway(guestCurtainsSouth, southCut);
+  // Full-length blush-oatmeal curtains on guestSouthWest (+2.95), guestSouthEast (+5.35) & guestEast (Z = +2.10)
+  for (const [sTag, sx] of [
+    ['SouthWest', 2.95],
+    ['SouthEast', 5.35],
+  ] as const) {
+    const baseName = `simpleHouse.guest.curtains${sTag}`;
+    const curtains = buildTraditionalWindowCurtains({
+      groupName: baseName,
+      poleName: `${baseName}.pole`,
+      finialName: `${baseName}.finial`,
+      bracketName: `${baseName}.bracket`,
+      panelName: `${baseName}.panel`,
+      headerName: `${baseName}.header`,
+      hemName: `${baseName}.hem`,
+      tieBackName: `${baseName}.tieBack`,
+      centerZ: 0,
+      halfWindowSpanZ: 0.58,
+      poleExtensionZ: 0.22,
+      stackWidthZ: 0.26,
+      stackInnerInsetZ: 0.04,
+      poleX: 0.086,
+      wallFaceX: 0,
+      inwardSignX: 1,
+      poleY: FFL_FIRST + 2.32,
+      floorY: FFL_FIRST,
+      tieBackY: FFL_FIRST + 0.96,
+      mainColorHex: 0xe4d7cc,
+      shadowColorHex: 0xbdaea2,
+      trimColorHex: 0xd1c2b5,
+      brassMat: brassMats.primary,
+    });
+    curtains.position.set(sx, 0, IN_Z);
+    curtains.rotation.y = Math.PI / 2;
+    deconflictCurtainBrackets(curtains, 1);
+    tagCutaway(curtains, southCut);
+    guestGroup.add(curtains);
+  }
 
   const guestCurtainsEast = buildTraditionalWindowCurtains({
     groupName: 'simpleHouse.guest.curtainsEast',
@@ -194,14 +203,14 @@ export function buildSimpleHouseFirstInteriors(
     hemName: 'simpleHouse.guest.curtainsEast.hem',
     tieBackName: 'simpleHouse.guest.curtainsEast.tieBack',
     centerZ: 2.1,
-    halfWindowSpanZ: 0.62,
-    poleExtensionZ: 0.26,
-    stackWidthZ: 0.3,
+    halfWindowSpanZ: 0.58,
+    poleExtensionZ: 0.2,
+    stackWidthZ: 0.24,
     stackInnerInsetZ: 0.04,
     poleX: IN_X - 0.086,
     wallFaceX: IN_X,
     inwardSignX: -1,
-    poleY: FFL_FIRST + 2.34,
+    poleY: FFL_FIRST + 2.32,
     floorY: FFL_FIRST,
     tieBackY: FFL_FIRST + 0.96,
     mainColorHex: 0xe4d7cc,
@@ -215,7 +224,7 @@ export function buildSimpleHouseFirstInteriors(
   const guestRadiator = buildCastIronColumnRadiator({
     name: 'simpleHouse.guest.radiator',
     zone: 'houseBedroom2',
-    cx: 3.35,
+    cx: 2.95,
     floorY: FFL_FIRST + 0.001,
     cz: IN_Z - 0.12,
     width: 0.92,
@@ -225,117 +234,139 @@ export function buildSimpleHouseFirstInteriors(
   });
   tagCutaway(guestRadiator, southCut);
 
-  guestGroup.add(guestArchedMirror, guestCurtainsSouth, guestCurtainsEast, guestRadiator);
+  guestGroup.add(guestCurtainsEast, guestRadiator);
 
   firstCeilingGroup.add(
     buildHeritageInteriorLighting(ctx, {
       kind: 'coxFlutedPendant',
       name: 'simpleHouse.guest.pendant',
-      position: [3.345, FIRST_CEILING_SOFFIT_Y - 0.04, 2.06],
-      dropM: 0.48,
+      position: [4.47, FIRST_CEILING_SOFFIT_Y - 0.028, 2.05],
+      dropM: 0.46,
       circuitId: 'houseBed2Pendant' as CircuitId,
       createPointLight: true,
     })
   );
 
-  // =========================================================================
-  // 5. English Country Study / Library (houseStudy: F&B Drop Cloth + Honey-Smoked Oak)
-  // =========================================================================
+  // English Library & Study (houseStudy)
   const studyGroup = new THREE.Group();
   studyGroup.name = 'simpleHouse.study';
   studyGroup.userData.zoneId = 'houseStudy';
   root.add(studyGroup);
 
-  // Pin #15: Warm faded terracotta & indigo Ziegler Oushak library rug anchoring the study seating & desk zone
+  const studyTaskCircuit = 'houseStudyTask' as CircuitId;
+
   const studyRug = buildCuratedMirrorsArtAndRugs({
     kind: 'zieglerOushak',
     name: 'simpleHouse.study.zieglerLibraryRug',
-    widthM: 1.85,
-    lengthM: 2.35,
-    position: [3.85, FFL_FIRST + 0.002, -2.05],
+    widthM: 2.2,
+    lengthM: 2.8,
+    position: [4.55, FFL_FIRST + 0.003, -2.15],
   });
+  tagCollisionRole(studyRug, 'ignore');
 
-  // Cox & Cox Nivala honeyed-oak desk + bouclé desk chair + articulated brass task lamp at North sash window
-  const nivalaDesk = buildCoxNivalaDesk(studyGroup, {
+  // Cox Nivala oak desk facing North between studyNorthWest (+3.62) & studyNorth (+5.35)
+  buildCoxNivalaDesk(studyGroup, {
     name: 'simpleHouse.study.nivalaDesk',
     zone: 'houseStudy',
-    position: [3.95, FFL_FIRST + 0.001, -3.82],
+    position: [4.48, FFL_FIRST + 0.02, -3.72],
     rotationY: Math.PI,
     interactions: ctx.interactions,
     includeChair: true,
     insetJoineryButtJoints: true,
   });
-  tagCutaway(nivalaDesk, northCut);
 
   const deskLamp = buildArticulatedBrassDeskLamp(
+    ctx,
     'simpleHouse.study.brassDeskLamp',
     brassMats.primary,
-    [4.34, FFL_FIRST + 0.752, -3.9],
+    studyTaskCircuit,
+    [4.88, FFL_FIRST + 0.771, -3.8],
     -0.35
   );
-  tagCutaway(deskLamp, northCut);
+  ctx.addGlowPool(studyTaskCircuit, 4.88, FFL_FIRST + 0.775, -3.8, 0.55, 0.3);
 
-  // Pin #14: Tailored 2-seater English library loveseat replacing the oversized Chichester daybed
-  const libraryLoveseat = buildEnglishLibraryLoveseat(ctx, {
-    name: 'simpleHouse.study.libraryLoveseat',
-    position: [4.54, FFL_FIRST + 0.001, -1.64],
-    rotationY: -Math.PI / 2,
-    brassMat: brassMats.primary,
-  });
-
-  // Turned walnut & brass circular library side table + reading lamp beside the loveseat
-  const walnutSideTable = buildWalnutLibrarySideTableAndLamp(ctx, {
-    name: 'simpleHouse.study.walnutSideTable',
-    position: [4.92, FFL_FIRST + 0.001, -2.82],
-    brassMat: brassMats.primary,
-    circuitId: 'houseStudyPendant' as CircuitId,
-  });
-  tagCutaway(walnutSideTable, eastCut);
-
-  // George III astragal-glazed mahogany bureau bookcase with leather-bound volumes against South partition `pG`
-  // (`X = 3.55 m` -> `X in [3.04, 4.06]`, keeping all Study furniture east of `X = 1.95 m` with generous walkthrough!)
+  // George III astragal-glazed mahogany bureau bookcase on South partition (clear of landingStudy swing)
   const bureauBookcase = buildGeorgianAntiqueCasework(ctx, {
     kind: 'astragalBureauBookcase',
     name: 'simpleHouse.study.bureauBookcase',
-    position: [3.55, FFL_FIRST + 0.001, -0.5],
+    position: [4.48, FFL_FIRST + 0.001, -0.5],
     rotationY: Math.PI,
   });
 
-  // Framed pair of 18th-century antiquarian English county survey maps above the library loveseat
+  // Tailored English library loveseat in front of STUDY_BREAST + walnut side table & reading lamp
+  const libraryLoveseat = buildEnglishLibraryLoveseat(ctx, {
+    name: 'simpleHouse.study.libraryLoveseat',
+    position: [5.85, FFL_FIRST + 0.02, -1.64],
+    rotationY: -Math.PI / 2,
+    brassMat: brassMats.primary,
+  });
+
+  const walnutSideTable = buildWalnutLibrarySideTableAndLamp(ctx, {
+    name: 'simpleHouse.study.walnutSideTable',
+    position: [6.05, FFL_FIRST + 0.001, -2.75],
+    brassMat: brassMats.primary,
+    circuitId: studyTaskCircuit,
+  });
+  ctx.addGlowPool(studyTaskCircuit, 6.05, FFL_FIRST + 0.61, -2.75, 0.58, 0.28);
+
+  // Antiquarian map diptych on STUDY_BREAST (X = 6.706, Z = -1.64 — never tagCutaway)
   const studyMapPrints = buildAntiquarianMapDiptych({
     name: 'simpleHouse.study.antiquarianMapPrints',
-    position: [5.075, FFL_FIRST + 1.48, -1.64],
+    position: [6.706, FFL_FIRST + 1.46, -1.64],
     rotationY: -Math.PI / 2,
     brassMat: brassMats.primary,
   });
-  const studyBotanicalEast = buildSingleBotanicalWatercolourFrame({
-    name: 'simpleHouse.study.botanicalEast',
-    position: [IN_X - 0.005, FFL_FIRST + 1.48, -3.12],
-    rotationY: -Math.PI / 2,
-    brassMat: brassMats.primary,
-  });
-  tagCutaway(studyBotanicalEast, eastCut);
-  studyGroup.add(studyBotanicalEast);
 
-  deconflictRomanBlind(buildWindowRomanBlind(ctx.scene, tagCutaway, {
-    name: 'simpleHouse.study.northRomanBlind',
-    zone: 'houseStudy',
-    centerX: 3.95,
-    width: 1.12,
-    railY: FFL_FIRST + 2.28,
-    bottomY: FFL_FIRST + 1.88,
-    wallFaceZ: -IN_Z + 0.026,
-    facingZ: 1,
-    cutawayWall: northCut,
-    parentGroup: studyGroup,
-  }), 1);
+  const pictureLightGlowMat = createWarm2700kLedMaterial(
+    'simpleHouse.study.pictureLight.glow',
+    1.35
+  );
+  registerCircuitEmissive(ctx, studyTaskCircuit, pictureLightGlowMat);
+  const studyPictureLight = buildFlutedBrassPictureLight(
+    {
+      brass: brassMats.primary,
+      darkBrass: brassMats.darkShadow,
+      glow: pictureLightGlowMat,
+    },
+    {
+      name: 'simpleHouse.study.breastPictureLight',
+      zone: 'houseStudy',
+      shadeWidth: 0.54,
+      finish: 'AB',
+    }
+  );
+  studyPictureLight.position.set(6.706, FFL_FIRST + 1.78, -1.64);
+  studyPictureLight.rotation.y = -Math.PI / 2;
+  ctx.addGlowPool(studyTaskCircuit, 6.62, FFL_FIRST + 1.46, -1.64, 0.65, 0.34);
+
+  // Roman blinds on both studyNorthWest (+3.62) & studyNorth (+5.35)
+  for (const [bName, bx] of [
+    ['simpleHouse.study.northWestRomanBlind', 3.62],
+    ['simpleHouse.study.northRomanBlind', 5.35],
+  ] as const) {
+    deconflictRomanBlind(
+      buildWindowRomanBlind(ctx.scene, tagCutaway, {
+        name: bName,
+        zone: 'houseStudy',
+        centerX: bx,
+        width: 1.12,
+        railY: FFL_FIRST + 2.24,
+        bottomY: FFL_FIRST + 1.86,
+        wallFaceZ: -IN_Z + 0.026,
+        facingZ: 1,
+        cutawayWall: northCut,
+        parentGroup: studyGroup,
+      }),
+      1
+    );
+  }
 
   const studyRadiator = buildCastIronColumnRadiator({
     name: 'simpleHouse.study.radiator',
     zone: 'houseStudy',
-    cx: 2.59,
+    cx: 2.99,
     floorY: FFL_FIRST + 0.001,
-    cz: -3.2,
+    cz: -3.25,
     width: 0.86,
     height: 0.54,
     rotationY: 0,
@@ -345,10 +376,11 @@ export function buildSimpleHouseFirstInteriors(
   studyGroup.add(
     studyRug,
     deskLamp,
+    bureauBookcase,
     libraryLoveseat,
     walnutSideTable,
-    bureauBookcase,
     studyMapPrints,
+    studyPictureLight,
     studyRadiator
   );
 
@@ -356,16 +388,14 @@ export function buildSimpleHouseFirstInteriors(
     buildHeritageInteriorLighting(ctx, {
       kind: 'coxFlutedPendant',
       name: 'simpleHouse.study.pendant',
-      position: [3.95, FIRST_CEILING_SOFFIT_Y - 0.003, -2.22],
+      position: [4.55, FIRST_CEILING_SOFFIT_Y - 0.028, -2.15],
       dropM: 0.46,
       circuitId: 'houseStudyPendant' as CircuitId,
       createPointLight: true,
     })
   );
 
-  // =========================================================================
-  // 6. Re-Proportioned Family Bathroom & Airing Cupboard (houseBathroom)
-  // =========================================================================
+  // Family Bathroom & Airing Cupboard (houseBathroom)
   const bathroomGroup = new THREE.Group();
   bathroomGroup.name = 'simpleHouse.familyBathroom';
   bathroomGroup.userData.zoneId = 'houseBathroom';
@@ -379,29 +409,63 @@ export function buildSimpleHouseFirstInteriors(
   });
   buildAiringCupboardFittings(bathroomGroup, oakMat, copperCylinderMat);
 
-  // F&B Mizzle (#C0C6B8) tongue-and-groove dado panelling along the West & South dry walls
+  // Half-height F&B Mizzle T&G dado panelling (cleanly gapped for landingBathroom door & wet-zone alcove)
   const bathDadoWest = buildTongueAndGrooveDadoPanelling({
     name: 'simpleHouse.bathroom.mizzleDadoWest',
-    lengthM: 2.30,
+    lengthM: 2.32,
     heightM: 1.08,
     paintColor: FB_MIZZLE,
-    position: [-1.144, FFL_FIRST + 0.001, -2.99],
+    position: [-1.644, FFL_FIRST + 0.001, -2.99],
     rotationY: Math.PI / 2,
   });
   const bathDadoSouth = buildTongueAndGrooveDadoPanelling({
     name: 'simpleHouse.bathroom.mizzleDadoSouth',
-    lengthM: 1.22,
+    lengthM: 2.3,
     heightM: 1.08,
     paintColor: FB_MIZZLE,
     position: [0.68, FFL_FIRST + 0.001, -1.776],
     rotationY: Math.PI,
   });
 
+  const bathNorthWainscot = addBox(
+    bathroomGroup,
+    'simpleHouse.bathroom.mizzleWainscotNorth',
+    [3.42, 0.46, 0.006],
+    [0.12, FFL_FIRST + 0.145 + 0.46 * 0.5, -IN_Z + 0.004],
+    shell.schemes.houseBathroom.trim
+  );
+  bathNorthWainscot.castShadow = false;
+  tagCutaway(bathNorthWainscot, northCut);
+
+  const bathNorthDadoRail = createDadoRun({
+    name: 'simpleHouse.bathroom.mizzleDadoRailNorth',
+    path: [
+      [1.86, -IN_Z],
+      [-1.62, -IN_Z],
+    ],
+    closed: false,
+    roomSide: 'left',
+    floorY: FFL_FIRST,
+    elevationY: 1.045,
+    profile: 'astragal-dado',
+    height: 0.048,
+    projection: 0.02,
+    material: shell.schemes.houseBathroom.trim,
+    gaps: [
+      { box: { minX: -1.44, maxX: -0.46, minZ: -4.3, maxZ: -4.14 }, cap: 'selfReturn' },
+      { box: { minX: 0.36, maxX: 1.34, minZ: -4.3, maxZ: -4.14 }, cap: 'selfReturn' },
+    ],
+    cutawayWalls: [northCut],
+    floor: 'first',
+    zone: 'houseBathroom',
+  });
+
+  // Freestanding BC Designs copper boat bath centered between bathroomNorthWest (-0.95) & bathroomNorth (+0.85)
   const copperBath = buildBcDesignsCopperBoatBath({
     namePrefix: 'simpleHouse.bathroom.copperBoatBath',
     brassFinish: 'BR',
   });
-  copperBath.position.set(0.18, FFL_FIRST + 0.001, -3.74);
+  copperBath.position.set(-0.05, FFL_FIRST + 0.001, -3.72);
   tagCutaway(copperBath, northCut);
 
   const bathMixer = buildArmstrongFreestandingBathMixer({
@@ -409,58 +473,115 @@ export function buildSimpleHouseFirstInteriors(
     finish: 'BR',
     style: 'traditional',
   });
-  bathMixer.position.set(-0.78, FFL_FIRST + 0.001, -3.74);
-  bathMixer.rotation.y = Math.PI / 2;
+  bathMixer.position.set(0.88, FFL_FIRST + 0.001, -3.72);
+  bathMixer.rotation.y = -Math.PI / 2;
 
+  const bathCaddy = new THREE.Group();
+  bathCaddy.name = 'simpleHouse.bathroom.oakBathCaddy';
+  bathCaddy.position.set(-0.05, FFL_FIRST + 0.655, -3.72);
+  addBox(bathCaddy, 'simpleHouse.bathroom.oakBathCaddy.railWest', [0.038, 0.018, 0.76], [-0.11, 0.009, 0], oakMat);
+  addBox(bathCaddy, 'simpleHouse.bathroom.oakBathCaddy.railEast', [0.038, 0.018, 0.76], [0.11, 0.009, 0], oakMat);
+  for (let s = -3; s <= 3; s++) {
+    addBox(bathCaddy, `simpleHouse.bathroom.oakBathCaddy.slat_${s + 4}`, [0.18, 0.012, 0.046], [0, 0.016, s * 0.078], oakMat);
+  }
+  tagCutaway(bathCaddy, northCut);
+
+  for (const [bName, bx] of [
+    ['simpleHouse.bathroom.northWestRomanBlind', -0.95],
+    ['simpleHouse.bathroom.northRomanBlind', 0.85],
+  ] as const) {
+    deconflictRomanBlind(
+      buildWindowRomanBlind(ctx.scene, tagCutaway, {
+        name: bName,
+        zone: 'houseBathroom',
+        centerX: bx,
+        width: 0.86,
+        railY: FFL_FIRST + 2.24,
+        bottomY: FFL_FIRST + 1.88,
+        wallFaceZ: -IN_Z + 0.026,
+        facingZ: 1,
+        cutawayWall: northCut,
+        parentGroup: bathroomGroup,
+      }),
+      1
+    );
+  }
+
+  // Lefroy Brooks Lissa Doon washstand on South wall (zLocal = 0 against South Mizzle dado face Z = -1.792)
   const lissaWashstand = buildLefroyBrooksLissaDoonWashstand({
     namePrefix: 'simpleHouse.bathroom.lissaDoonWashstand',
     finish: 'BR',
     mixerStyle: 'traditional',
   });
-  lissaWashstand.position.set(-1.124, FFL_FIRST + 0.001, -2.68);
-  lissaWashstand.rotation.y = Math.PI / 2;
+  lissaWashstand.position.set(0.55, FFL_FIRST + 0.001, -1.794);
+  lissaWashstand.rotation.y = Math.PI;
 
   const bathMirror = buildCuratedMirrorsArtAndRugs({
     kind: 'coxRoundBrass',
     name: 'simpleHouse.bathroom.roundBrassMirror',
     widthM: 0.65,
-    position: [-1.142, FFL_FIRST + 1.14, -2.68],
-    rotationY: Math.PI / 2,
+    position: [0.55, FFL_FIRST + 1.18, -1.776],
+    rotationY: Math.PI,
   });
 
-  const bathSconceNorth = buildHeritageInteriorLighting(ctx, {
+  // Twin IP44 fluted-glass & brass vanity sconces at face height (Y = FFL_FIRST + 1.60 m; 1 PointLight)
+  const bathSconceWest = buildHeritageInteriorLighting(ctx, {
     kind: 'coxFlutedSconce',
-    name: 'simpleHouse.bathroom.sconceNorth',
-    position: [-1.142, FFL_FIRST + 1.52, -3.14],
-    rotationY: Math.PI / 2,
+    name: 'simpleHouse.bathroom.sconceWest',
+    position: [0.06, FFL_FIRST + 1.6, -1.776],
+    rotationY: Math.PI,
     circuitId: 'houseBathSpots' as CircuitId,
     createPointLight: true,
   });
-  const bathSconceSouth = buildHeritageInteriorLighting(ctx, {
+  const bathSconceEast = buildHeritageInteriorLighting(ctx, {
     kind: 'coxFlutedSconce',
-    name: 'simpleHouse.bathroom.sconceSouth',
-    position: [-1.142, FFL_FIRST + 1.52, -2.22],
-    rotationY: Math.PI / 2,
+    name: 'simpleHouse.bathroom.sconceEast',
+    position: [1.04, FFL_FIRST + 1.6, -1.776],
+    rotationY: Math.PI,
     circuitId: 'houseBathSpots' as CircuitId,
     createPointLight: false,
   });
 
+  // Charterhouse WC on South-East wall facing North (zLocal = 0 against South dado face)
   const bathWc = buildLefroyBrooksCharterhouseWc({
     namePrefix: 'simpleHouse.bathroom.charterhouseWc',
     finish: 'BR',
     variant: 'closeCoupled',
   });
-  bathWc.position.set(1.382, FFL_FIRST + 0.001, -2.10);
-  bathWc.rotation.y = -Math.PI / 2;
+  bathWc.position.set(1.48, FFL_FIRST + 0.001, -1.794);
+  bathWc.rotation.y = Math.PI;
 
-  // Stud-nibbed olive-metro-tiled wet-zone shower alcove (`X in [1.45, 2.35], Z in [-4.22, -2.45]`)
+  const bathWcArt = buildSingleBotanicalWatercolourFrame({
+    name: 'simpleHouse.bathroom.wcBotanicalArt',
+    position: [1.48, FFL_FIRST + 1.44, -1.776],
+    rotationY: Math.PI,
+    brassMat: polishedBrassMats.primary,
+  });
+  const bathPaperHolder = buildArmstrongPaperHolder({
+    namePrefix: 'simpleHouse.bathroom.paperHolder',
+    finish: 'BR',
+    style: 'traditional',
+    coreClearanceM: 0.0008,
+  });
+  bathPaperHolder.position.set(1.06, FFL_FIRST + 0.68, -1.794);
+  bathPaperHolder.rotation.y = Math.PI;
+
+  const bathRobeHook = buildArmstrongRobeHook({
+    namePrefix: 'simpleHouse.bathroom.robeHook',
+    finish: 'BR',
+    style: 'traditional',
+  });
+  bathRobeHook.position.set(1.886, FFL_FIRST + 1.56, -2.18);
+  bathRobeHook.rotation.y = -Math.PI / 2;
+
+  // Wet-Zone Shower Alcove (X in [2.01, 2.75], Z in [-4.22, -2.45])
   const wetAlcoveGroup = new THREE.Group();
   wetAlcoveGroup.name = 'simpleHouse.bathroom.wetZoneShower';
   addBox(
     wetAlcoveGroup,
     'simpleHouse.bathroom.wetZoneShower.stoneTray',
-    [0.80, 0.034, 0.92],
-    [1.93, FFL_FIRST + 0.018, -3.73],
+    [0.72, 0.034, 1.72],
+    [2.38, FFL_FIRST + 0.018, -3.35],
     carraraMat
   );
   const glassMat = new THREE.MeshPhysicalMaterial({
@@ -476,15 +597,15 @@ export function buildSimpleHouseFirstInteriors(
   addBox(
     wetAlcoveGroup,
     'simpleHouse.bathroom.wetZoneShower.crittallScreen',
-    [0.50, 1.98, 0.01],
-    [2.08, FFL_FIRST + 1.025, -3.27],
+    [0.012, 1.98, 0.84],
+    [2.02, FFL_FIRST + 1.025, -3.77],
     glassMat
   );
   addBox(
     wetAlcoveGroup,
     'simpleHouse.bathroom.wetZoneShower.brassPost',
-    [0.018, 1.98, 0.018],
-    [1.83, FFL_FIRST + 1.025, -3.27],
+    [0.02, 1.98, 0.02],
+    [2.02, FFL_FIRST + 1.025, -3.34],
     polishedBrassMats.primary
   );
   const wetShowerValve = buildArmstrongConcealedShowerSet({
@@ -494,94 +615,9 @@ export function buildSimpleHouseFirstInteriors(
     overheadArmYM: 1.96,
     valveCenterYM: 1.12,
   });
-  wetShowerValve.position.set(1.93, FFL_FIRST + 0.036, -IN_Z + 0.02);
-  tagCutaway(wetShowerValve, northCut);
+  wetShowerValve.position.set(2.735, FFL_FIRST + 0.036, -3.35);
+  wetShowerValve.rotation.y = -Math.PI / 2;
   wetAlcoveGroup.add(wetShowerValve);
-
-  const laundryHamper = buildWhiteCompanyAccessories({
-    kind: 'kubuLaundryHamper',
-    name: 'simpleHouse.bathroom.kubuHamper',
-    position: [2.06, FFL_FIRST + 0.001, -2.74],
-    rotationY: -Math.PI / 2,
-  });
-
-  // Extend F&B Mizzle wainscot & dado rail behind the freestanding copper boat bath on the North dry wall
-  const bathNorthWainscot = addBox(
-    bathroomGroup,
-    'simpleHouse.bathroom.mizzleWainscotNorth',
-    [2.52, 0.88, 0.006],
-    [0.16, FFL_FIRST + 0.14 + 0.88 * 0.5, -IN_Z + 0.004],
-    shell.schemes.houseBathroom.trim
-  );
-  bathNorthWainscot.castShadow = false;
-  tagCutaway(bathNorthWainscot, northCut);
-
-  const bathNorthDadoRail = createDadoRun({
-    name: 'simpleHouse.bathroom.mizzleDadoRailNorth',
-    path: [
-      [1.43, -IN_Z],
-      [-1.1, -IN_Z],
-    ],
-    closed: false,
-    roomSide: 'left',
-    floorY: FFL_FIRST,
-    elevationY: 1.045,
-    profile: 'astragal-dado',
-    height: 0.048,
-    projection: 0.02,
-    material: shell.schemes.houseBathroom.trim,
-    gaps: [{ box: { minX: -0.52, maxX: 0.82, minZ: -4.3, maxZ: -4.14 }, cap: 'selfReturn' }],
-    cutawayWalls: [northCut],
-    floor: 'first',
-    zone: 'houseBathroom',
-  });
-
-  deconflictRomanBlind(buildWindowRomanBlind(ctx.scene, tagCutaway, {
-    name: 'simpleHouse.bathroom.northRomanBlind',
-    zone: 'houseBathroom',
-    centerX: 0.15,
-    width: 1.12,
-    railY: FFL_FIRST + 2.28,
-    bottomY: FFL_FIRST + 1.92,
-    wallFaceZ: -IN_Z + 0.026,
-    facingZ: 1,
-    cutawayWall: northCut,
-    parentGroup: bathroomGroup,
-  }), 1);
-
-  // Slatted European oak bath caddy across the copper boat bath + apothecary diffuser
-  const bathCaddy = new THREE.Group();
-  bathCaddy.name = 'simpleHouse.bathroom.oakBathCaddy';
-  bathCaddy.position.set(0.28, FFL_FIRST + 0.655, -3.74);
-  addBox(bathCaddy, 'simpleHouse.bathroom.oakBathCaddy.railWest', [0.038, 0.018, 0.76], [-0.11, 0.009, 0], oakMat);
-  addBox(bathCaddy, 'simpleHouse.bathroom.oakBathCaddy.railEast', [0.038, 0.018, 0.76], [0.11, 0.009, 0], oakMat);
-  for (let s = -3; s <= 3; s++) {
-    addBox(bathCaddy, `simpleHouse.bathroom.oakBathCaddy.slat_${s + 4}`, [0.18, 0.012, 0.046], [0, 0.016, s * 0.078], oakMat);
-  }
-  tagCutaway(bathCaddy, northCut);
-
-  const bathWcArt = buildSingleBotanicalWatercolourFrame({
-    name: 'simpleHouse.bathroom.wcBotanicalArt',
-    position: [1.386, FFL_FIRST + 1.44, -2.10],
-    rotationY: -Math.PI / 2,
-    brassMat: polishedBrassMats.primary,
-  });
-  const bathPaperHolder = buildArmstrongPaperHolder({
-    namePrefix: 'simpleHouse.bathroom.paperHolder',
-    finish: 'BR',
-    style: 'traditional',
-    coreClearanceM: 0.0008,
-  });
-  bathPaperHolder.position.set(0.95, FFL_FIRST + 0.68, -1.818);
-  bathPaperHolder.rotation.y = Math.PI;
-
-  const bathRobeHook = buildArmstrongRobeHook({
-    namePrefix: 'simpleHouse.bathroom.robeHook',
-    finish: 'BR',
-    style: 'traditional',
-  });
-  bathRobeHook.position.set(1.386, FFL_FIRST + 1.56, -2.38);
-  bathRobeHook.rotation.y = -Math.PI / 2;
 
   bathroomGroup.add(
     bathDadoWest,
@@ -592,165 +628,109 @@ export function buildSimpleHouseFirstInteriors(
     bathMixer,
     lissaWashstand,
     bathMirror,
-    bathSconceNorth,
-    bathSconceSouth,
+    bathSconceWest,
+    bathSconceEast,
     bathWc,
     bathWcArt,
     bathPaperHolder,
     bathRobeHook,
-    wetAlcoveGroup,
-    laundryHamper
+    wetAlcoveGroup
   );
 
-  // =========================================================================
-  // 7. First-Floor Corston Toggle Switches & Power Sockets
-  // =========================================================================
-  buildCorstonToggleSwitch(ctx, {
-    name: 'simpleHouse.sw.landingTop',
-    switchPa: 'plate-landing-top',
-    location: 'Galleried landing head of stairs',
-    x: 1.147,
-    y: FFL_FIRST + 1.15,
-    z: -0.35,
-    facing: 'west',
-    mountedInZoneId: 'houseLanding' as RoomZoneId,
-    parentGroup: root,
-    extraUserDataForGang: (): InteractiveUserData => ({ electricalSwitchId: 'sw-stair-top' }),
-    gangs: [
-      { gang: 1, zoneId: 'houseLanding' as RoomZoneId, label: 'Stairwell 2-Way (Top)', circuitId: 'houseStairPendant' as CircuitId },
-    ],
-  });
-
-  buildCorstonToggleSwitch(ctx, {
-    name: 'simpleHouse.sw.principalDoor',
-    switchPa: 'plate-principal-door',
-    location: 'Principal bedroom latch jamb',
-    x: -1.393,
-    y: FFL_FIRST + 1.15,
-    z: 0.65,
-    facing: 'west',
-    mountedInZoneId: 'housePrincipalBed' as RoomZoneId,
-    parentGroup: root,
-    extraUserDataForGang: (): InteractiveUserData => ({ electricalSwitchId: 'sw-bed1-door' }),
-    gangs: [
-      { gang: 1, zoneId: 'housePrincipalBed' as RoomZoneId, label: 'Principal 3-Way (Door)', circuitId: 'housePrincipalPendant' as CircuitId },
-    ],
-  });
-
-  buildCorstonToggleSwitch(ctx, {
-    name: 'simpleHouse.sw.principalLeft',
-    switchPa: 'plate-principal-left',
-    location: 'Left Chichester bedside',
-    x: -IN_X + 0.007,
-    y: FFL_FIRST + 0.92,
-    z: 0.04,
-    facing: 'east',
-    mountedInZoneId: 'housePrincipalBed' as RoomZoneId,
-    parentGroup: root,
-    cutawayWall: westCut,
-    extraUserDataForGang: (): InteractiveUserData => ({ electricalSwitchId: 'sw-bed1-left' }),
-    gangs: [
-      { gang: 1, zoneId: 'housePrincipalBed' as RoomZoneId, label: 'Principal 3-Way (Left)', circuitId: 'housePrincipalPendant' as CircuitId },
-    ],
-  });
-
-  buildCorstonToggleSwitch(ctx, {
-    name: 'simpleHouse.sw.principalRight',
-    switchPa: 'plate-principal-right',
-    location: 'Right Chichester bedside',
-    x: -IN_X + 0.007,
-    y: FFL_FIRST + 0.92,
-    z: 2.53,
-    facing: 'east',
-    mountedInZoneId: 'housePrincipalBed' as RoomZoneId,
-    parentGroup: root,
-    cutawayWall: westCut,
-    extraUserDataForGang: (): InteractiveUserData => ({ electricalSwitchId: 'sw-bed1-right' }),
-    gangs: [
-      { gang: 1, zoneId: 'housePrincipalBed' as RoomZoneId, label: 'Principal 3-Way (Right)', circuitId: 'housePrincipalPendant' as CircuitId },
-    ],
-  });
-
-  buildCorstonToggleSwitch(ctx, {
-    name: 'simpleHouse.sw.ensuite',
-    switchPa: 'plate-ensuite',
-    location: 'Dressing room outside principal ensuite',
-    x: -3.593,
-    y: FFL_FIRST + 1.15,
-    z: -2.25,
-    facing: 'west',
-    mountedInZoneId: 'housePrincipalBed' as RoomZoneId,
-    parentGroup: root,
-    extraUserDataForGang: (): InteractiveUserData => ({ electricalSwitchId: 'sw-ensuite' }),
-    gangs: [
-      { gang: 1, zoneId: 'housePrincipalEnsuite' as RoomZoneId, label: 'Principal Ensuite Sconces', circuitId: 'houseEnsuiteSconces' as CircuitId },
-    ],
-  });
-
+  // East-Wing & Bathroom Corston Toggle Switches & Power Sockets
+  const bed2SwitchIds: Record<number, string> = {
+    1: 'sw-bed2',
+    2: 'sw-bed2-lamps',
+  };
   buildCorstonToggleSwitch(ctx, {
     name: 'simpleHouse.sw.bed2',
     switchPa: 'plate-bed2',
-    location: 'Guest bedroom door jamb',
-    x: 1.393,
+    location: 'Guest bedroom latch jamb',
+    x: 1.892,
     y: FFL_FIRST + 1.15,
-    z: 2.85,
+    z: 2.86,
     facing: 'east',
     mountedInZoneId: 'houseBedroom2' as RoomZoneId,
-    parentGroup: root,
-    extraUserDataForGang: (): InteractiveUserData => ({ electricalSwitchId: 'sw-bed2' }),
+    parentGroup: guestGroup,
+    extraUserDataForGang: (gang): InteractiveUserData => ({
+      electricalSwitchId: bed2SwitchIds[gang],
+    }),
     gangs: [
-      { gang: 1, zoneId: 'houseBedroom2' as RoomZoneId, label: 'Guest Bedroom Pendant', circuitId: 'houseBed2Pendant' as CircuitId },
+      {
+        gang: 1,
+        zoneId: 'houseBedroom2' as RoomZoneId,
+        label: 'Guest Bedroom Pendant',
+        circuitId: 'houseBed2Pendant' as CircuitId,
+      },
+      {
+        gang: 2,
+        zoneId: 'houseBedroom2' as RoomZoneId,
+        label: 'Portobello Bedside Lamps',
+        circuitId: bed2LampsCircuit,
+      },
     ],
   });
 
-  // Pin #24 coordination: mounted on Study side of South partition `pG` (`Z = -0.223 m`, facing North `-Z` into Study)
+  const studySwitchIds: Record<number, string> = {
+    1: 'sw-study',
+    2: 'sw-study-task',
+  };
   buildCorstonToggleSwitch(ctx, {
     name: 'simpleHouse.sw.study',
     switchPa: 'plate-study',
-    location: 'Study door jamb',
-    x: 1.72,
+    location: 'Study latch jamb',
+    x: 1.892,
     y: FFL_FIRST + 1.15,
-    z: -0.223,
-    facing: 'north',
+    z: -1.41,
+    facing: 'east',
     mountedInZoneId: 'houseStudy' as RoomZoneId,
-    parentGroup: root,
-    extraUserDataForGang: (): InteractiveUserData => ({ electricalSwitchId: 'sw-study' }),
+    parentGroup: studyGroup,
+    extraUserDataForGang: (gang): InteractiveUserData => ({
+      electricalSwitchId: studySwitchIds[gang],
+    }),
     gangs: [
-      { gang: 1, zoneId: 'houseStudy' as RoomZoneId, label: 'Study Pendant', circuitId: 'houseStudyPendant' as CircuitId },
+      {
+        gang: 1,
+        zoneId: 'houseStudy' as RoomZoneId,
+        label: 'Library Pendant',
+        circuitId: 'houseStudyPendant' as CircuitId,
+      },
+      {
+        gang: 2,
+        zoneId: 'houseStudy' as RoomZoneId,
+        label: 'Picture Light & Reading Lamps',
+        circuitId: studyTaskCircuit,
+      },
     ],
   });
 
   buildCorstonToggleSwitch(ctx, {
-    name: 'simpleHouse.sw.bath',
+    name: 'simpleHouse.sw.bathroom',
     switchPa: 'plate-bath',
-    location: 'Landing outside family bathroom',
-    x: 0.06,
+    location: 'Family bathroom latch jamb',
+    x: -0.42,
     y: FFL_FIRST + 1.15,
-    z: -1.527,
-    facing: 'south',
-    mountedInZoneId: 'houseLanding' as RoomZoneId,
-    parentGroup: root,
+    z: -1.774,
+    facing: 'north',
+    mountedInZoneId: 'houseBathroom' as RoomZoneId,
+    parentGroup: bathroomGroup,
     extraUserDataForGang: (): InteractiveUserData => ({ electricalSwitchId: 'sw-bath' }),
     gangs: [
-      { gang: 1, zoneId: 'houseBathroom' as RoomZoneId, label: 'Family Bathroom Sconces', circuitId: 'houseBathSpots' as CircuitId },
+      {
+        gang: 1,
+        zoneId: 'houseBathroom' as RoomZoneId,
+        label: 'Family Bathroom IP44 Sconces',
+        circuitId: 'houseBathSpots' as CircuitId,
+      },
     ],
   });
 
   root.add(
     buildCorstonPowerSocket(ctx, tagCutaway, {
-      name: 'simpleHouse.socket.principalNorth',
-      zone: 'housePrincipalBed',
-      kind: 'double',
-      x: -1.75,
-      y: FFL_FIRST + 0.45,
-      z: -1.647,
-      facing: 'south',
-    }),
-    buildCorstonPowerSocket(ctx, tagCutaway, {
       name: 'simpleHouse.socket.studyDesk',
       zone: 'houseStudy',
       kind: 'double',
-      x: 4.55,
+      x: 4.48,
       y: FFL_FIRST + 0.45,
       z: -IN_Z + 0.003,
       facing: 'south',
@@ -760,10 +740,12 @@ export function buildSimpleHouseFirstInteriors(
       name: 'simpleHouse.socket.guestWest',
       zone: 'houseBedroom2',
       kind: 'double',
-      x: 1.393,
+      x: 1.893,
       y: FFL_FIRST + 0.45,
-      z: 0.75,
+      z: 2.1,
       facing: 'east',
     })
   );
+
+  return root;
 }
