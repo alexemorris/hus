@@ -547,7 +547,7 @@ function build1960CaliforniaRoadster(
   ];
 
   // 40 Catmull-Rom longitudinal stations x 32 cross-section ring vertices
-  const numStations = 40;
+  const numStations = 26;
   const ringPts = 32;
   const bodyPos: number[] = [];
   const bodyIdx: number[] = [];

@@ -281,7 +281,7 @@ function buildContinuousBentPipeRunGeo(
   path.add(new THREE.CatmullRomCurve3(arcPts));
   path.add(new THREE.LineCurve3(pTanB, endB));
 
-  const geo = new THREE.TubeGeometry(path, tubularSegments, pipeRadius, radialSegments, false);
+  const geo = new THREE.TubeGeometry(path, Math.min(56, tubularSegments), pipeRadius, Math.min(12, radialSegments), false);
   geo.computeVertexNormals();
   return prepGeo(geo);
 }

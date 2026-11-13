@@ -20,8 +20,8 @@ export function bevelledBox(
   tileH = 0.85
 ): THREE.BufferGeometry {
   const safeR = Math.max(0.0008, Math.min(radius, w * 0.42, h * 0.42, d * 0.42));
-  const minDim = Math.min(w, h, d);
-  const effSegs = minDim < 0.08 ? 1 : Math.min(2, Math.max(1, segments));
+  void segments;
+  const effSegs = 1;
   const key = `${w.toFixed(4)}|${h.toFixed(4)}|${d.toFixed(4)}|${safeR.toFixed(4)}|${effSegs}|${tileW.toFixed(3)}|${tileH.toFixed(3)}`;
   const hit = BEVELLED_BOX_CACHE.get(key);
   if (hit) return hit;
@@ -64,13 +64,13 @@ export function buildTuftedCushionGeo(opts: TuftedCushionOptions): THREE.BufferG
     tuftsZ = 0,
     tuftDepth = Math.min(0.018, height * 0.2),
     tuftRadius = 0.055,
-    segX = 16,
-    segY = 6,
-    segZ = 14,
+    segX = 12,
+    segY = 4,
+    segZ = 10,
     tileM = 0.55,
   } = opts;
 
-  const geo = new THREE.BoxGeometry(1, 1, 1, segX, segY, segZ);
+  const geo = new THREE.BoxGeometry(1, 1, 1, Math.min(12, segX), Math.min(4, segY), Math.min(10, segZ));
   const pos = geo.attributes.position as THREE.BufferAttribute;
 
   const tuftCoords: [number, number][] = [];
@@ -148,7 +148,7 @@ export function buildCushionWeltLoopGeo(
   depth: number,
   cornerRadius = 0.036,
   tubeRadius = 0.0048,
-  tubularSegments = 64
+  tubularSegments = 36
 ): THREE.BufferGeometry {
   const hw = Math.max(0.02, width * 0.5);
   const hd = Math.max(0.02, depth * 0.5);
@@ -168,7 +168,7 @@ export function buildCushionWeltLoopGeo(
     }
   }
   const curve = new THREE.CatmullRomCurve3(pts, true, 'centripetal', 0.2);
-  return prepGeo(new THREE.TubeGeometry(curve, tubularSegments, tubeRadius, 10, true));
+  return prepGeo(new THREE.TubeGeometry(curve, Math.min(36, tubularSegments), tubeRadius, 6, true));
 }
 
 /**
@@ -201,7 +201,7 @@ export function addCushionTuftButtons(
     material,
     bothSides = false,
   } = opts;
-  const btnGeo = prepGeo(new THREE.SphereGeometry(buttonRadius, 16, 10));
+  const btnGeo = prepGeo(new THREE.SphereGeometry(buttonRadius, 10, 6));
   btnGeo.scale(1, 0.45, 1);
 
   const hw = width * 0.5;
