@@ -664,8 +664,10 @@ export class PostProcessingPipeline {
         if (typeof rtSetter.setMRT === 'function') {
           rtSetter.setMRT(prevMRT);
         }
-        rtSetter.setRenderTarget(frameBufferTarget);
-        await this.renderer.compileAsync(postInternal._quadMesh, postInternal._quadMesh.camera);
+        if (frameBufferTarget !== null) {
+          rtSetter.setRenderTarget(frameBufferTarget);
+          await this.renderer.compileAsync(postInternal._quadMesh, postInternal._quadMesh.camera);
+        }
 
         const halfRttInternal = this.halfResFxRtt as unknown as {
           _rttNode?: Node | null;
@@ -691,6 +693,16 @@ export class PostProcessingPipeline {
         }
       }
     } finally {
+      const rendererInternal = this.renderer as unknown as {
+        _handleObjectFunction?: unknown;
+        _renderObjectDirect?: unknown;
+      };
+      if (
+        rendererInternal._renderObjectDirect &&
+        rendererInternal._handleObjectFunction !== rendererInternal._renderObjectDirect
+      ) {
+        rendererInternal._handleObjectFunction = rendererInternal._renderObjectDirect;
+      }
       this.renderer.toneMapping = prevToneMapping;
       this.renderer.outputColorSpace = prevColorSpace;
       if (typeof rtSetter.setMRT === 'function') {

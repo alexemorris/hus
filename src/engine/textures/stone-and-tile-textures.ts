@@ -1,4 +1,12 @@
 import * as THREE from 'three';
+import {
+  buildFloorPbrTextureBundle,
+  clampByte,
+  fastSinTurn,
+  hash2Periodic,
+  type FloorPbrTextureBundle,
+  valueNoise2Periodic,
+} from './floor-pbr-lut.ts';
 import { derivePbrNormalAndRoughnessMaps } from './pbr-surface-maps.ts';
 import {
   getOrCreateCachedCanvas,
@@ -317,339 +325,372 @@ export function createCementTexture(): THREE.CanvasTexture {
   return tex;
 }
 
-export function createHerringboneTerracottaQuarryTileTextures(): {
-  readonly colorMap: THREE.CanvasTexture;
-  readonly bumpMap: THREE.CanvasTexture;
-  readonly normalMap: THREE.CanvasTexture;
-  readonly roughnessMap: THREE.Texture;
-} {
+export function createHerringboneTerracottaQuarryTileTextures(): FloorPbrTextureBundle {
   return getOrCreateCachedTexture('herringbone-terracotta-quarry', () => {
-    const size = 512;
-    const [colorCanvas, bumpCanvas] = getOrCreateCachedCanvasPair(
-      'herringbone-terracotta-quarry',
-      size,
-      size,
-      (cCtx, bCtx) => {
-      // Dark charcoal-earth / lime-ash grout bed between sealed terracotta quarry tiles
-      cCtx.fillStyle = '#3d332c';
-      cCtx.fillRect(0, 0, size, size);
+    const size = 1024;
+    const quarryPalette: ReadonlyArray<readonly [number, number, number]> = [
+      [148, 86, 64],
+      [134, 77, 57],
+      [158, 94, 70],
+      [126, 72, 54],
+      [144, 84, 63],
+      [138, 80, 60],
+      [120, 68, 52],
+      [162, 98, 73],
+      [131, 75, 57],
+      [141, 82, 62],
+    ];
 
-      bCtx.fillStyle = '#181818';
-      bCtx.fillRect(0, 0, size, size);
+    const K = 4;
+    const RATIO = 3;
+    const GRID = K * RATIO;
 
-      // Muted, naturally aged Staffordshire & reclaimed terracotta quarry tile palette
-      const quarryPalette: ReadonlyArray<readonly [number, number, number]> = [
-        [142, 84, 64],  // Muted sealed terracotta clay
-        [132, 77, 58],  // Deep kiln-fired quarry russet
-        [150, 91, 68],  // Warm muted sienna clay
-        [124, 72, 55],  // Earthy russet brown-red
-        [145, 86, 65],  // Soft heritage terracotta
-        [136, 80, 61],  // Mid weathered terracotta clay
-        [118, 69, 53],  // Toasted kiln-edge umber-russet
-        [154, 94, 71],  // Sunlit sealed warm clay
-        [129, 76, 58],  // Aged iron-oxide earth
-        [139, 82, 62],  // Traditional muted quarry tile
-      ];
+    return buildFloorPbrTextureBundle({
+      key: 'herringbone-terracotta-quarry',
+      width: size,
+      height: size,
+      normalStrength: 2.6,
+      anisotropy: 8,
+      populate: (albedo, heightField, roughField) => {
+        for (let py = 0; py < size; py++) {
+          const v = py / size;
+          for (let px = 0; px < size; px++) {
+            const u = px / size;
+            const a = (u + v) * GRID;
+            const b = (u - v + 1.0) * GRID;
+            const ia = Math.floor(a);
+            const ib = Math.floor(b);
+            const fa = a - ia;
+            const fb = b - ib;
 
-      // Exact 45-degree orthogonal herringbone grid with period 12 in (u, v) -> 100% seamless across 512x512
-      const periodUV = 12;
-      const stepPx = size / periodUV; // 42.6667px in (x+y) and (y-x)
-      const tileUnitPx = stepPx / Math.SQRT2; // ~30.17px per tile width
-      const groutPx = 2.4;
+            const diag = (((ia - ib) % (2 * RATIO)) + 2 * RATIO) % (2 * RATIO);
+            const horizontal = diag < RATIO;
 
-      const drawRotatedTile = (
-        iu0: number,
-        iv0: number,
-        spanU: number,
-        spanV: number
-      ): void => {
-        // Periodic tile indices modulo 12 guarantee seamless wrap across 0..512
-        const pu = ((iu0 % periodUV) + periodUV) % periodUV;
-        const pv = ((iv0 % periodUV) + periodUV) % periodUV;
-        const seed = pu * 37 + pv * 53 + spanU * 19;
-        const [baseR, baseG, baseB] =
-          quarryPalette[Math.abs(seed) % quarryPalette.length] ?? [152, 70, 47];
-        const delta = ((seed * 17) % 14) - 7;
-        const r = Math.max(40, Math.min(225, baseR + delta));
-        const g = Math.max(25, Math.min(185, baseG + Math.round(delta * 0.65)));
-        const b = Math.max(20, Math.min(165, baseB + Math.round(delta * 0.5)));
+            let blockI: number;
+            let blockJ: number;
+            let along: number;
+            let across: number;
+            if (horizontal) {
+              blockI = ia - diag;
+              blockJ = ib;
+              along = (diag + fa) / RATIO;
+              across = fb;
+            } else {
+              const d2 = diag - RATIO;
+              blockI = ia;
+              blockJ = (ib + d2 - (RATIO - 1)) * 3 + 1;
+              along = (RATIO - 1 - d2 + fb) / RATIO;
+              across = fa;
+            }
 
-        const centerU = iu0 + spanU * 0.5;
-        const centerV = iv0 + spanV * 0.5;
-        const cx = (centerU - centerV) * (stepPx * 0.5);
-        const cy = (centerU + centerV) * (stepPx * 0.5);
+            const pI = ((blockI % GRID) + GRID) % GRID;
+            const pJ = ((blockJ % (GRID * 3)) + GRID * 3) % (GRID * 3);
+            const seedIdx = (pI * 7 + pJ * 13) % quarryPalette.length;
+            const pal = quarryPalette[seedIdx]!;
+            const seedTone = (hash2Periodic(pI, pJ, GRID, GRID * 3, 29) - 0.5) * 18;
+            const seedH = (hash2Periodic(pI, pJ, GRID, GRID * 3, 61) - 0.5) * 0.05;
+            const seedR = (hash2Periodic(pI, pJ, GRID, GRID * 3, 89) - 0.5) * 0.05;
 
-        const wPx = spanU * tileUnitPx - groutPx;
-        const hPx = spanV * tileUnitPx - groutPx;
+            const edgeAcross = Math.min(across, 1 - across);
+            const edgeAlong = Math.min(along, 1 - along) * RATIO;
+            const wobble =
+              (valueNoise2Periodic(u * 2, v * 2, 24, 24, 311) - 0.5) * 0.018;
+            const edgeMetric = Math.min(edgeAcross, edgeAlong) + wobble;
 
-        if (
-          cx + Math.max(wPx, hPx) < -16 ||
-          cx - Math.max(wPx, hPx) > size + 16 ||
-          cy + Math.max(wPx, hPx) < -16 ||
-          cy - Math.max(wPx, hPx) > size + 16
-        ) {
-          return;
-        }
+            const groutHalf = 0.036;
+            const bevelEnd = 0.115;
+            const isGrout = edgeMetric < groutHalf;
+            const bevelT = THREE.MathUtils.smoothstep(edgeMetric, groutHalf * 0.65, bevelEnd);
 
-        // Color Map: Sealed terracotta quarry tile with subtle kiln edge shading & satin wax sheen
-        cCtx.save();
-        cCtx.translate(cx, cy);
-        cCtx.rotate(Math.PI * 0.25);
+            const idx = py * size + px;
+            const o4 = idx * 4;
 
-        // Subtle darker kiln-baked perimeter rim on each handmade quarry tile
-        cCtx.fillStyle = `rgb(${Math.max(30, r - 14)}, ${Math.max(20, g - 10)}, ${Math.max(15, b - 8)})`;
-        cCtx.beginPath();
-        cCtx.roundRect(-wPx * 0.5, -hPx * 0.5, wPx, hPx, 2.2);
-        cCtx.fill();
+            if (isGrout) {
+              const mortarGrain =
+                (valueNoise2Periodic(u, v, 96, 96, 419) - 0.5) * 14 +
+                (hash2Periodic(px, py, size, size, 433) - 0.5) * 8;
+              albedo[o4] = clampByte(66 + mortarGrain);
+              albedo[o4 + 1] = clampByte(57 + mortarGrain * 0.92);
+              albedo[o4 + 2] = clampByte(49 + mortarGrain * 0.85);
+              albedo[o4 + 3] = 255;
+              heightField[idx] = 0.14 + (mortarGrain / 255) * 0.4;
+              roughField[idx] = 0.92;
+            } else {
+              const kilnEdge = 1 - THREE.MathUtils.smoothstep(edgeMetric, groutHalf, 0.28);
+              const clayCloud =
+                (valueNoise2Periodic(u + pI * 0.07, v + pJ * 0.05, 16, 16, 521) - 0.5) * 14;
+              const microClay =
+                (valueNoise2Periodic(u, v, 84, 84, 607) - 0.5) * 7;
+              const pitNoise = valueNoise2Periodic(u, v, 128, 128, 677);
+              const pit = pitNoise < 0.14 ? (0.14 - pitNoise) * 4.5 : 0;
 
-        // Warm sealed terracotta center body
-        const bodyGrad = cCtx.createLinearGradient(-wPx * 0.5, -hPx * 0.5, wPx * 0.5, hPx * 0.5);
-        bodyGrad.addColorStop(0.0, `rgb(${Math.min(235, r + 6)}, ${Math.min(195, g + 4)}, ${Math.min(175, b + 3)})`);
-        bodyGrad.addColorStop(0.5, `rgb(${r}, ${g}, ${b})`);
-        bodyGrad.addColorStop(1.0, `rgb(${Math.max(35, r - 8)}, ${Math.max(22, g - 6)}, ${Math.max(18, b - 5)})`);
-        cCtx.fillStyle = bodyGrad;
-        cCtx.beginPath();
-        cCtx.roundRect(-wPx * 0.5 + 1.5, -hPx * 0.5 + 1.5, wPx - 3, hPx - 3, 1.6);
-        cCtx.fill();
+              const r = pal[0] + seedTone + clayCloud + microClay - kilnEdge * 12 - pit * 14;
+              const g = pal[1] + seedTone * 0.66 + clayCloud * 0.72 + microClay * 0.7 - kilnEdge * 9 - pit * 10;
+              const b = pal[2] + seedTone * 0.52 + clayCloud * 0.58 + microClay * 0.6 - kilnEdge * 7 - pit * 8;
 
-        // Subtle bevel edge highlight along top-left arris
-        cCtx.strokeStyle = 'rgba(255, 224, 196, 0.16)';
-        cCtx.lineWidth = 1.0;
-        cCtx.strokeRect(-wPx * 0.5 + 1.2, -hPx * 0.5 + 1.2, wPx - 2.4, hPx - 2.4);
-        cCtx.restore();
+              const creviceAO = THREE.MathUtils.lerp(0.62, 1.0, bevelT);
+              albedo[o4] = clampByte(r * creviceAO);
+              albedo[o4 + 1] = clampByte(g * creviceAO);
+              albedo[o4 + 2] = clampByte(b * creviceAO);
+              albedo[o4 + 3] = 255;
 
-        // Bump Map: Cushioned quarry tile profile above recessed grout
-        const bumpBias = ((seed * 23) % 18) - 9;
-        const rimLum = Math.max(110, Math.min(190, 150 + bumpBias));
-        const faceLum = Math.max(195, Math.min(252, 228 + bumpBias));
+              const pillow =
+                Math.sin(THREE.MathUtils.clamp(across, 0, 1) * Math.PI) *
+                Math.sin(THREE.MathUtils.clamp(along, 0, 1) * Math.PI) *
+                0.045;
+              const hBody =
+                0.76 +
+                seedH +
+                pillow +
+                (clayCloud / 14) * 0.025 -
+                pit * 0.09;
+              heightField[idx] = THREE.MathUtils.clamp(
+                THREE.MathUtils.lerp(0.18, hBody, bevelT),
+                0,
+                1
+              );
 
-        bCtx.save();
-        bCtx.translate(cx, cy);
-        bCtx.rotate(Math.PI * 0.25);
-
-        bCtx.fillStyle = `rgb(${rimLum}, ${rimLum}, ${rimLum})`;
-        bCtx.beginPath();
-        bCtx.roundRect(-wPx * 0.5, -hPx * 0.5, wPx, hPx, 2.2);
-        bCtx.fill();
-
-        bCtx.fillStyle = `rgb(${faceLum}, ${faceLum}, ${faceLum})`;
-        bCtx.beginPath();
-        bCtx.roundRect(-wPx * 0.5 + 2.0, -hPx * 0.5 + 2.0, wPx - 4.0, hPx - 4.0, 1.4);
-        bCtx.fill();
-        bCtx.restore();
-      };
-
-      for (let iv = -16; iv <= 28; iv++) {
-        for (let iu = -16; iu <= 28; iu++) {
-          const m = ((iu - iv) % 6 + 6) % 6;
-          if (m === 0) {
-            // Horizontal 3:1 quarry tile in (u, v) space
-            drawRotatedTile(iu, iv, 3, 1);
-          } else if (m === 5) {
-            // Vertical 1:3 quarry tile in (u, v) space
-            drawRotatedTile(iu, iv, 1, 3);
+              let rough =
+                0.43 +
+                seedR -
+                pillow * 0.65 +
+                kilnEdge * 0.08 +
+                (0.5 - microClay / 14) * 0.04;
+              rough = THREE.MathUtils.clamp(rough, 0.37, 0.52);
+              if (pit > 0.02) {
+                rough = THREE.MathUtils.lerp(rough, 0.68, THREE.MathUtils.clamp(pit, 0, 1));
+              }
+              rough = THREE.MathUtils.lerp(0.92, rough, bevelT);
+              roughField[idx] = rough;
+            }
           }
         }
-      }
-      }
-    );
-
-    const colorMap = createBrowserDataOrCanvasTexture('stone-tile:8', colorCanvas, { colorSpace: THREE.NoColorSpace });
-    colorMap.wrapS = THREE.RepeatWrapping;
-    colorMap.wrapT = THREE.RepeatWrapping;
-    colorMap.colorSpace = THREE.SRGBColorSpace;
-    colorMap.anisotropy = 8;
-
-    const bumpMap = createBrowserDataOrCanvasTexture('stone-tile:9', bumpCanvas, { colorSpace: THREE.NoColorSpace });
-    bumpMap.wrapS = THREE.RepeatWrapping;
-    bumpMap.wrapT = THREE.RepeatWrapping;
-    bumpMap.anisotropy = 8;
-
-    const { normalMap, roughnessMap } = derivePbrNormalAndRoughnessMaps(
-      'herringbone-terracotta-quarry',
-      bumpCanvas,
-      {
-        normalStrength: 2.6,
-        mortarThreshold: 0.25,
-        mortarRoughness: 1.0,
-        surfaceRoughnessMin: 0.76,
-        surfaceRoughnessMax: 0.94,
-        microGrainRoughness: 0.04,
-      }
-    );
-
-    return { colorMap, bumpMap, normalMap, roughnessMap };
+      },
+    });
   });
 }
 
 /**
- * Staggered rectangular tumbled/honed pale warm limestone flagstone PBR texture set
- * (`~600 × 400mm` staggered courses, warm pale cream-buff `#e5dfd2`..`#dad2c2`, soft lime grout
- * `#f0ece2`, subtle fossil/mineral grain) for the Master Bathroom (`familyBathroom`, Room 17).
+ * Aged tumbled & honed English / Bourgogne natural limestone flagstone PBR texture set
+ * (`1024 × 1024`, coursed varied-length stone modules across a `1.60m` world repeat when paired
+ * with `0.5 m⁻¹` slab UVs and `.repeat.set(1.25, 1.25)`):
+ * - Stone-to-stone mineral variation (warm ivory, pale fawn, fossil buff, soft grey-taupe)
+ * - Sedimentary clouding, fine fossil/calcite shell & vein inclusions, tumbled undulation & micro-pitting
+ * - Hand-dressed pillowed flagstone arrises and recessed `3–4.5 mm` lime-mortar joints
+ * - Calibrated impregnator-sealed honed/tumbled limestone `roughnessMap` (`0.40–0.54` honed stone centres,
+ *   `0.68` micro-pits, `0.92` dead-matte lime-mortar joints).
  */
-export function createTumbledLimestoneFlagstoneTextures(): {
-  readonly colorMap: THREE.CanvasTexture;
-  readonly bumpMap: THREE.CanvasTexture;
-  readonly normalMap: THREE.CanvasTexture;
-  readonly roughnessMap: THREE.Texture;
-} {
+export function createTumbledLimestoneFlagstoneTextures(): FloorPbrTextureBundle {
   return getOrCreateCachedTexture('tumbled-limestone-flagstone-pbr', () => {
-    // 1024x1024 across a 1.60m world repeat (2.0m slab UV / 1.25 repeat = 1.5625mm/px):
-    // groutHalf = 0.85px -> 1.70px total joint width = exact 2.66mm hairline interior bathroom grout!
     const size = 1024;
-    const [colorCanvas, bumpCanvas] = getOrCreateCachedCanvasPair(
-      'tumbled-limestone-flagstone',
-      size,
-      size,
-      (cCtx, bCtx) => {
-        const clampByte = (v: number): number => Math.max(0, Math.min(255, Math.round(v)));
+    const courses: ReadonlyArray<{
+      readonly y0: number;
+      readonly h: number;
+      readonly splits: readonly number[];
+    }> = [
+      { y0: 0, h: 272, splits: [0, 384, 712, 1024] },
+      { y0: 272, h: 232, splits: [0, 188, 556, 876, 1024] },
+      { y0: 504, h: 280, splits: [0, 72, 456, 804, 1024] },
+      { y0: 784, h: 240, splits: [0, 252, 616, 948, 1024] },
+    ];
 
-        // Warm pale ivory/limestone-matched interior bathroom grout (#e2dacb)
-        cCtx.fillStyle = '#e2dacb';
-        cCtx.fillRect(0, 0, size, size);
+    const palette: ReadonlyArray<readonly [number, number, number]> = [
+      [222, 214, 198],
+      [212, 203, 185],
+      [205, 195, 177],
+      [217, 209, 194],
+      [201, 193, 178],
+      [215, 205, 187],
+      [224, 217, 203],
+      [208, 199, 182],
+    ];
 
-        // Shallow, crisp interior micro-joint depth in bump map (subtle bevel, not deep patio mortar)
-        bCtx.fillStyle = 'rgb(154, 154, 154)';
-        bCtx.fillRect(0, 0, size, size);
+    return buildFloorPbrTextureBundle({
+      key: 'tumbled-limestone-flagstone',
+      width: size,
+      height: size,
+      normalStrength: 2.45,
+      repeat: [1.25, 1.25],
+      anisotropy: 16,
+      populate: (albedo, heightField, roughField) => {
+        for (let cIdx = 0; cIdx < courses.length; cIdx++) {
+          const course = courses[cIdx]!;
+          const splits = course.splits;
+          const numSegs = splits.length - 1;
+          const wrapsX = splits[1]! < 300 && splits[numSegs - 1]! > 760;
 
-        // 4 seamlessly wrapping staggered courses across 1024px (~400mm course height, ~520-620mm slab lengths)
-        const courses: ReadonlyArray<{
-          readonly y: number;
-          readonly h: number;
-          readonly xSplits: readonly number[];
-        }> = [
-          { y: 0, h: 256, xSplits: [0, 368, 708, 1024] },
-          { y: 256, h: 256, xSplits: [184, 548, 884, 1208] },
-          { y: 512, h: 256, xSplits: [56, 432, 776, 1080] },
-          { y: 768, h: 256, xSplits: [236, 596, 940, 1260] },
-        ];
+          for (let ly = 0; ly < course.h; ly++) {
+            const py = course.y0 + ly;
+            const v = py / size;
+            const distBedJointPx = Math.min(ly + 0.5, course.h - (ly + 0.5));
 
-        // Warm honed/tumbled oatmeal-buff limestone palette matching Slide 3 bottom-left swatch (#dbd2c0 .. #cfc4b1)
-        const palette: ReadonlyArray<readonly [number, number, number]> = [
-          [219, 211, 194], // #dbd3c2 warm honed cream-buff limestone
-          [213, 204, 186], // #d5ccba honed oatmeal-buff limestone
-          [208, 197, 178], // #d0c5b2 soft warm parchment buff
-          [217, 208, 192], // #d9d0c0 pale Cotswold-buff limestone
-          [210, 200, 182], // #d2c8b6 natural warm limestone
-        ];
+            let seg = 0;
+            for (let px = 0; px < size; px++) {
+              while (seg < numSegs - 1 && px >= splits[seg + 1]!) {
+                seg++;
+              }
+              const u = px / size;
+              const x0 = splits[seg]!;
+              const x1 = splits[seg + 1]!;
+              const slabId = wrapsX && seg === numSegs - 1 ? 0 : seg;
+              const seed = cIdx * 31 + slabId * 17 + 7;
+              const pal = palette[(seed * 5 + cIdx * 3) % palette.length]!;
 
-        const groutHalf = 0.85; // 1.7px total joint = 2.66mm hairline grout!
-        let slabIdx = 0;
+              const distLeftPerp = x0 === 0 && wrapsX ? 999 : px + 0.5 - x0;
+              const distRightPerp = x1 === size && wrapsX ? 999 : x1 - (px + 0.5);
+              const distPerpJointPx = Math.min(distLeftPerp, distRightPerp);
 
-        const drawSlabPass = (
-          sx: number,
-          sy: number,
-          sw: number,
-          sh: number,
-          br: number,
-          bg: number,
-          bb: number,
-          seedIdx: number
-        ): void => {
-          cCtx.fillStyle = `rgb(${br}, ${bg}, ${bb})`;
-          cCtx.beginPath();
-          cCtx.roundRect(sx, sy, sw, sh, 1.4);
-          cCtx.fill();
+              const arrisChisel =
+                (valueNoise2Periodic(u, v, 48, 48, 211) - 0.5) * 1.15 +
+                (valueNoise2Periodic(u, v, 112, 112, 239) - 0.5) * 0.55;
+              const dEdgePx = Math.min(distBedJointPx, distPerpJointPx) + arrisChisel;
+              const cornerRoundPx =
+                distBedJointPx < 9 && distPerpJointPx < 9
+                  ? 9 - Math.hypot(9 - distBedJointPx, 9 - distPerpJointPx)
+                  : 999;
+              const edgePx = Math.min(dEdgePx, cornerRoundPx + arrisChisel * 0.6);
 
-          // Gentle honed micro-chamfer edge (1.5px) into flat honed slab face in bump map
-          bCtx.fillStyle = 'rgb(192, 192, 192)';
-          bCtx.beginPath();
-          bCtx.roundRect(sx, sy, sw, sh, 1.4);
-          bCtx.fill();
+              const mortarHalfPx = 1.45;
+              const pillowWidthPx = 7.2;
+              const isMortar = edgePx < mortarHalfPx;
+              const bevelT = THREE.MathUtils.smoothstep(edgePx, mortarHalfPx * 0.7, pillowWidthPx);
 
-          bCtx.fillStyle = 'rgb(206, 206, 206)';
-          bCtx.beginPath();
-          bCtx.roundRect(sx + 1.6, sy + 1.6, Math.max(2, sw - 3.2), Math.max(2, sh - 3.2), 1.0);
-          bCtx.fill();
+              const idx = py * size + px;
+              const o4 = idx * 4;
 
-          // Subtle sedimentary clouding & warm mineral mottling inside each limestone flagstone
-          for (let py = sy + 6; py < sy + sh - 12; py += 20) {
-            for (let px = sx + 6; px < sx + sw - 16; px += 26) {
-              const lx = Math.round(px - sx);
-              const ly = Math.round(py - sy);
-              const n = (((lx * 23 + ly * 37 + seedIdx * 13) % 9) - 4);
-              cCtx.fillStyle = `rgba(${clampByte(br + n)}, ${clampByte(bg + n)}, ${clampByte(bb + n - 1)}, 0.26)`;
-              cCtx.fillRect(px, py, 24, 18);
+              if (isMortar) {
+                const sand =
+                  (valueNoise2Periodic(u, v, 128, 128, 307) - 0.5) * 13 +
+                  (hash2Periodic(px, py, size, size, 331) - 0.5) * 9;
+                albedo[o4] = clampByte(196 + sand);
+                albedo[o4 + 1] = clampByte(188 + sand * 0.95);
+                albedo[o4 + 2] = clampByte(173 + sand * 0.88);
+                albedo[o4 + 3] = 255;
+                heightField[idx] = 0.15 + (sand / 255) * 0.35;
+                roughField[idx] = 0.92;
+              } else {
+                const stoneShift = (hash2Periodic(slabId, cIdx, 8, 4, 37) - 0.5) * 15;
+                const warmShift = (hash2Periodic(slabId, cIdx, 8, 4, 71) - 0.5) * 8;
+                const slabHeightBias = (hash2Periodic(slabId, cIdx, 8, 4, 97) - 0.5) * 0.045;
+                const slabRoughBias = (hash2Periodic(slabId, cIdx, 8, 4, 127) - 0.5) * 0.045;
 
-              const bn = clampByte(206 + n * 1.5);
-              bCtx.fillStyle = `rgba(${bn}, ${bn}, ${bn}, 0.28)`;
-              bCtx.fillRect(px, py, 24, 18);
+                const cloud1 = valueNoise2Periodic(
+                  u + seed * 0.071,
+                  v + seed * 0.053,
+                  10,
+                  10,
+                  409
+                );
+                const cloud2 = valueNoise2Periodic(
+                  u + seed * 0.031,
+                  v + seed * 0.089,
+                  26,
+                  26,
+                  461
+                );
+                const microOolite = valueNoise2Periodic(u, v, 96, 96, 503);
+                const sedimentary = (cloud1 - 0.5) * 14 + (cloud2 - 0.5) * 8 + (microOolite - 0.5) * 5;
+
+                const veinPhase =
+                  u * 3.0 + v * 2.0 + (cloud1 - 0.5) * 0.55 + seed * 0.13;
+                const veinRidge = Math.abs(fastSinTurn(veinPhase));
+                const calciteVein =
+                  veinRidge < 0.045
+                    ? THREE.MathUtils.smoothstep(0.045 - veinRidge, 0, 0.045) * 0.65
+                    : 0;
+
+                const shellNoise = valueNoise2Periodic(
+                  u + seed * 0.11,
+                  v + seed * 0.17,
+                  64,
+                  64,
+                  577
+                );
+                const fossilArc =
+                  shellNoise > 0.84
+                    ? THREE.MathUtils.smoothstep(shellNoise, 0.84, 0.96)
+                    : 0;
+
+                const pitNoise = valueNoise2Periodic(u, v, 144, 144, 641);
+                const pitThreshold = 0.15 + (1 - bevelT) * 0.08;
+                const pit =
+                  pitNoise < pitThreshold
+                    ? THREE.MathUtils.clamp((pitThreshold - pitNoise) * 5.2, 0, 1)
+                    : 0;
+
+                let r =
+                  pal[0] +
+                  stoneShift +
+                  warmShift +
+                  sedimentary +
+                  calciteVein * 18 +
+                  fossilArc * 13 -
+                  pit * 16;
+                let g =
+                  pal[1] +
+                  stoneShift +
+                  warmShift * 0.82 +
+                  sedimentary * 0.96 +
+                  calciteVein * 17 +
+                  fossilArc * 11 -
+                  pit * 15;
+                let b =
+                  pal[2] +
+                  stoneShift +
+                  warmShift * 0.54 +
+                  sedimentary * 0.9 +
+                  calciteVein * 14 +
+                  fossilArc * 8 -
+                  pit * 13;
+
+                const arrisWearLift =
+                  edgePx >= mortarHalfPx + 1.2 && edgePx <= pillowWidthPx + 1.5
+                    ? (1 - Math.abs(edgePx - (mortarHalfPx + 3.2)) / 3.5) * 5.0
+                    : 0;
+                const creviceAO = THREE.MathUtils.lerp(0.76, 1.0, bevelT);
+                r = r * creviceAO + Math.max(0, arrisWearLift);
+                g = g * creviceAO + Math.max(0, arrisWearLift * 0.96);
+                b = b * creviceAO + Math.max(0, arrisWearLift * 0.9);
+
+                albedo[o4] = clampByte(r);
+                albedo[o4 + 1] = clampByte(g);
+                albedo[o4 + 2] = clampByte(b);
+                albedo[o4 + 3] = 255;
+
+                const undulation =
+                  (cloud1 - 0.5) * 0.055 +
+                  (cloud2 - 0.5) * 0.028 +
+                  (microOolite - 0.5) * 0.014;
+                const hStone =
+                  0.77 +
+                  slabHeightBias +
+                  undulation +
+                  calciteVein * 0.015 -
+                  pit * 0.14;
+                heightField[idx] = THREE.MathUtils.clamp(
+                  THREE.MathUtils.lerp(0.20, hStone, bevelT),
+                  0,
+                  1
+                );
+
+                let rough =
+                  0.46 +
+                  slabRoughBias -
+                  (cloud1 - 0.5) * 0.07 +
+                  (0.5 - microOolite) * 0.04 -
+                  calciteVein * 0.06;
+                rough = THREE.MathUtils.clamp(rough, 0.40, 0.54);
+                if (pit > 0.02) {
+                  rough = THREE.MathUtils.lerp(rough, 0.68, pit);
+                }
+                rough = THREE.MathUtils.lerp(0.92, rough, bevelT);
+                roughField[idx] = rough;
+              }
             }
-          }
-
-          // Delicate calcite / shell fossil flecks characteristic of honed English & Bourgogne limestone
-          for (let f = 0; f < 24; f++) {
-            const fx = sx + 10 + ((f * 73 + seedIdx * 41) % Math.max(6, Math.floor(sw - 20)));
-            const fy = sy + 10 + ((f * 97 + seedIdx * 29) % Math.max(6, Math.floor(sh - 20)));
-            cCtx.fillStyle =
-              f % 3 === 0 ? 'rgba(242, 238, 229, 0.28)' : 'rgba(194, 185, 170, 0.20)';
-            cCtx.fillRect(fx, fy, f % 4 === 0 ? 5.5 : 3.0, 2.2);
-          }
-
-          // Whisper-soft 0.75px honed stone edge kiss next to the hairline grout
-          cCtx.strokeStyle = 'rgba(238, 233, 222, 0.28)';
-          cCtx.lineWidth = 0.75;
-          cCtx.strokeRect(sx + 0.5, sy + 0.5, sw - 1, sh - 1);
-        };
-
-        for (let r = 0; r < courses.length; r++) {
-          const course = courses[r]!;
-          for (let c = 0; c < course.xSplits.length - 1; c++) {
-            const x0 = course.xSplits[c]!;
-            const x1 = course.xSplits[c + 1]!;
-            const sx = x0 + groutHalf;
-            const sy = course.y + groutHalf;
-            const sw = x1 - x0 - groutHalf * 2;
-            const sh = course.h - groutHalf * 2;
-            if (sw <= 6 || sh <= 6) continue;
-
-            const base = palette[slabIdx % palette.length]!;
-            const toneShift = ((slabIdx * 11 + r * 7) % 5) - 2;
-            const br = clampByte(base[0] + toneShift);
-            const bg = clampByte(base[1] + toneShift);
-            const bb = clampByte(base[2] + toneShift);
-
-            drawSlabPass(sx, sy, sw, sh, br, bg, bb, slabIdx);
-            if (sx + sw > size) {
-              drawSlabPass(sx - size, sy, sw, sh, br, bg, bb, slabIdx);
-            }
-            slabIdx++;
           }
         }
-      }
-    );
-
-    const colorMap = createBrowserDataOrCanvasTexture('stone-tile:10', colorCanvas, { colorSpace: THREE.NoColorSpace });
-    colorMap.wrapS = THREE.RepeatWrapping;
-    colorMap.wrapT = THREE.RepeatWrapping;
-    colorMap.repeat.set(1.25, 1.25);
-    colorMap.colorSpace = THREE.SRGBColorSpace;
-    colorMap.anisotropy = 16;
-
-    const bumpMap = createBrowserDataOrCanvasTexture('stone-tile:11', bumpCanvas, { colorSpace: THREE.NoColorSpace });
-    bumpMap.wrapS = THREE.RepeatWrapping;
-    bumpMap.wrapT = THREE.RepeatWrapping;
-    bumpMap.repeat.set(1.25, 1.25);
-    bumpMap.anisotropy = 16;
-
-    const { normalMap, roughnessMap } = derivePbrNormalAndRoughnessMaps(
-      'tumbled-limestone-flagstone',
-      bumpCanvas,
-      {
-        normalStrength: 0.95,
-        mortarThreshold: 0.65,
-        mortarRoughness: 0.68,
-        surfaceRoughnessMin: 0.45,
-        surfaceRoughnessMax: 0.61,
-        microGrainRoughness: 0.024,
-      }
-    );
-    normalMap.repeat.set(1.25, 1.25);
-    normalMap.anisotropy = 16;
-    roughnessMap.repeat.set(1.25, 1.25);
-    roughnessMap.anisotropy = 16;
-
-    return { colorMap, bumpMap, normalMap, roughnessMap };
+      },
+    });
   });
 }
 
@@ -970,12 +1011,13 @@ export function createParisianManoirCabochonTextures(): {
       'parisian-manoir-cabochon',
       bumpCanvas,
       {
-        normalStrength: 1.35,
+        normalStrength: 2.35,
         mortarThreshold: 0.62,
-        mortarRoughness: 0.78,
-        surfaceRoughnessMin: 0.35,
-        surfaceRoughnessMax: 0.52,
-        microGrainRoughness: 0.024,
+        mortarRoughness: 0.90,
+        surfaceRoughnessMin: 0.32,
+        surfaceRoughnessMax: 0.46,
+        microGrainRoughness: 0.028,
+        maxDimension: 1024,
       }
     );
     normalMap.repeat.set(repeatScale, repeatScale);
@@ -1067,14 +1109,15 @@ export function createParisianManoirUpstandTextures(): {
       'parisian-manoir-upstand',
       bumpCanvas,
       {
-        normalStrength: 1.25,
+        normalStrength: 2.15,
         wrapS: true,
         wrapT: false,
         mortarThreshold: 0.62,
-        mortarRoughness: 0.78,
-        surfaceRoughnessMin: 0.35,
-        surfaceRoughnessMax: 0.50,
-        microGrainRoughness: 0.02,
+        mortarRoughness: 0.90,
+        surfaceRoughnessMin: 0.32,
+        surfaceRoughnessMax: 0.46,
+        microGrainRoughness: 0.024,
+        maxDimension: 1024,
       }
     );
     normalMap.anisotropy = 16;

@@ -190,6 +190,11 @@ export class MaterialTextureDeduplicator {
           const ctrY = forceUnitUv ? 0 : tex.center.y;
           const rot = forceUnitUv ? 0 : tex.rotation;
           const scalarCacheKey = `${cId}:${channels}:${tex.wrapS}:${tex.wrapT}:${repX}:${repY}:${offX}:${offY}:${ctrX}:${ctrY}:${rot}:${tex.flipY ? 1 : 0}`;
+          const isRepeatTiled =
+            tex.wrapS === THREE.RepeatWrapping || tex.wrapT === THREE.RepeatWrapping;
+          const scalarMaxDim = isRepeatTiled
+            ? Math.min(1024, Math.max(tex.image.width, tex.image.height))
+            : 512;
           let scalarTex = scalarTexCache.get(scalarCacheKey);
           if (scalarTex === undefined) {
             scalarTex = createScalarDataTextureFromCanvas(
@@ -197,7 +202,7 @@ export class MaterialTextureDeduplicator {
               tex.image,
               channels,
               {
-                maxDimension: 512,
+                maxDimension: scalarMaxDim,
                 wrapS: tex.wrapS,
                 wrapT: tex.wrapT,
                 repeat: [repX, repY],
@@ -382,7 +387,11 @@ export class MaterialTextureDeduplicator {
         mat.clearcoatNormalMap ||
         mat.anisotropyMap ||
         mat.transmissionMap ||
-        mat.thicknessMap
+        mat.thicknessMap ||
+        mat.sheenColorMap ||
+        mat.sheenRoughnessMap ||
+        mat.specularIntensityMap ||
+        mat.specularColorMap
       ) {
         return null;
       }
@@ -546,17 +555,29 @@ export class MaterialTextureDeduplicator {
         !metalnessMap &&
         !displacementMap &&
         !clearcoatMap &&
-        !clearcoatRoughnessMap;
-      const hasNoMaps = !map && !normalMap && !roughnessMap && !bumpMap && hasNoSpecialMaps;
+        !clearcoatRoughnessMap &&
+        !mat.clearcoatNormalMap &&
+        !mat.sheenColorMap &&
+        !mat.sheenRoughnessMap &&
+        !mat.specularIntensityMap &&
+        !mat.specularColorMap;
+      const hasNoPbrDetailMaps = !normalMap && !roughnessMap && !bumpMap;
+      const hasNoMaps = !map && hasNoPbrDetailMaps && hasNoSpecialMaps;
       const isZeroEmissive =
         (mat.emissiveIntensity ?? 0) === 0 ||
         ((mat.emissive?.r ?? 0) === 0 &&
           (mat.emissive?.g ?? 0) === 0 &&
           (mat.emissive?.b ?? 0) === 0);
+      const hasCustomPhysicalResponse =
+        (mat.clearcoat ?? 0) > 0 ||
+        (mat.sheen ?? 0) > 0 ||
+        mat.clearcoatNormalMap != null ||
+        (mat.ior !== undefined && Math.abs(mat.ior - 1.5) > 1e-3) ||
+        (mat.specularIntensity !== undefined && Math.abs(mat.specularIntensity - 1) > 1e-3);
       const isSimplePhysical =
         ((mat as THREE.MeshPhysicalMaterial).transmission ?? 0) === 0 &&
-        ((mat as THREE.MeshPhysicalMaterial).sheen ?? 0) === 0 &&
-        ((mat as THREE.MeshPhysicalMaterial).iridescence ?? 0) === 0;
+        ((mat as THREE.MeshPhysicalMaterial).iridescence ?? 0) === 0 &&
+        !hasCustomPhysicalResponse;
       const matUser = mat.userData as Record<string, unknown> | undefined;
       const hasRuntimeOpacityToggle = matUser?.cutawayLightOpacity !== undefined;
 
@@ -570,6 +591,7 @@ export class MaterialTextureDeduplicator {
         !existingColorAttr &&
         Boolean(posAttrForVc && posAttrForVc.count > 0) &&
         hasNoSpecialMaps &&
+        hasNoPbrDetailMaps &&
         isZeroEmissive &&
         isSimplePhysical;
 
@@ -591,6 +613,7 @@ export class MaterialTextureDeduplicator {
         mat.vertexColors === true &&
         hasValidFloat3ColorAttr &&
         hasNoSpecialMaps &&
+        hasNoPbrDetailMaps &&
         isZeroEmissive &&
         isSimplePhysical;
 
@@ -604,6 +627,7 @@ export class MaterialTextureDeduplicator {
         hasValidFloat3ColorAttr &&
         mat.vertexColors === true &&
         hasNoSpecialMaps &&
+        hasNoPbrDetailMaps &&
         isZeroEmissive &&
         isSimplePhysical;
 
@@ -691,13 +715,16 @@ export class MaterialTextureDeduplicator {
 
       const rawRough = mat.roughness ?? 0.5;
       const rawMetal = mat.metalness ?? 0;
+      const preserveExactPbrScalars = !hasNoPbrDetailMaps || hasCustomPhysicalResponse;
       const qRough = canUseVertexColorConsolidation
         ? rawRough < 0.34
           ? 0.22
           : rawRough < 0.68
             ? 0.52
             : 0.85
-        : Math.round(rawRough * 20) / 20;
+        : preserveExactPbrScalars
+          ? rawRough
+          : Math.round(rawRough * 20) / 20;
       const qMetal = canUseVertexColorConsolidation
         ? rawMetal >= 0.45
           ? 0.88
@@ -712,7 +739,8 @@ export class MaterialTextureDeduplicator {
         ? Math.round((mat.emissiveIntensity ?? 1) * 4) / 4
         : (mat.emissiveIntensity ?? 0);
       const rawClearcoat = mat.clearcoat ?? 0;
-      const downgradePhysicalToStandard = canUseVertexColorConsolidation && rawClearcoat < 0.12;
+      const downgradePhysicalToStandard =
+        canUseVertexColorConsolidation && !hasCustomPhysicalResponse && rawClearcoat < 0.12;
       const canonMatType = downgradePhysicalToStandard ? 'MeshStandardMaterial' : mat.type;
       const qClearcoat = downgradePhysicalToStandard
         ? 0
@@ -724,6 +752,21 @@ export class MaterialTextureDeduplicator {
         : canUseVertexColorConsolidation
           ? 0.2
           : (mat.clearcoatRoughness ?? 0);
+      const rawSheen = mat.sheen ?? 0;
+      const rawSheenRough = mat.sheenRoughness ?? 1;
+      const rawSheenColorHex = rawSheen > 0 ? (mat.sheenColor?.getHexString?.() ?? 'ffffff') : '';
+      const rawIor = canonMatType === 'MeshPhysicalMaterial' ? (mat.ior ?? 1.5) : 1.5;
+      const rawSpecInt =
+        canonMatType === 'MeshPhysicalMaterial' ? (mat.specularIntensity ?? 1) : 1;
+      const rawSpecColorHex =
+        canonMatType === 'MeshPhysicalMaterial' && rawSpecInt > 0
+          ? (mat.specularColor?.getHexString?.() ?? 'ffffff')
+          : '';
+      const rawEnvMapInt = mat.envMapIntensity ?? 1;
+      const rawCcNs =
+        mat.clearcoatNormalMap != null
+          ? `${(mat.clearcoatNormalScale?.x ?? 1).toFixed(2)},${(mat.clearcoatNormalScale?.y ?? 1).toFixed(2)}`
+          : '';
       const canonPolyOffset =
         canUseVertexColorConsolidation && !mat.transparent ? false : Boolean(mat.polygonOffset);
 
@@ -762,7 +805,7 @@ export class MaterialTextureDeduplicator {
         canBakeTransparentVc
           ? '0.00'
           : qEmissiveIntensity.toFixed(2),
-        qRough.toFixed(2),
+        qRough.toFixed(3),
         qMetal.toFixed(2),
         bumpMap ? qBumpScale.toFixed(3) : '0',
         normalMap ? `${qNsX.toFixed(2)},${qNsY.toFixed(2)}` : '',
@@ -771,8 +814,15 @@ export class MaterialTextureDeduplicator {
         targetSide,
         mat.depthWrite ? '1' : '0',
         canonPolyOffset ? '1' : '0',
-        qClearcoat.toFixed(2),
-        qClearcoatRough.toFixed(2),
+        qClearcoat.toFixed(3),
+        qClearcoatRough.toFixed(3),
+        rawSheen.toFixed(3),
+        rawSheen > 0 ? `${rawSheenRough.toFixed(3)}:${rawSheenColorHex}` : '',
+        rawIor.toFixed(3),
+        rawSpecInt.toFixed(3),
+        rawSpecColorHex,
+        rawEnvMapInt.toFixed(2),
+        rawCcNs,
         map?.uuid ?? '',
         normalMap?.uuid ?? '',
         roughnessMap?.uuid ?? '',
@@ -783,6 +833,9 @@ export class MaterialTextureDeduplicator {
         displacementMap?.uuid ?? '',
         clearcoatMap?.uuid ?? '',
         clearcoatRoughnessMap?.uuid ?? '',
+        mat.clearcoatNormalMap?.uuid ?? '',
+        mat.sheenColorMap?.uuid ?? '',
+        mat.sheenRoughnessMap?.uuid ?? '',
       ].join('|');
 
       let existing = canonicalBySig.get(sig);
@@ -945,12 +998,18 @@ export class MaterialTextureDeduplicator {
               const isStd =
                 sm.type === 'MeshStandardMaterial' || sm.type === 'MeshPhysicalMaterial';
               const noSpecial =
+                !sm.normalMap &&
+                !sm.roughnessMap &&
+                !sm.bumpMap &&
                 !sm.alphaMap &&
                 !sm.emissiveMap &&
                 !sm.metalnessMap &&
                 !sm.displacementMap &&
                 !sm.clearcoatMap &&
-                !sm.clearcoatRoughnessMap;
+                !sm.clearcoatRoughnessMap &&
+                !sm.clearcoatNormalMap &&
+                !sm.sheenColorMap &&
+                !sm.sheenRoughnessMap;
               const zeroEm =
                 (sm.emissiveIntensity ?? 0) === 0 ||
                 ((sm.emissive?.r ?? 0) === 0 &&
@@ -958,8 +1017,12 @@ export class MaterialTextureDeduplicator {
                   (sm.emissive?.b ?? 0) === 0);
               const simplePhys =
                 (sm.transmission ?? 0) === 0 &&
+                (sm.clearcoat ?? 0) === 0 &&
                 (sm.sheen ?? 0) === 0 &&
-                (sm.iridescence ?? 0) === 0;
+                (sm.iridescence ?? 0) === 0 &&
+                sm.clearcoatNormalMap == null &&
+                (sm.ior === undefined || Math.abs(sm.ior - 1.5) <= 1e-3) &&
+                (sm.specularIntensity === undefined || Math.abs(sm.specularIntensity - 1) <= 1e-3);
               if (
                 isStd &&
                 Boolean(sm.color) &&

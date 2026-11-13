@@ -1,5 +1,10 @@
-import { createBrowserDataOrCanvasTexture } from './texture-registry.ts';
 import * as THREE from 'three';
+import { derivePbrNormalAndRoughnessMaps } from './pbr-surface-maps.ts';
+import {
+  createBrowserDataOrCanvasTexture,
+  getOrCreateCachedCanvasPair,
+  getOrCreateCachedTexture,
+} from './texture-registry.ts';
 
 /** Nominal tile size of the Fayrouz Vitoria chequerboard range (30cm x 30cm porcelain). */
 export const VITORIA_TILE_SIZE_M = 0.3;
@@ -16,6 +21,8 @@ export const VITORIA_CHEQUER_REPEAT_M = DIAGONALS_PER_REPEAT * VITORIA_TILE_SIZE
 export interface VitoriaChequerboardTextures {
   readonly colorMap: THREE.CanvasTexture;
   readonly bumpMap: THREE.CanvasTexture;
+  readonly normalMap: THREE.CanvasTexture;
+  readonly roughnessMap: THREE.Texture;
 }
 
 type Rng = () => number;
@@ -165,108 +172,117 @@ function paintCreamTile(ctx: CanvasRenderingContext2D, rng: Rng, half: number): 
   }
 }
 
-let cachedVitoriaTextures: VitoriaChequerboardTextures | null = null;
-
-/**
- * Seamless texture pair for the Fayrouz "Vitoria Classic Rosso" marble-effect porcelain
- * chequerboard (30cm x 30cm, matt): alternating rosso and cream marble tiles laid on the
- * diagonal, with a fine pale grout joint. One repeat spans `VITORIA_CHEQUER_REPEAT_M` in
- * both world X and Z, so use UV scale `1 / VITORIA_CHEQUER_REPEAT_M` with world-space UVs.
- */
 export function createVitoriaRossoChequerboardTextures(): VitoriaChequerboardTextures {
-  if (cachedVitoriaTextures) {
-    return cachedVitoriaTextures;
-  }
-  const size = 1024;
-  const n = DIAGONALS_PER_REPEAT;
-  const tilePx = size / (n * Math.SQRT2);
-  const groutPx = 1.6;
-  const half = tilePx / 2 - groutPx / 2;
+  return getOrCreateCachedTexture('vitoria-rosso-chequerboard-pbr', () => {
+    const size = 1024;
+    const n = DIAGONALS_PER_REPEAT;
+    const tilePx = size / (n * Math.SQRT2);
+    const groutPx = 2.0;
+    const half = tilePx / 2 - groutPx / 2;
 
-  const colorCanvas = document.createElement('canvas');
-  colorCanvas.width = size;
-  colorCanvas.height = size;
-  const bumpCanvas = document.createElement('canvas');
-  bumpCanvas.width = size;
-  bumpCanvas.height = size;
-  const cCtx = colorCanvas.getContext('2d');
-  const bCtx = bumpCanvas.getContext('2d');
-  if (!cCtx || !bCtx) {
-    throw new Error('2D canvas context unavailable for Vitoria chequerboard texture');
-  }
+    const [colorCanvas, bumpCanvas] = getOrCreateCachedCanvasPair(
+      'vitoria-rosso-chequerboard',
+      size,
+      size,
+      (cCtx, bCtx) => {
+        cCtx.fillStyle = '#c9c2b7';
+        cCtx.fillRect(0, 0, size, size);
+        bCtx.fillStyle = '#343434';
+        bCtx.fillRect(0, 0, size, size);
 
-  // Pale warm-grey grout.
-  cCtx.fillStyle = '#c9c2b7';
-  cCtx.fillRect(0, 0, size, size);
-  bCtx.fillStyle = '#3a3a3a';
-  bCtx.fillRect(0, 0, size, size);
+        const range = 2 * n + 2;
+        for (let i = -range; i <= range; i++) {
+          for (let j = -range; j <= range; j++) {
+            const u = (i + 0.5) * tilePx;
+            const v = (j + 0.5) * tilePx;
+            const cx = (u - v) / Math.SQRT2;
+            const cy = (u + v) / Math.SQRT2;
+            if (cx < -tilePx || cx > size + tilePx || cy < -tilePx || cy > size + tilePx) {
+              continue;
+            }
+            const wrappedI = ((i % n) + n) % n;
+            const wrappedJ = ((j % n) + n) % n;
+            const ci = ((i - wrappedI) / n + (j - wrappedJ) / n) % 2 === 0 ? 0 : 1;
+            const seed = 9173 + wrappedI * 131 + wrappedJ * 977 + ci * 7919;
+            const isRosso = (i + j) % 2 === 0;
+            const hBias = ((seed * 17) % 15) - 7;
 
-  // Rotated grid: u = (x + y) / √2, v = (y - x) / √2 with tile (i, j) centred at
-  // ((i + 0.5) * a, (j + 0.5) * a). Shifting x or y by `size` shifts i and j by n, so
-  // drawing every tile that touches the canvas (plus its wrapped copies) is seamless.
-  const range = 2 * n + 2;
-  for (let i = -range; i <= range; i++) {
-    for (let j = -range; j <= range; j++) {
-      const u = (i + 0.5) * tilePx;
-      const v = (j + 0.5) * tilePx;
-      const cx = (u - v) / Math.SQRT2;
-      const cy = (u + v) / Math.SQRT2;
-      if (cx < -tilePx || cx > size + tilePx || cy < -tilePx || cy > size + tilePx) {
-        continue;
-      }
-      const wrappedI = ((i % n) + n) % n;
-      const wrappedJ = ((j % n) + n) % n;
-      // Canonical seed per wrapped tile so copies across the seam are identical.
-      const ci = ((i - wrappedI) / n + (j - wrappedJ) / n) % 2 === 0 ? 0 : 1;
-      const seed = 9173 + wrappedI * 131 + wrappedJ * 977 + ci * 7919;
-      const isRosso = (i + j) % 2 === 0;
+            for (const [ox, oy] of [
+              [0, 0],
+              [-size, 0],
+              [size, 0],
+              [0, -size],
+              [0, size],
+            ] as const) {
+              const x = cx + ox;
+              const y = cy + oy;
+              if (x < -tilePx || x > size + tilePx || y < -tilePx || y > size + tilePx) {
+                continue;
+              }
+              const rng = mulberry32(seed);
+              cCtx.save();
+              cCtx.translate(x, y);
+              cCtx.rotate(Math.PI / 4);
+              cCtx.beginPath();
+              cCtx.rect(-half, -half, half * 2, half * 2);
+              cCtx.clip();
+              if (isRosso) {
+                paintRossoTile(cCtx, rng, half);
+              } else {
+                paintCreamTile(cCtx, rng, half);
+              }
+              cCtx.strokeStyle = isRosso
+                ? 'rgba(235, 212, 198, 0.22)'
+                : 'rgba(255, 252, 245, 0.34)';
+              cCtx.lineWidth = 1.4;
+              cCtx.strokeRect(-half + 0.8, -half + 0.8, half * 2 - 1.6, half * 2 - 1.6);
+              cCtx.restore();
 
-      for (const [ox, oy] of [
-        [0, 0],
-        [-size, 0],
-        [size, 0],
-        [0, -size],
-        [0, size],
-      ] as const) {
-        const x = cx + ox;
-        const y = cy + oy;
-        if (x < -tilePx || x > size + tilePx || y < -tilePx || y > size + tilePx) {
-          continue;
+              bCtx.save();
+              bCtx.translate(x, y);
+              bCtx.rotate(Math.PI / 4);
+              const bevelLum = Math.max(120, Math.min(185, 156 + hBias));
+              const crownLum = Math.max(195, Math.min(248, 224 + hBias));
+              bCtx.fillStyle = `rgb(${bevelLum}, ${bevelLum}, ${bevelLum})`;
+              bCtx.fillRect(-half, -half, half * 2, half * 2);
+              bCtx.fillStyle = `rgb(${crownLum}, ${crownLum}, ${crownLum})`;
+              bCtx.fillRect(-half + 2.4, -half + 2.4, half * 2 - 4.8, half * 2 - 4.8);
+              bCtx.restore();
+            }
+          }
         }
-        const rng = mulberry32(seed);
-        cCtx.save();
-        cCtx.translate(x, y);
-        cCtx.rotate(Math.PI / 4);
-        cCtx.beginPath();
-        cCtx.rect(-half, -half, half * 2, half * 2);
-        cCtx.clip();
-        if (isRosso) {
-          paintRossoTile(cCtx, rng, half);
-        } else {
-          paintCreamTile(cCtx, rng, half);
-        }
-        cCtx.restore();
-
-        bCtx.save();
-        bCtx.translate(x, y);
-        bCtx.rotate(Math.PI / 4);
-        bCtx.fillStyle = '#d6d6d6';
-        bCtx.fillRect(-half, -half, half * 2, half * 2);
-        bCtx.restore();
       }
-    }
-  }
+    );
 
-  const colorMap = createBrowserDataOrCanvasTexture('vitoria:1', colorCanvas, { colorSpace: THREE.NoColorSpace });
-  colorMap.wrapS = THREE.RepeatWrapping;
-  colorMap.wrapT = THREE.RepeatWrapping;
-  colorMap.colorSpace = THREE.SRGBColorSpace;
-  colorMap.anisotropy = 8;
+    const colorMap = createBrowserDataOrCanvasTexture('vitoria:1', colorCanvas, {
+      colorSpace: THREE.NoColorSpace,
+    });
+    colorMap.wrapS = THREE.RepeatWrapping;
+    colorMap.wrapT = THREE.RepeatWrapping;
+    colorMap.colorSpace = THREE.SRGBColorSpace;
+    colorMap.anisotropy = 8;
 
-  const bumpMap = createBrowserDataOrCanvasTexture('vitoria:2', bumpCanvas, { colorSpace: THREE.NoColorSpace });
-  bumpMap.wrapS = THREE.RepeatWrapping;
-  bumpMap.wrapT = THREE.RepeatWrapping;
+    const bumpMap = createBrowserDataOrCanvasTexture('vitoria:2', bumpCanvas, {
+      colorSpace: THREE.NoColorSpace,
+    });
+    bumpMap.wrapS = THREE.RepeatWrapping;
+    bumpMap.wrapT = THREE.RepeatWrapping;
+    bumpMap.anisotropy = 8;
 
-  cachedVitoriaTextures = { colorMap, bumpMap };
-  return cachedVitoriaTextures;
+    const { normalMap, roughnessMap } = derivePbrNormalAndRoughnessMaps(
+      'vitoria-rosso-chequerboard',
+      bumpCanvas,
+      {
+        normalStrength: 2.35,
+        mortarThreshold: 0.42,
+        mortarRoughness: 0.90,
+        surfaceRoughnessMin: 0.36,
+        surfaceRoughnessMax: 0.48,
+        microGrainRoughness: 0.026,
+        maxDimension: 1024,
+      }
+    );
+
+    return { colorMap, bumpMap, normalMap, roughnessMap };
+  });
 }

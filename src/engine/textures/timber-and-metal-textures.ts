@@ -1,10 +1,19 @@
 import * as THREE from 'three';
 import {
+  buildFloorPbrTextureBundle,
+  clampByte,
+  fastCosTurn,
+  fastSinTurn,
+  hash2Periodic,
+  type FloorPbrTextureBundle,
+  valueNoise2Periodic,
+} from './floor-pbr-lut.ts';
+import {
+  createBrowserDataOrCanvasTexture,
   getOrCreateCachedCanvas,
   getOrCreateCachedCanvasPair,
   getOrCreateCachedTexture,
 } from './texture-registry.ts';
-import { createBrowserDataOrCanvasTexture } from './texture-registry.ts';
 
 export function createBraidedCableTexture(): THREE.CanvasTexture {
   const canvas = getOrCreateCachedCanvas('braided-cable', 64, 128, (ctx) => {
@@ -170,275 +179,328 @@ export function createPolishedChromeTexture(): THREE.CanvasTexture {
   });
 }
 
-export function createEngineeredOakFloorTextures(): {
-  readonly colorMap: THREE.CanvasTexture;
-  readonly bumpMap: THREE.CanvasTexture;
-} {
+export function createEngineeredOakFloorTextures(): FloorPbrTextureBundle {
   return getOrCreateCachedTexture('engineered-oak-floor', () => {
     const size = 1024;
-    const [colorCanvas, bumpCanvas] = getOrCreateCachedCanvasPair(
-      'engineered-oak-floor',
-      size,
-      size,
-      (cCtx, bCtx) => {
-      // Natural raw-effect matte-oiled European oak palette (matching reference photo media_1791557597873_0dec7400.jpg):
-      // Muted warm sandy-taupe / biscuit oak without orange Danish-oil saturation
-      const oakPlankPalette: ReadonlyArray<readonly [number, number, number]> = [
-        [184, 157, 126], // Natural raw-oiled European oak (#b89d7e)
-        [176, 149, 118], // Warm muted taupe-biscuit oak (#b09576)
-        [190, 163, 132], // Pale sandy heartwood oak (#bea384)
-        [170, 143, 112], // Medium weathered taupe oak (#aa8f70)
-        [194, 168, 137], // Light sunlit natural European oak (#c2a889)
-        [180, 153, 122], // Balanced matte-oiled European oak (#b4997a)
-        [173, 146, 115], // Muted warm umber-taupe oak (#ad9273)
-        [187, 160, 129], // Soft biscuit-oak plank (#bba081)
-      ];
+    const oakPlankPalette: ReadonlyArray<readonly [number, number, number]> = [
+      [188, 159, 125],
+      [172, 143, 110],
+      [198, 170, 136],
+      [164, 136, 104],
+      [193, 165, 131],
+      [179, 150, 117],
+      [168, 140, 108],
+      [202, 175, 141],
+      [175, 147, 114],
+      [184, 156, 122],
+    ];
 
-      const clampByte = (v: number): number => Math.max(0, Math.min(255, Math.round(v)));
+    const numRows = 8;
+    const rowH = size / numRows;
+    const rowJointLayouts: ReadonlyArray<ReadonlyArray<number>> = [
+      [0, 512, size],
+      [0, 320, 832, size],
+      [0, 144, 451, 656, size],
+      [0, 416, 928, size],
+      [0, 192, 704, size],
+      [0, 464, 976, size],
+      [0, 240, 470, 752, size],
+      [0, 96, 608, size],
+    ];
 
-      // World tile = 4.40m (X) x 1.76m (Z):
-      // - 8 courses of 128px = 220mm (0.22m) wide planks (8 * 0.22m = 1.76m)
-      // - Full-length plank = 512px = 2200mm (2.20m) long (2 * 2.20m = 4.40m)
-      // - Packs include ~20% cut lengths: 6 of 8 rows have two full 2200mm (512px) planks;
-      //   2 of 8 rows (rows 2 & 6) split one 2200mm plank into two cut lengths (4 cut boards / 18 total = 22%).
-      const numRows = 8;
-      const rowH = size / numRows; // 128px = 220mm
-      const rowJointLayouts: ReadonlyArray<ReadonlyArray<number>> = [
-        [0, 512, size],               // Row 0: two full 2200mm planks (joints at 0m, 2.20m)
-        [0, 320, 832, size],          // Row 1: two full 2200mm planks staggered by 1.375m
-        [0, 144, 451, 656, size],     // Row 2: one full 2200mm plank + two cut lengths (1320mm + 880mm)
-        [0, 416, 928, size],          // Row 3: two full 2200mm planks staggered by 1.79m
-        [0, 192, 704, size],          // Row 4: two full 2200mm planks staggered by 0.825m
-        [0, 464, 976, size],          // Row 5: two full 2200mm planks staggered by 1.99m
-        [0, 240, 470, 752, size],     // Row 6: one full 2200mm plank + two cut lengths (990mm + 1210mm)
-        [0, 96, 608, size],           // Row 7: two full 2200mm planks staggered by 0.41m
-      ];
+    interface PlankSegInfo {
+      readonly plankId: number;
+      readonly seed: number;
+      readonly baseR: number;
+      readonly baseG: number;
+      readonly baseB: number;
+      readonly heightBias: number;
+      readonly roughBias: number;
+      readonly sapSide: number;
+      readonly cathedralY: number;
+      readonly hasRayFleck: boolean;
+      readonly hasKnot: boolean;
+      readonly kx: number;
+      readonly ky: number;
+      readonly rx: number;
+      readonly ry: number;
+      readonly wrapsLeft: boolean;
+      readonly xStartWorld: number;
+      readonly plankLen: number;
+    }
 
-      for (let row = 0; row < numRows; row++) {
-        const y0 = row * rowH;
-        const joints = rowJointLayouts[row] ?? [0, 512, size];
-
-        for (let seg = 0; seg < joints.length - 1; seg++) {
-          const xStart = joints[seg] ?? 0;
-          const xEnd = joints[seg + 1] ?? size;
-          const segW = xEnd - xStart;
-          if (segW <= 1) continue;
-
-          // Ensure left-edge and right-edge wrapped segments of the same plank share identical identity
+    return buildFloorPbrTextureBundle({
+      key: 'engineered-oak-floor',
+      width: size,
+      height: size,
+      normalStrength: 2.35,
+      anisotropy: 8,
+      populate: (albedo, heightField, roughField) => {
+        for (let row = 0; row < numRows; row++) {
+          const y0 = row * rowH;
+          const joints = rowJointLayouts[row]!;
           const wrapsSeam = joints[1] !== 512;
-          const plankId = wrapsSeam && seg === joints.length - 2 ? 0 : seg;
-          const seed = row * 37 + plankId * 23 + 13;
-          const [baseR, baseG, baseB] =
-            oakPlankPalette[Math.abs(seed) % oakPlankPalette.length] ?? [168, 129, 90];
+          const numSegs = joints.length - 1;
+          const segInfos: PlankSegInfo[] = [];
 
-          // Base plank fill + undulated surface shading across plank width & length
-          cCtx.fillStyle = `rgb(${baseR}, ${baseG}, ${baseB})`;
-          cCtx.fillRect(xStart, y0, segW, rowH);
+          for (let seg = 0; seg < numSegs; seg++) {
+            const xStart = joints[seg]!;
+            const xEnd = joints[seg + 1]!;
+            const plankId = wrapsSeam && seg === numSegs - 1 ? 0 : seg;
+            const seed = row * 41 + plankId * 29 + 17;
+            const pal = oakPlankPalette[(seed * 7 + row * 3) % oakPlankPalette.length]!;
+            const warmthShift = (hash2Periodic(plankId, row, 8, numRows, 31) - 0.5) * 18;
+            const valShift = (hash2Periodic(plankId, row, 8, numRows, 59) - 0.5) * 14;
+            const baseR = pal[0] + warmthShift + valShift;
+            const baseG = pal[1] + warmthShift * 0.84 + valShift;
+            const baseB = pal[2] + warmthShift * 0.62 + valShift * 0.92;
+            const heightBias = (hash2Periodic(plankId, row, 8, numRows, 83) - 0.5) * 0.045;
+            const roughBias = (hash2Periodic(plankId, row, 8, numRows, 107) - 0.5) * 0.05;
+            const sapSide = (seed & 1) === 0 ? 1 : -1;
+            const cathedralY = 0.26 + hash2Periodic(plankId, row, 8, numRows, 131) * 0.48;
+            const hasRayFleck = hash2Periodic(plankId, row, 8, numRows, 157) > 0.42;
 
-          const bumpBase = 198 + (((seed * 13) % 10) - 5);
-          bCtx.fillStyle = `rgb(${bumpBase}, ${bumpBase}, ${bumpBase})`;
-          bCtx.fillRect(xStart, y0, segW, rowH);
+            let xStartWorld = xStart;
+            let plankLen = xEnd - xStart;
+            if (wrapsSeam) {
+              if (seg === 0) {
+                const tailStart = joints[numSegs - 1]!;
+                xStartWorld = tailStart - size;
+                plankLen = xEnd + (size - tailStart);
+              } else if (seg === numSegs - 1) {
+                plankLen = joints[1]! + (size - xStart);
+              }
+            }
 
-          // Soft cross-plank crown & sapwood/heartwood tonal gradient
-          const plankGrad = cCtx.createLinearGradient(0, y0, 0, y0 + rowH);
-          const edgeShift = (seed & 1) === 0 ? 5 : -5;
-          const centerShift = -Math.round(edgeShift * 0.55);
-          plankGrad.addColorStop(
-            0,
-            `rgba(${clampByte(baseR + edgeShift)}, ${clampByte(baseG + edgeShift)}, ${clampByte(baseB + Math.round(edgeShift * 0.85))}, 0.32)`
-          );
-          plankGrad.addColorStop(
-            0.5,
-            `rgba(${clampByte(baseR + centerShift)}, ${clampByte(baseG + centerShift)}, ${clampByte(baseB + Math.round(centerShift * 0.85))}, 0.24)`
-          );
-          plankGrad.addColorStop(
-            1,
-            `rgba(${clampByte(baseR - edgeShift)}, ${clampByte(baseG - edgeShift)}, ${clampByte(baseB - Math.round(edgeShift * 0.85))}, 0.32)`
-          );
-          cCtx.fillStyle = plankGrad;
-          cCtx.fillRect(xStart, y0, segW, rowH);
+            const segW = xEnd - xStart;
+            const hasKnot =
+              segW >= 240 &&
+              ((row === 1 && seg === 1) ||
+                (row === 3 && seg === 1) ||
+                (row === 5 && seg === 1) ||
+                (row === 6 && seg === 2) ||
+                (row === 7 && seg === 1));
+            const kFracX = 0.24 + hash2Periodic(plankId, row, 8, numRows, 179) * 0.52;
+            const kFracY = 0.24 + hash2Periodic(plankId, row, 8, numRows, 197) * 0.52;
 
-          // Sparse natural knots (~4 subtle knots across the 18-plank 7.74 m² tile)
-          interface KnotSpec {
-            readonly kx: number;
-            readonly ky: number;
-            readonly rx: number;
-            readonly ry: number;
-            readonly angle: number;
+            segInfos.push({
+              plankId,
+              seed,
+              baseR,
+              baseG,
+              baseB,
+              heightBias,
+              roughBias,
+              sapSide,
+              cathedralY,
+              hasRayFleck,
+              hasKnot,
+              kx: xStart + segW * kFracX,
+              ky: y0 + rowH * kFracY,
+              rx: 7.5 + hash2Periodic(plankId, row, 8, numRows, 211) * 5.0,
+              ry: 3.8 + hash2Periodic(plankId, row, 8, numRows, 229) * 2.4,
+              wrapsLeft: wrapsSeam && seg === numSegs - 1,
+              xStartWorld,
+              plankLen: Math.max(64, plankLen),
+            });
           }
-          const knots: KnotSpec[] = [];
-          const hasSingleKnot =
-            segW >= 260 &&
-            ((row === 1 && seg === 1) ||
-              (row === 3 && seg === 1) ||
-              (row === 5 && seg === 1) ||
-              (row === 7 && seg === 1));
-          if (hasSingleKnot) {
-            const kHash = seed * 31 + 17;
-            const marginX = 72;
-            const usableW = Math.max(32, segW - marginX * 2);
-            const kx = xStart + marginX + Math.floor((((kHash * 73) & 0x7fffffff) % usableW));
-            const ky = y0 + 28 + Math.floor((((kHash * 41) & 0x7fffffff) % (rowH - 56)));
-            const rx = 6.5 + ((kHash * 19) % 4); // Subtle 6.5..9.5px knot
-            const ry = 3.2 + ((kHash * 11) % 2.2); // 3.2..5.0px
-            const angle = (((kHash % 7) - 3) * 0.035);
-            knots.push({ kx, ky, rx, ry, angle });
-          }
 
-          // Brushed longitudinal woodgrain fibers & cathedral heartwood arches
-          const cathedralCenterY = y0 + rowH * (0.32 + ((seed % 5) * 0.09));
-          const numFibers = 76;
-          const stepX = 16;
+          for (let ly = 0; ly < rowH; ly++) {
+            const py = y0 + ly;
+            const vGlobal = py / size;
+            const across = (ly + 0.5) / rowH;
+            const distLongEdgePx = Math.min(ly + 0.5, rowH - (ly + 0.5));
 
-          for (let f = 0; f < numFibers; f++) {
-            const t = (f + 0.5) / numFibers;
-            const baseY = y0 + 2 + t * (rowH - 4);
-            const distFromCathedral = (baseY - cathedralCenterY) / (rowH * 0.5);
+            let segIdx = 0;
+            for (let px = 0; px < size; px++) {
+              while (segIdx < numSegs - 1 && px >= joints[segIdx + 1]!) {
+                segIdx++;
+              }
+              const info = segInfos[segIdx]!;
+              const xStart = joints[segIdx]!;
+              const xEnd = joints[segIdx + 1]!;
+              const uGlobal = px / size;
 
-            // Alternate between deep brushed earlywood pore grooves and raised oiled latewood ridges
-            const fiberWave =
-              Math.sin(f * 0.85 + seed * 0.4) * 6.0 +
-              Math.cos(f * 1.9 + seed * 1.1) * 4.2 +
-              Math.sin(distFromCathedral * Math.PI * 2.0) * 6.5;
-            const isDarkPore = fiberWave < -2.5;
-            const isLightRidge = fiberWave > 4.5;
+              const distLeftButt =
+                xStart === 0 && wrapsSeam ? 999 : px + 0.5 - xStart;
+              const distRightButt =
+                xEnd === size && wrapsSeam ? 999 : xEnd - (px + 0.5);
+              const distButtPx = Math.min(distLeftButt, distRightButt);
 
-            const dR = Math.round(fiberWave * 1.15 - (isDarkPore ? 6 : 0) + (isLightRidge ? 4 : 0));
-            const dG = Math.round(fiberWave * 1.2 - (isDarkPore ? 7 : 0) + (isLightRidge ? 4 : 0));
-            const dB = Math.round(fiberWave * 1.05 - (isDarkPore ? 6 : 0) + (isLightRidge ? 3 : 0));
+              const worldPx = info.wrapsLeft ? px - size : px;
+              const along = (worldPx - info.xStartWorld) / info.plankLen;
 
-            cCtx.strokeStyle = `rgba(${clampByte(baseR + dR)}, ${clampByte(baseG + dG)}, ${clampByte(baseB + dB)}, ${isDarkPore ? 0.58 : isLightRidge ? 0.44 : 0.32})`;
-            cCtx.lineWidth = isDarkPore ? 1.45 : 1.15;
-
-            const bVal = clampByte(
-              bumpBase + (isDarkPore ? -36 : isLightRidge ? 22 : Math.round(fiberWave * 2.0))
-            );
-            bCtx.strokeStyle = `rgb(${bVal}, ${bVal}, ${bVal})`;
-            bCtx.lineWidth = isDarkPore ? 1.45 : 1.1;
-
-            cCtx.beginPath();
-            bCtx.beginPath();
-            for (let px = xStart; px <= xEnd; px += stepX) {
-              const worldX = wrapsSeam && seg === joints.length - 2 ? px - size : px;
-              // Undulated cathedral arch wave along the 2200mm plank length
-              let gy =
-                baseY +
-                Math.sin(worldX * 0.0085 + seed * 0.7) * distFromCathedral * 6.0 +
-                Math.cos(worldX * 0.021 + f * 0.18 + seed) * 1.5;
-
-              // Deflect fiber smoothly around any knot in this plank
-              for (const knot of knots) {
-                const dx = px - knot.kx;
-                const dy = baseY - knot.ky;
-                const sigmaX = knot.rx * 3.0;
-                const sigmaY = knot.ry * 3.4;
-                const gauss = Math.exp(-(dx * dx) / (2 * sigmaX * sigmaX) - (dy * dy) / (2 * sigmaY * sigmaY));
-                if (gauss > 0.01) {
+              let acrossDeflected = across;
+              let knotMask = 0;
+              let knotCore = 0;
+              if (info.hasKnot) {
+                const dx = px - info.kx;
+                const dy = py - info.ky;
+                const nx = dx / (info.rx * 3.1);
+                const ny = dy / (info.ry * 3.4);
+                const d2 = nx * nx + ny * ny;
+                if (d2 < 3.2) {
+                  const deflect = (1 - THREE.MathUtils.clamp(d2 / 3.2, 0, 1));
                   const dir = dy >= 0 ? 1 : -1;
-                  gy += dir * gauss * (knot.ry * 1.25);
+                  acrossDeflected += dir * deflect * deflect * (info.ry / rowH) * 1.45;
+                  const coreD = Math.hypot(dx / info.rx, dy / info.ry);
+                  if (coreD < 1.65) {
+                    knotMask = 1 - THREE.MathUtils.smoothstep(coreD, 0.35, 1.65);
+                    knotCore = 1 - THREE.MathUtils.smoothstep(coreD, 0.0, 0.78);
+                  }
                 }
               }
 
-              gy = Math.max(y0 + 1.5, Math.min(y0 + rowH - 1.5, gy));
-              if (px === xStart) {
-                cCtx.moveTo(px, gy);
-                bCtx.moveTo(px, gy);
-              } else {
-                cCtx.lineTo(px, gy);
-                bCtx.lineTo(px, gy);
+              const grainWarp =
+                (valueNoise2Periodic(
+                  uGlobal + info.seed * 0.037,
+                  vGlobal + info.seed * 0.053,
+                  12,
+                  24,
+                  401
+                ) -
+                  0.5) *
+                0.055;
+              const dCathedral = (acrossDeflected - info.cathedralY) * 2.15;
+              const archWave =
+                fastSinTurn(along * 1.15 + info.seed * 0.13) * 0.42 +
+                fastCosTurn(along * 2.35 + info.seed * 0.29) * 0.16;
+              const ringCoord =
+                dCathedral * dCathedral * 5.8 +
+                Math.abs(dCathedral) * 2.6 +
+                archWave * (0.45 + Math.abs(dCathedral)) +
+                grainWarp * 5.2;
+              const ringSin = fastSinTurn(ringCoord);
+              const latewood = THREE.MathUtils.smoothstep(ringSin, -0.35, 0.72);
+
+              const fineFiber = valueNoise2Periodic(
+                uGlobal + info.seed * 0.019,
+                vGlobal * 1.5 + info.seed * 0.031,
+                28,
+                192,
+                509
+              );
+              const poreNoise = valueNoise2Periodic(
+                uGlobal + info.seed * 0.071,
+                vGlobal + info.seed * 0.043,
+                44,
+                320,
+                613
+              );
+              const openPore =
+                poreNoise < 0.24 + (1 - latewood) * 0.12
+                  ? (0.36 - poreNoise) * 2.4
+                  : 0;
+
+              let rayFleck = 0;
+              if (info.hasRayFleck) {
+                const rayN = valueNoise2Periodic(
+                  uGlobal * 1.2 + info.seed * 0.11,
+                  vGlobal * 0.8 + info.seed * 0.07,
+                  32,
+                  20,
+                  733
+                );
+                const rayRibbon = fastSinTurn(
+                  acrossDeflected * 7.5 + along * 0.6 + rayN * 0.8
+                );
+                if (rayN > 0.62 && rayRibbon > 0.58) {
+                  rayFleck =
+                    THREE.MathUtils.smoothstep(rayN, 0.62, 0.88) *
+                    THREE.MathUtils.smoothstep(rayRibbon, 0.58, 0.94);
+                }
               }
+
+              const sapGrad = (across - 0.5) * 2 * info.sapSide;
+              const sapLift = THREE.MathUtils.clamp(sapGrad, -1, 1) * 5.5;
+              const crownShade = (1 - Math.abs(across - 0.5) * 2) * 3.0 - 1.5;
+
+              const longBevel = THREE.MathUtils.smoothstep(distLongEdgePx, 0.55, 2.85);
+              const buttBevel = THREE.MathUtils.smoothstep(distButtPx, 0.45, 2.15);
+              const grooveFactor = Math.min(longBevel, buttBevel);
+              const isGrooveCrevice = grooveFactor < 0.42;
+
+              const grainTone =
+                (latewood - 0.48) * -13.5 +
+                (fineFiber - 0.5) * 11.0 -
+                openPore * 19.0 +
+                rayFleck * 17.5 +
+                sapLift +
+                crownShade;
+
+              let r = info.baseR + grainTone;
+              let g = info.baseG + grainTone * 0.93;
+              let b = info.baseB + grainTone * 0.82 + rayFleck * 3.0;
+
+              if (knotMask > 0) {
+                r = THREE.MathUtils.lerp(r, 82, knotMask * 0.72);
+                g = THREE.MathUtils.lerp(g, 54, knotMask * 0.75);
+                b = THREE.MathUtils.lerp(b, 31, knotMask * 0.78);
+                if (knotCore > 0) {
+                  r = THREE.MathUtils.lerp(r, 46, knotCore * 0.85);
+                  g = THREE.MathUtils.lerp(g, 29, knotCore * 0.85);
+                  b = THREE.MathUtils.lerp(b, 16, knotCore * 0.85);
+                }
+              }
+
+              const creviceShade = THREE.MathUtils.lerp(0.42, 1.0, grooveFactor);
+              const bevelKiss =
+                distLongEdgePx >= 2.2 && distLongEdgePx <= 3.8 && ly < 5 ? 4.5 : 0;
+              r = r * creviceShade + bevelKiss;
+              g = g * creviceShade + bevelKiss * 0.9;
+              b = b * creviceShade + bevelKiss * 0.76;
+
+              const idx = py * size + px;
+              const o4 = idx * 4;
+              albedo[o4] = clampByte(r);
+              albedo[o4 + 1] = clampByte(g);
+              albedo[o4 + 2] = clampByte(b);
+              albedo[o4 + 3] = 255;
+
+              const plankCrown = Math.sin(across * Math.PI) * 0.025;
+              const grainRelief =
+                latewood * 0.055 +
+                (fineFiber - 0.5) * 0.032 -
+                openPore * 0.145 +
+                rayFleck * 0.022 -
+                knotCore * 0.08;
+              const hSurface = 0.74 + info.heightBias + plankCrown + grainRelief;
+              heightField[idx] = THREE.MathUtils.clamp(
+                THREE.MathUtils.lerp(0.14, hSurface, grooveFactor),
+                0,
+                1
+              );
+
+              let rough =
+                0.43 +
+                info.roughBias -
+                latewood * 0.055 -
+                rayFleck * 0.065 +
+                (0.5 - fineFiber) * 0.04;
+              rough = THREE.MathUtils.clamp(rough, 0.36, 0.49);
+              if (openPore > 0.02) {
+                const poreT = THREE.MathUtils.clamp(openPore * 1.45, 0, 1);
+                rough = THREE.MathUtils.lerp(rough, 0.62, poreT);
+              }
+              if (knotMask > 0.05) {
+                rough = THREE.MathUtils.lerp(rough, 0.58, knotMask * 0.7);
+              }
+              if (grooveFactor < 0.96) {
+                rough = THREE.MathUtils.lerp(
+                  0.88,
+                  rough,
+                  THREE.MathUtils.smoothstep(grooveFactor, 0.18, 0.96)
+                );
+              }
+              if (isGrooveCrevice) {
+                rough = 0.88;
+              }
+              roughField[idx] = rough;
             }
-            cCtx.stroke();
-            bCtx.stroke();
-          }
-
-          // Subtle knot (when present on this plank)
-          for (const knot of knots) {
-            cCtx.save();
-            cCtx.translate(knot.kx, knot.ky);
-            cCtx.rotate(knot.angle);
-
-            // Soft warm amber-brown grain halo
-            const haloGrad = cCtx.createRadialGradient(
-              0,
-              0,
-              knot.ry * 0.25,
-              0,
-              0,
-              knot.rx * 1.45
-            );
-            haloGrad.addColorStop(0, 'rgba(68, 45, 25, 0.72)');
-            haloGrad.addColorStop(0.45, 'rgba(102, 70, 42, 0.45)');
-            haloGrad.addColorStop(0.8, `rgba(${clampByte(baseR - 20)}, ${clampByte(baseG - 22)}, ${clampByte(baseB - 18)}, 0.22)`);
-            haloGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-            cCtx.fillStyle = haloGrad;
-            cCtx.beginPath();
-            cCtx.ellipse(0, 0, knot.rx * 1.45, knot.ry * 1.5, 0, 0, Math.PI * 2);
-            cCtx.fill();
-
-            // Dark filled knot core
-            cCtx.fillStyle = '#422b19';
-            cCtx.beginPath();
-            cCtx.ellipse(0, 0, knot.rx * 0.62, knot.ry * 0.65, 0, 0, Math.PI * 2);
-            cCtx.fill();
-
-            cCtx.fillStyle = '#2d1c0f';
-            cCtx.beginPath();
-            cCtx.ellipse(0, 0, knot.rx * 0.34, knot.ry * 0.36, 0, 0, Math.PI * 2);
-            cCtx.fill();
-            cCtx.restore();
-
-            // Subtle knot bump relief
-            bCtx.save();
-            bCtx.translate(knot.kx, knot.ky);
-            bCtx.rotate(knot.angle);
-            bCtx.fillStyle = '#686868';
-            bCtx.beginPath();
-            bCtx.ellipse(0, 0, knot.rx * 0.6, knot.ry * 0.62, 0, 0, Math.PI * 2);
-            bCtx.fill();
-            bCtx.restore();
-          }
-
-          // Bevelled header end-joint V-groove at xStart (if > 0)
-          if (xStart > 0) {
-            cCtx.fillStyle = 'rgba(92, 62, 36, 0.36)';
-            cCtx.fillRect(xStart - 1.1, y0, 2.2, rowH);
-            cCtx.fillStyle = 'rgba(66, 43, 24, 0.82)';
-            cCtx.fillRect(xStart - 0.7, y0, 1.4, rowH);
-            cCtx.fillStyle = 'rgba(222, 188, 148, 0.28)';
-            cCtx.fillRect(xStart + 0.8, y0, 1.1, rowH);
-
-            bCtx.fillStyle = '#484848';
-            bCtx.fillRect(xStart - 0.8, y0, 1.6, rowH);
           }
         }
-
-        // Bevelled long-edge V-groove between wide 220mm planks
-        cCtx.fillStyle = 'rgba(92, 62, 36, 0.4)';
-        cCtx.fillRect(0, y0, size, 2.6);
-        cCtx.fillStyle = 'rgba(64, 42, 23, 0.86)';
-        cCtx.fillRect(0, y0, size, 1.75);
-        cCtx.fillStyle = 'rgba(224, 190, 150, 0.3)';
-        cCtx.fillRect(0, y0 + 2.0, size, 1.3);
-
-        bCtx.fillStyle = '#404040';
-        bCtx.fillRect(0, y0, size, 1.9);
-      }
-      }
-    );
-
-    const colorMap = createBrowserDataOrCanvasTexture('timber-metal:5', colorCanvas, { colorSpace: THREE.NoColorSpace });
-    colorMap.wrapS = THREE.RepeatWrapping;
-    colorMap.wrapT = THREE.RepeatWrapping;
-    colorMap.colorSpace = THREE.SRGBColorSpace;
-    colorMap.anisotropy = 8;
-
-    const bumpMap = createBrowserDataOrCanvasTexture('timber-metal:6', bumpCanvas, { colorSpace: THREE.NoColorSpace });
-    bumpMap.wrapS = THREE.RepeatWrapping;
-    bumpMap.wrapT = THREE.RepeatWrapping;
-    bumpMap.anisotropy = 8;
-
-    return { colorMap, bumpMap };
+      },
+    });
   });
 }
 

@@ -1,7 +1,13 @@
 import * as THREE from 'three';
 import {
+  buildFloorPbrTextureBundle,
+  clampByte,
+  fastCosTurn,
+  fastSinTurn,
+  hash2Periodic,
+} from './floor-pbr-lut.ts';
+import {
   getOrCreateCachedCanvas,
-  getOrCreateCachedCanvasPair,
   getOrCreateCachedTexture,
 } from './texture-registry.ts';
 
@@ -487,243 +493,144 @@ export function createWovenWoolCarpetTextures(): {
 } {
   return getOrCreateCachedTexture('woven-wool-carpet-boucle-v2', () => {
     const size = 512;
-    const mask = size - 1;
-    // Isotropic 5x5 repeat over 2.0m UV tile => 40cm x 40cm tile with 48x48 organic 3-ply boucle wool loops (~8.3mm/loop)
     const repeatXY = 5;
     const loopsPerTile = 48;
-    const heightField = new Float32Array(size * size);
-    const roughData = new Uint8Array(size * size * 2);
-    const normalData = new Uint8Array(size * size * 4);
+    const rowShiftLut = new Float32Array(loopsPerTile);
+    const cellCount = loopsPerTile * loopsPerTile;
+    const cellJx = new Float32Array(cellCount);
+    const cellJy = new Float32Array(cellCount);
+    const cellCa = new Float32Array(cellCount);
+    const cellSa = new Float32Array(cellCount);
+    const cellScale = new Float32Array(cellCount);
+    const cellTone = new Float32Array(cellCount);
+    const cellSlub = new Float32Array(cellCount);
+    for (let r = 0; r < loopsPerTile; r++) {
+      rowShiftLut[r] =
+        (r & 1) * 0.5 + (hash2Periodic(0, r, loopsPerTile, loopsPerTile, 11) - 0.5) * 0.24;
+      for (let c = 0; c < loopsPerTile; c++) {
+        const ci = r * loopsPerTile + c;
+        cellJx[ci] = 0.5 + (hash2Periodic(c, r, loopsPerTile, loopsPerTile, 23) - 0.5) * 0.32;
+        cellJy[ci] = 0.5 + (hash2Periodic(c, r, loopsPerTile, loopsPerTile, 37) - 0.5) * 0.3;
+        const ang = (hash2Periodic(c, r, loopsPerTile, loopsPerTile, 53) - 0.5) * 0.5;
+        cellCa[ci] = fastCosTurn(ang);
+        cellSa[ci] = fastSinTurn(ang);
+        cellScale[ci] = 0.84 + 0.16 * hash2Periodic(c, r, loopsPerTile, loopsPerTile, 71);
+        cellTone[ci] = hash2Periodic(c, r, loopsPerTile, loopsPerTile, 89);
+        cellSlub[ci] = hash2Periodic(c, r, loopsPerTile, loopsPerTile, 107);
+      }
+    }
 
-    // Deterministic integer hash in [0, 1) with periodic wrapping over [0, period)
-    const hash2 = (ix: number, iy: number, period: number, salt: number): number => {
-      const wx = ((ix % period) + period) % period;
-      const wy = ((iy % period) + period) % period;
-      let h = (wx * 374761393 + wy * 668265263 + salt * 1442695041) | 0;
-      h = Math.imul(h ^ (h >>> 13), 1274126177);
-      return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
-    };
-
-    const TAU = Math.PI * 2;
-    const [colorCanvas, bumpCanvas] = getOrCreateCachedCanvasPair(
-      'woven-wool-carpet-boucle-v2',
-      size,
-      size,
-      (cCtx, bCtx) => {
-        const cImg = cCtx.createImageData(size, size);
-        const bImg = bCtx.createImageData(size, size);
-        const cBuf = cImg.data;
-        const bBuf = bImg.data;
-
+    const bundle = buildFloorPbrTextureBundle({
+      key: 'woven-wool-carpet-boucle-v2',
+      width: size,
+      height: size,
+      normalStrength: 2.1,
+      repeat: [repeatXY, repeatXY],
+      anisotropy: 8,
+      populate: (albedo, heightField, roughField) => {
         for (let py = 0; py < size; py++) {
           const v = py / size;
-          // Multi-scale periodic macro-heathering across the 40cm tile (zero directional striping, zero mip washout)
-          const macroY1 = Math.sin(TAU * v + 0.4);
-          const macroY2 = Math.cos(TAU * 2 * v - 1.1);
-          const macroY3 = Math.sin(TAU * 5 * v + 2.2);
+          const macroY1 = fastSinTurn(v + 0.0637);
+          const macroY2 = fastCosTurn(2 * v - 0.1751);
+          const macroY3 = fastSinTurn(5 * v + 0.3501);
 
           for (let px = 0; px < size; px++) {
             const u = px / size;
             const macro =
-              0.38 * Math.sin(TAU * u + 0.7) * macroY1 +
-              0.34 * Math.cos(TAU * 2 * u + 1.3) * macroY2 +
-              0.28 * Math.sin(TAU * 3 * (u + v) - 0.5) +
-              0.22 * Math.cos(TAU * 5 * u - 0.8) * macroY3;
+              0.38 * fastSinTurn(u + 0.1114) * macroY1 +
+              0.34 * fastCosTurn(2 * u + 0.2069) * macroY2 +
+              0.28 * fastSinTurn(3 * (u + v) - 0.0796) +
+              0.22 * fastCosTurn(5 * u - 0.1273) * macroY3;
 
-            // Continuous loop-grid coordinates with organic staggered half-row bouclé offset + subtle weave wave
             const gxRaw =
               u * loopsPerTile +
-              0.08 * Math.sin(TAU * 3 * v + 0.6) +
-              0.05 * Math.cos(TAU * 7 * v - 0.3);
+              0.08 * fastSinTurn(3 * v + 0.0955) +
+              0.05 * fastCosTurn(7 * v - 0.0477);
             const gyRaw =
               v * loopsPerTile +
-              0.08 * Math.cos(TAU * 3 * u - 0.4) +
-              0.05 * Math.sin(TAU * 7 * u + 0.9);
+              0.08 * fastCosTurn(3 * u - 0.0637) +
+              0.05 * fastSinTurn(7 * u + 0.1432);
 
             const rowIdx = Math.floor(gyRaw);
-            // Stagger alternate rows by ~0.5 loop + per-row organic phase jitter so no straight grid moiré forms!
-            const rowShift = (rowIdx & 1) * 0.5 + (hash2(0, rowIdx, loopsPerTile, 11) - 0.5) * 0.24;
-            const gx = gxRaw + rowShift;
-            const colIdx = Math.floor(gx);
-
-            // Evaluate closest loop center among 3x3 neighborhood so jittered plump bouclé tufts overlap naturally
-            let bestH = 0.08;
+            let bestH = 0.06;
             let bestYarnTone = 0.5;
             let bestTwist = 0.0;
             let bestSlub = 0.0;
 
             for (let dy = -1; dy <= 1; dy++) {
               const r = rowIdx + dy;
-              const rShift = (r & 1) * 0.5 + (hash2(0, r, loopsPerTile, 11) - 0.5) * 0.24;
-              const localGx = gxRaw + rShift;
+              let wr = r % loopsPerTile;
+              if (wr < 0) wr += loopsPerTile;
+              const localGx = gxRaw + rowShiftLut[wr]!;
               const baseC = Math.floor(localGx);
+              const rowBase = wr * loopsPerTile;
               for (let dx = -1; dx <= 1; dx++) {
                 const c = baseC + dx;
-                const jx = (hash2(c, r, loopsPerTile, 23) - 0.5) * 0.32;
-                const jy = (hash2(c, r, loopsPerTile, 37) - 0.5) * 0.30;
-                const cx = c + 0.5 + jx;
-                const cy = r + 0.5 + jy;
-                const ddx = localGx - cx;
-                const ddy = gyRaw - cy;
-
-                // Slight per-tuft orientation rotation (isotropic overall!) for natural 3-ply twisted bouclé wool
-                const angle = (hash2(c, r, loopsPerTile, 53) - 0.5) * Math.PI;
-                const ca = Math.cos(angle);
-                const sa = Math.sin(angle);
-                const rx = (ddx * ca + ddy * sa) / 0.54;
-                const ry = (-ddx * sa + ddy * ca) / 0.44;
+                let wc = c % loopsPerTile;
+                if (wc < 0) wc += loopsPerTile;
+                const ci = rowBase + wc;
+                const ddx = localGx - (c + cellJx[ci]!);
+                const ddy = gyRaw - (r + cellJy[ci]!);
+                const ca = cellCa[ci]!;
+                const sa = cellSa[ci]!;
+                const rx = (ddx * ca + ddy * sa) * 1.85185;
+                const ry = (-ddx * sa + ddy * ca) * 2.27273;
                 const r2 = rx * rx + ry * ry;
                 if (r2 < 1.35) {
                   const crown = Math.max(0, 1 - r2 * 0.76);
-                  const dome = Math.pow(crown, 0.62);
-                  // 3-ply spun yarn twist diagonal ridges across each plump wool loop
-                  const plyPhase = (rx * 2.1 + ry * 1.45) * Math.PI;
-                  const plyRidge = 0.5 + 0.5 * Math.cos(plyPhase);
-                  const tuftScale = 0.86 + 0.14 * hash2(c, r, loopsPerTile, 71);
-                  const h = dome * tuftScale * (0.86 + 0.14 * plyRidge);
+                  const dome = Math.sqrt(crown) * (0.85 + 0.15 * crown);
+                  const plyRidge = 0.5 + 0.5 * fastCosTurn((rx * 2.1 + ry * 1.45) * 0.5);
+                  const h = dome * cellScale[ci]! * (0.84 + 0.16 * plyRidge);
                   if (h > bestH) {
                     bestH = h;
-                    bestYarnTone = hash2(c, r, loopsPerTile, 89);
+                    bestYarnTone = cellTone[ci]!;
                     bestTwist = plyRidge;
-                    bestSlub = hash2(c, r, loopsPerTile, 107);
+                    bestSlub = cellSlub[ci]!;
                   }
                 }
               }
             }
-            void colIdx;
 
-            // Fine spun-wool fibre fuzz noise (periodic over 512)
             const fuzz =
-              (hash2(px, py, size, 131) - 0.5) * 0.055 +
-              (hash2(px >> 1, py >> 1, size >> 1, 149) - 0.5) * 0.045;
-            const hClamped = Math.max(0, Math.min(1, bestH + fuzz * 0.45));
+              (hash2Periodic(px, py, size, size, 131) - 0.5) * 0.06 +
+              (hash2Periodic(px >> 1, py >> 1, size >> 1, size >> 1, 149) - 0.5) * 0.05;
+            const hClamped = THREE.MathUtils.clamp(bestH + fuzz * 0.48, 0, 1);
             const idx = py * size + px;
             heightField[idx] = hClamped;
 
-            // Natural unbleached British oatmeal / warm cream / soft biscuit wool palette:
-            // Recessed backing shadow -> warm toasted oat, loop crown -> creamy ecru with rare organic fleece slubs
-            const ao = 0.79 + 0.21 * Math.pow(hClamped, 0.72);
+            const ao = 0.76 + 0.24 * Math.sqrt(hClamped);
             const heatherShift =
-              (bestYarnTone - 0.5) * 15.0 +
-              macro * 6.5 +
-              (bestTwist - 0.5) * 6.0 +
-              fuzz * 22.0 -
-              (bestSlub > 0.955 ? 20.0 : 0.0);
+              (bestYarnTone - 0.5) * 16.5 +
+              macro * 7.0 +
+              (bestTwist - 0.5) * 7.0 +
+              fuzz * 24.0 -
+              (bestSlub > 0.95 ? 22.0 : 0.0);
 
             const baseR = 236.0 * ao + heatherShift;
             const baseG = 227.0 * ao + heatherShift * 0.94;
             const baseB = 211.0 * ao + heatherShift * 0.84;
 
             const p4 = idx * 4;
-            cBuf[p4] = Math.max(0, Math.min(255, Math.round(baseR)));
-            cBuf[p4 + 1] = Math.max(0, Math.min(255, Math.round(baseG)));
-            cBuf[p4 + 2] = Math.max(0, Math.min(255, Math.round(baseB)));
-            cBuf[p4 + 3] = 255;
+            albedo[p4] = clampByte(baseR);
+            albedo[p4 + 1] = clampByte(baseG);
+            albedo[p4 + 2] = clampByte(baseB);
+            albedo[p4 + 3] = 255;
 
-            const hByte = Math.max(0, Math.min(255, Math.round(hClamped * 255)));
-            bBuf[p4] = hByte;
-            bBuf[p4 + 1] = hByte;
-            bBuf[p4 + 2] = hByte;
-            bBuf[p4 + 3] = 255;
-
-            // Roughness in G channel (RGFormat): recessed wool crevices = 0.98, raised spun-wool crowns = 0.86..0.93
-            const rough = Math.max(
-              0.82,
-              Math.min(0.99, 0.98 - hClamped * 0.11 + (0.5 - bestTwist) * 0.03 + fuzz * 0.05)
+            roughField[idx] = THREE.MathUtils.clamp(
+              0.96 - hClamped * 0.1 + (0.5 - bestTwist) * 0.03 + fuzz * 0.05,
+              0.84,
+              0.98
             );
-            const rByte = Math.round(rough * 255);
-            roughData[idx * 2] = rByte;
-            roughData[idx * 2 + 1] = rByte;
           }
         }
+      },
+    });
 
-        cCtx.putImageData(cImg, 0, 0);
-        bCtx.putImageData(bImg, 0, 0);
-      }
-    );
-
-    // Derive seamless periodic tangent-space normal map from heightField
-    const normalStrength = 1.65;
-    for (let y = 0; y < size; y++) {
-      const ym = ((y - 1) & mask) * size;
-      const y0 = y * size;
-      const yp = ((y + 1) & mask) * size;
-      for (let x = 0; x < size; x++) {
-        const xm = (x - 1) & mask;
-        const xp = (x + 1) & mask;
-        const dX =
-          heightField[ym + xp]! +
-          2 * heightField[y0 + xp]! +
-          heightField[yp + xp]! -
-          (heightField[ym + xm]! + 2 * heightField[y0 + xm]! + heightField[yp + xm]!);
-        const dY =
-          heightField[yp + xm]! +
-          2 * heightField[yp + x]! +
-          heightField[yp + xp]! -
-          (heightField[ym + xm]! + 2 * heightField[ym + x]! + heightField[ym + xp]!);
-        const nx = -dX * normalStrength;
-        const ny = -dY * normalStrength;
-        const nz = 1.0;
-        const invLen = 1.0 / Math.hypot(nx, ny, nz);
-        const p4 = (y0 + x) * 4;
-        normalData[p4] = Math.max(0, Math.min(255, Math.round((nx * invLen * 0.5 + 0.5) * 255)));
-        normalData[p4 + 1] = Math.max(0, Math.min(255, Math.round((ny * invLen * 0.5 + 0.5) * 255)));
-        normalData[p4 + 2] = Math.max(0, Math.min(255, Math.round((nz * invLen * 0.5 + 0.5) * 255)));
-        normalData[p4 + 3] = 255;
-      }
-    }
-
-    const colorMap = new THREE.CanvasTexture(colorCanvas);
-    colorMap.wrapS = THREE.RepeatWrapping;
-    colorMap.wrapT = THREE.RepeatWrapping;
-    colorMap.repeat.set(repeatXY, repeatXY);
-    colorMap.anisotropy = 8;
-    colorMap.colorSpace = THREE.SRGBColorSpace;
-
-    const bumpMap = new THREE.CanvasTexture(bumpCanvas);
-    bumpMap.wrapS = THREE.RepeatWrapping;
-    bumpMap.wrapT = THREE.RepeatWrapping;
-    bumpMap.repeat.set(repeatXY, repeatXY);
-    bumpMap.anisotropy = 8;
-    bumpMap.colorSpace = THREE.NoColorSpace;
-
-    const normalMap = new THREE.DataTexture(
-      normalData,
-      size,
-      size,
-      THREE.RGBAFormat,
-      THREE.UnsignedByteType
-    );
-    normalMap.wrapS = THREE.RepeatWrapping;
-    normalMap.wrapT = THREE.RepeatWrapping;
-    normalMap.repeat.set(repeatXY, repeatXY);
-    normalMap.colorSpace = THREE.NoColorSpace;
-    normalMap.anisotropy = 8;
-    normalMap.flipY = true;
-    normalMap.magFilter = THREE.LinearFilter;
-    normalMap.minFilter = THREE.LinearMipmapLinearFilter;
-    normalMap.generateMipmaps = true;
-    normalMap.needsUpdate = true;
-
-    const roughnessMap = new THREE.DataTexture(
-      roughData,
-      size,
-      size,
-      THREE.RGFormat,
-      THREE.UnsignedByteType
-    );
-    roughnessMap.wrapS = THREE.RepeatWrapping;
-    roughnessMap.wrapT = THREE.RepeatWrapping;
-    roughnessMap.repeat.set(repeatXY, repeatXY);
-    roughnessMap.colorSpace = THREE.NoColorSpace;
-    roughnessMap.anisotropy = 8;
-    roughnessMap.flipY = true;
-    roughnessMap.unpackAlignment = 1;
-    roughnessMap.magFilter = THREE.LinearFilter;
-    roughnessMap.minFilter = THREE.LinearMipmapLinearFilter;
-    roughnessMap.generateMipmaps = true;
-    roughnessMap.needsUpdate = true;
-
-    return { colorMap, bumpMap, normalMap, roughnessMap };
+    return {
+      colorMap: bundle.colorMap,
+      bumpMap: bundle.bumpMap,
+      normalMap: bundle.normalMap as unknown as THREE.DataTexture,
+      roughnessMap: bundle.roughnessMap as THREE.DataTexture,
+    };
   });
 }

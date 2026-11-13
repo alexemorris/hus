@@ -3,10 +3,14 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createCobblestoneTextures } from './cobblestone-materials.ts';
 import { derivePbrNormalAndRoughnessMaps } from './pbr-surface-maps.ts';
 import {
+  createEngineeredOakFloorTextures,
   createHerringboneTerracottaQuarryTileTextures,
   createImperialBrickTextures,
+  createTumbledLimestoneFlagstoneTextures,
   createWelshSlateRoofTextures,
+  createWovenWoolCarpetTextures,
 } from './procedural-textures.ts';
+import { createVitoriaRossoChequerboardTextures } from './vitoria-chequerboard-tiles.ts';
 import {
   clearTextureRegistryCache,
   compactScalarRgbaDataTexture,
@@ -248,4 +252,66 @@ describe('derivePbrNormalAndRoughnessMaps', () => {
       (globalThis as { document?: unknown }).document = prevDoc;
     }
   });
+
+  it('synthesizes 1024x1024 DataTexture PBR floor bundles with spatially varying roughness and tangent normals', () => {
+    const prevDoc = (globalThis as { document?: unknown }).document;
+    (globalThis as { document?: unknown }).document = {
+      createElement() {
+        return createPixelCanvasStub(16, 16);
+      },
+    };
+    try {
+      const oak = createEngineeredOakFloorTextures();
+      expect(oak.colorMap.image.width).toBe(1024);
+      expect(oak.normalMap.image.width).toBe(1024);
+      expect((oak.roughnessMap as THREE.DataTexture).image.width).toBe(1024);
+      const oakRough = (oak.roughnessMap as THREE.DataTexture).image.data as Uint8Array;
+      let minOakR = 255;
+      let maxOakR = 0;
+      for (let i = 1; i < oakRough.length; i += 2) {
+        if (oakRough[i]! < minOakR) minOakR = oakRough[i]!;
+        if (oakRough[i]! > maxOakR) maxOakR = oakRough[i]!;
+      }
+      expect(minOakR).toBeLessThan(115);
+      expect(maxOakR).toBeGreaterThan(215);
+
+      const limestone = createTumbledLimestoneFlagstoneTextures();
+      expect(limestone.colorMap.image.width).toBe(1024);
+      expect(limestone.normalMap.image.width).toBe(1024);
+      const limeRough = (limestone.roughnessMap as THREE.DataTexture).image.data as Uint8Array;
+      let minLimeR = 255;
+      let maxLimeR = 0;
+      for (let i = 1; i < limeRough.length; i += 2) {
+        if (limeRough[i]! < minLimeR) minLimeR = limeRough[i]!;
+        if (limeRough[i]! > maxLimeR) maxLimeR = limeRough[i]!;
+      }
+      expect(minLimeR).toBeLessThan(120);
+      expect(maxLimeR).toBeGreaterThan(225);
+
+      const quarry = createHerringboneTerracottaQuarryTileTextures();
+      expect(quarry.colorMap.image.width).toBe(1024);
+      expect(quarry.normalMap.image.width).toBe(1024);
+
+      const wool = createWovenWoolCarpetTextures();
+      expect(wool.normalMap.image.width).toBe(512);
+      expect(wool.roughnessMap.image.width).toBe(512);
+    } finally {
+      (globalThis as { document?: unknown }).document = prevDoc;
+    }
+
+    const prevDocRec = (globalThis as { document?: unknown }).document;
+    (globalThis as { document?: unknown }).document = {
+      createElement() {
+        return createLightweightRecordingCanvasStub();
+      },
+    };
+    try {
+      clearTextureRegistryCache();
+      const vitoria = createVitoriaRossoChequerboardTextures();
+      expect(vitoria.normalMap.colorSpace).toBe(THREE.NoColorSpace);
+      expect(vitoria.roughnessMap.colorSpace).toBe(THREE.NoColorSpace);
+    } finally {
+      (globalThis as { document?: unknown }).document = prevDocRec;
+    }
+  }, 15_000);
 });

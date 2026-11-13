@@ -661,4 +661,88 @@ describe('SceneBatchOptimizer', () => {
     expect(doorBatchesAfter.length).toBe(1);
     expect(doorBatchesAfter[0]!.matrixAutoUpdate).toBe(true);
   });
+
+  it('preserves MeshPhysicalMaterial clearcoat (<0.12), sheen, ior, roughness, and normalScale on PBR floor slabs without VC downgrade', () => {
+    const { scene, optimizer } = makeOptimizerHarness();
+    const roomGroup = new THREE.Group();
+    roomGroup.name = 'kitchen';
+    scene.add(roomGroup);
+
+    const dummyTex = new THREE.DataTexture(new Uint8Array(16), 2, 2, THREE.RGBAFormat);
+    dummyTex.wrapS = THREE.RepeatWrapping;
+    dummyTex.wrapT = THREE.RepeatWrapping;
+    const dummyNorm = new THREE.DataTexture(new Uint8Array(16), 2, 2, THREE.RGBAFormat);
+    dummyNorm.wrapS = THREE.RepeatWrapping;
+    dummyNorm.wrapT = THREE.RepeatWrapping;
+    const dummyRough = new THREE.DataTexture(new Uint8Array(8), 2, 2, THREE.RGFormat);
+    dummyRough.wrapS = THREE.RepeatWrapping;
+    dummyRough.wrapT = THREE.RepeatWrapping;
+
+    const limestoneFloorMat = new THREE.MeshPhysicalMaterial({
+      color: 0xf4efe4,
+      map: dummyTex,
+      normalMap: dummyNorm,
+      normalScale: new THREE.Vector2(0.58, 0.58),
+      roughnessMap: dummyRough,
+      roughness: 1.0,
+      clearcoat: 0.11,
+      clearcoatRoughness: 0.5,
+      ior: 1.52,
+    });
+
+    const woolCarpetMat = new THREE.MeshPhysicalMaterial({
+      color: 0xf7f2e8,
+      map: dummyTex,
+      normalMap: dummyNorm,
+      normalScale: new THREE.Vector2(0.56, 0.56),
+      roughnessMap: dummyRough,
+      roughness: 0.9,
+      sheen: 0.35,
+      sheenRoughness: 0.75,
+      sheenColor: new THREE.Color(0xfaf5eb),
+    });
+
+    const slabA = new THREE.Mesh(new THREE.BoxGeometry(4, 0.1, 4), limestoneFloorMat);
+    slabA.name = 'kitchen.floor.slabA';
+    const slabB = new THREE.Mesh(new THREE.BoxGeometry(2, 0.1, 2), limestoneFloorMat);
+    slabB.name = 'kitchen.floor.slabB';
+    slabB.position.set(4, 0, 0);
+
+    const rug = new THREE.Mesh(new THREE.BoxGeometry(2, 0.02, 3), woolCarpetMat);
+    rug.name = 'kitchen.floor.rug';
+    rug.position.set(0, 0.06, 0);
+
+    roomGroup.add(slabA, slabB, rug);
+    scene.updateMatrixWorld(true);
+    optimizer.optimize();
+
+    const activeMats: THREE.Material[] = [];
+    scene.traverse((obj) => {
+      if (obj instanceof THREE.Mesh && obj.visible) {
+        const m = Array.isArray(obj.material) ? obj.material : [obj.material];
+        activeMats.push(...m);
+      }
+    });
+
+    const physLimestone = activeMats.find(
+      (m): m is THREE.MeshPhysicalMaterial =>
+        m instanceof THREE.MeshPhysicalMaterial && Math.abs(m.clearcoat - 0.11) < 1e-3
+    );
+    expect(physLimestone).toBeDefined();
+    expect(physLimestone!.type).toBe('MeshPhysicalMaterial');
+    expect(physLimestone!.vertexColors).toBe(false);
+    expect(physLimestone!.clearcoatRoughness).toBeCloseTo(0.5, 3);
+    expect(physLimestone!.roughness).toBeCloseTo(1.0, 3);
+    expect(physLimestone!.normalScale.x).toBeCloseTo(0.58, 3);
+    expect(physLimestone!.ior).toBeCloseTo(1.52, 3);
+
+    const physCarpet = activeMats.find(
+      (m): m is THREE.MeshPhysicalMaterial =>
+        m instanceof THREE.MeshPhysicalMaterial && Math.abs(m.sheen - 0.35) < 1e-3
+    );
+    expect(physCarpet).toBeDefined();
+    expect(physCarpet!.sheenRoughness).toBeCloseTo(0.75, 3);
+    expect(physCarpet!.roughness).toBeCloseTo(0.9, 3);
+    expect(physCarpet!.normalScale.x).toBeCloseTo(0.56, 3);
+  });
 });
