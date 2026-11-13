@@ -8,7 +8,7 @@ export interface ShadowFitBox {
 }
 
 /**
- * Navigable site (`SITE_PIVOT_BOUNDS` x −40..30, z −20..35) from lower Main Street / valley grade
+ * Navigable site (`SITE_PIVOT_BOUNDS` x −40..30, z −20..35) from lower road / valley grade
  * (`min[1] = -3.0` so lower road/valley receivers never clip shadows) up to roof ridges / tree tops.
  */
 export const SITE_SHADOW_BOX: ShadowFitBox = { min: [-44, -3.0, -20], max: [34, 18.5, 32] };
@@ -208,16 +208,12 @@ export function stateFromPreset(cfg: EnvPresetConfig): EnvLightingState {
   };
 }
 
-function lerp(a: number, b: number, t: number): number {
-  return a + (b - a) * t;
-}
-
 /**
  * Writes `from → to` at `t` (0..1) into `out`. Intensities and exposure interpolate geometrically
  * (perceptually even fades between e.g. 3.2 and 0.22), the sun direction along the great circle.
  */
 function geoLerp(a: number, b: number, k: number): number {
-  return a > 0 && b > 0 ? Math.exp(lerp(Math.log(a), Math.log(b), k)) : lerp(a, b, k);
+  return a > 0 && b > 0 ? Math.exp(THREE.MathUtils.lerp(Math.log(a), Math.log(b), k)) : THREE.MathUtils.lerp(a, b, k);
 }
 
 export function lerpEnvState(
@@ -233,18 +229,18 @@ export function lerpEnvState(
   out.sunDirection.copy(dir.applyQuaternion(qk)).normalize();
   out.sunColor.copy(from.sunColor).lerp(to.sunColor, k);
   out.sunIntensity = geoLerp(from.sunIntensity, to.sunIntensity, k);
-  out.sunShadowIntensity = lerp(from.sunShadowIntensity, to.sunShadowIntensity, k);
-  out.sunShadowRadius = lerp(from.sunShadowRadius, to.sunShadowRadius, k);
+  out.sunShadowIntensity = THREE.MathUtils.lerp(from.sunShadowIntensity, to.sunShadowIntensity, k);
+  out.sunShadowRadius = THREE.MathUtils.lerp(from.sunShadowRadius, to.sunShadowRadius, k);
   out.hemiSkyColor.copy(from.hemiSkyColor).lerp(to.hemiSkyColor, k);
   out.hemiGroundColor.copy(from.hemiGroundColor).lerp(to.hemiGroundColor, k);
   out.hemiIntensity = geoLerp(from.hemiIntensity, to.hemiIntensity, k);
   out.envIntensity = geoLerp(from.envIntensity, to.envIntensity, k);
   out.bgIntensity = geoLerp(from.bgIntensity, to.bgIntensity, k);
-  out.bgBlurriness = lerp(from.bgBlurriness, to.bgBlurriness, k);
+  out.bgBlurriness = THREE.MathUtils.lerp(from.bgBlurriness, to.bgBlurriness, k);
   out.exposure = geoLerp(from.exposure, to.exposure, k);
   out.fogColor.copy(from.fogColor).lerp(to.fogColor, k);
   out.fogDensity = geoLerp(from.fogDensity, to.fogDensity, k);
-  out.daylightGiStrength = lerp(from.daylightGiStrength, to.daylightGiStrength, k);
+  out.daylightGiStrength = THREE.MathUtils.lerp(from.daylightGiStrength, to.daylightGiStrength, k);
   out.daylightGiTint.copy(from.daylightGiTint).lerp(to.daylightGiTint, k);
   return out;
 }

@@ -235,7 +235,7 @@ export function createTVArtGalleryTextures(): readonly THREE.CanvasTexture[] {
 export function createHawaiiArtworkTexture(): THREE.CanvasTexture {
   return getOrCreateCachedTexture('hawaii-artwork', () => {
     const canvas = getOrCreateCachedCanvas('hawaii-artwork', 512, 360, (ctx) => {
-      // 1. Warm golden-hour Hawaiian sunset sky (soft pacific azure -> apricot -> warm coral-gold at horizon)
+      // Warm golden-hour Hawaiian sunset sky (soft pacific azure -> apricot -> warm coral-gold at horizon)
       const skyGrad = ctx.createLinearGradient(0, 0, 0, 195);
       skyGrad.addColorStop(0.0, '#3e6b89');
       skyGrad.addColorStop(0.32, '#7596a8');
@@ -269,7 +269,7 @@ export function createHawaiiArtworkTexture(): THREE.CanvasTexture {
         ctx.fill();
       }
 
-      // 2. Distant misty volcanic headland (Hawaiian island silhouette on horizon)
+      // Distant misty volcanic headland (Hawaiian island silhouette on horizon)
       ctx.fillStyle = '#6d7c86';
       ctx.beginPath();
       ctx.moveTo(210, 192);
@@ -278,7 +278,7 @@ export function createHawaiiArtworkTexture(): THREE.CanvasTexture {
       ctx.closePath();
       ctx.fill();
 
-      // 3. Iconic Na Pali / Ko'olau fluted emerald volcanic mountain ridges on the left & midground
+      // Na Pali / Ko'olau fluted emerald volcanic mountain ridges on the left & midground
       const backRidgeGrad = ctx.createLinearGradient(0, 82, 260, 195);
       backRidgeGrad.addColorStop(0.0, '#2c4d3e');
       backRidgeGrad.addColorStop(0.55, '#3b6448');
@@ -325,7 +325,7 @@ export function createHawaiiArtworkTexture(): THREE.CanvasTexture {
         ctx.fill();
       }
 
-      // 4. Pacific Ocean Bay (deep cobalt horizon -> glowing turquoise lagoon -> shallow aquamarine)
+      // Pacific Ocean bay (deep cobalt horizon -> glowing turquoise lagoon -> shallow aquamarine)
       const oceanGrad = ctx.createLinearGradient(0, 190, 0, 325);
       oceanGrad.addColorStop(0.0, '#1d5b78');
       oceanGrad.addColorStop(0.35, '#1e7c8c');
@@ -343,7 +343,7 @@ export function createHawaiiArtworkTexture(): THREE.CanvasTexture {
         ctx.fillRect(sx, wy, spread, 2.2);
       }
 
-      // 5. Curving Golden Hawaiian Sand Beach (right & foreground bay curve)
+      // Curving golden Hawaiian sand beach (right & foreground bay curve)
       const sandGrad = ctx.createLinearGradient(120, 245, 420, 360);
       sandGrad.addColorStop(0.0, '#e6c994');
       sandGrad.addColorStop(0.5, '#d9b376');
@@ -394,7 +394,7 @@ export function createHawaiiArtworkTexture(): THREE.CanvasTexture {
       ctx.quadraticCurveTo(155, 250, 225, 222);
       ctx.stroke();
 
-      // 6. Lush foreground headland & graceful Hawaiian coconut palms on the right bluff
+      // Foreground headland & Hawaiian coconut palms on the right bluff
       ctx.fillStyle = '#263f2e';
       ctx.beginPath();
       ctx.moveTo(355, 360);
@@ -463,7 +463,7 @@ export function createHawaiiArtworkTexture(): THREE.CanvasTexture {
       drawPalmTree(476, 342, 446, 148, 456, 245, 0.88);
       drawPalmTree(418, 348, 368, 174, 388, 258, 0.74);
 
-      // 7. Subtle fine-art canvas weave & warm gallery varnish grain
+      // Fine-art canvas weave & warm gallery varnish grain
       ctx.fillStyle = 'rgba(255, 248, 232, 0.035)';
       for (let y = 0; y < 360; y += 3) {
         ctx.fillRect(0, y, 512, 1);

@@ -449,7 +449,7 @@ export function classifyName(
   userData: Readonly<Record<string, unknown>>,
   ancestorUserData: readonly Readonly<Record<string, unknown>>[] = []
 ): TradeCategory {
-  // 1. Explicit / semantic userData flags (nearest first).
+  // Explicit / semantic userData flags (nearest first).
   const explicit = userData[TRADE_CATEGORY_USERDATA_KEY];
   if (isTradeCategory(explicit)) return explicit;
   let fromUserData = classifyUserData(userData);
@@ -477,7 +477,7 @@ function classifyFromNames(
   ancestorUserData: readonly Readonly<Record<string, unknown>>[]
 ): TradeCategory {
 
-  // 2. Build leaf-first segment token lists from the name chain.
+  // Build leaf-first segment token lists from the name chain.
   const segmentTokens: string[][] = [];
   const pushName = (n: string): void => {
     const segs = splitNameSegments(n);
@@ -489,7 +489,7 @@ function classifyFromNames(
   pushName(name);
   for (const p of parentNames) pushName(p);
 
-  // 3. Dominant assembly tokens anywhere in the chain.
+  // Dominant assembly tokens anywhere in the chain.
   for (const tokens of segmentTokens) {
     for (let i = 0; i < tokens.length; i++) {
       const t = tokens[i]!;
@@ -498,13 +498,13 @@ function classifyFromNames(
     }
   }
 
-  // 4. Leaf-most strong segment match, else leaf-most weak match.
+  // Leaf-most strong segment match, else leaf-most weak match.
   const matches: (SegmentMatch | undefined)[] = segmentTokens.map((tokens) => matchSegment(tokens));
   let chosenIdx = matches.findIndex((m) => m !== undefined && m.strength === 2);
   if (chosenIdx < 0) chosenIdx = matches.findIndex((m) => m !== undefined);
   let category: TradeCategory = chosenIdx >= 0 ? matches[chosenIdx]!.category : 'other';
 
-  // 5. Family refinements based on strong ancestor context.
+  // Family refinements based on strong ancestor context.
   const ancestorStrong = (cat: TradeCategory): boolean => {
     for (let i = chosenIdx + 1; i < matches.length; i++) {
       const m = matches[i];
@@ -521,7 +521,7 @@ function classifyFromNames(
     }
   }
 
-  // 6. Hard-landscaping context.
+  // Hard-landscaping context.
   const chosenWeak = chosenIdx >= 0 && matches[chosenIdx]!.strength === 1;
   if (
     category === 'structure' ||
@@ -539,7 +539,7 @@ function classifyFromNames(
     if (inExternal) return 'external';
   }
 
-  // 7. Fallbacks from structural flags / LOD hints.
+  // Fallbacks from structural flags / LOD hints.
   if (category === 'other') {
     if (hasArchitecturalFlag(userData) || ancestorUserData.some((au) => hasArchitecturalFlag(au))) {
       return 'structure';

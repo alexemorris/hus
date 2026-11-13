@@ -49,8 +49,8 @@ export type HouseIdentitySource = {
 
 const DEFAULT_HOUSE_NAMES: Readonly<Record<string, string>> = {
   'simple-house': 'Georgian Country House',
-  'stahl-house': 'Stahl House — Case Study #22',
-  'simple-flat': 'pied-à-terre Apartment',
+  'stahl-house': 'Stahl House (Case Study #22)',
+  'simple-flat': 'Pied-à-terre Apartment',
 };
 
 const SIMPLE_HOUSE_ZONE_IDS: ReadonlySet<string> = new Set([
@@ -117,7 +117,7 @@ function inferHouseIdFromPropertyName(name: string): string | null {
   const lower = name.trim().toLowerCase();
   if (!lower || lower === 'digital twin') return null;
   if (lower.includes('stahl') || lower.includes('case study')) return 'stahl-house';
-  if (lower.includes('vesterbro') || lower.includes('pied') || lower.includes('simple flat')) {
+  if (lower.includes('pied') || lower.includes('simple flat')) {
     return 'simple-flat';
   }
   if (lower.includes('georgian') || lower.includes('simple house')) return 'simple-house';
@@ -878,9 +878,7 @@ export function createScopedTwinApi(
   };
 }
 
-// ---------------------------------------------------------------------------
 // Per-house scoped sidecar metadata (trade assignment + resolved status)
-// ---------------------------------------------------------------------------
 
 
 const LEGACY_NOTE_META_KEY = 'hus.ui.noteMeta.legacy.v1';

@@ -218,7 +218,7 @@ export function buildSimpleHouseGroundWestAndCloakroom(
   ctx.addGlowPool(accentCircuit, -6.70, FFL_GROUND + 0.90, -2.575, 0.85, 0.30);
   ctx.addGlowPool(accentCircuit, -6.70, FFL_GROUND + 0.90, 2.575, 0.85, 0.30);
 
-  // 3.20 × 4.80 m antique Ziegler Oushak rug (tagged ignore for smooth 1PV walkthrough)
+  // 3.20 × 4.80 m antique Ziegler Oushak rug (tagged ignore for smooth first-person walkthrough)
   const drawingRug = buildCuratedMirrorsArtAndRugs({
     kind: 'zieglerOushak',
     name: 'simpleHouse.drawing.zieglerRug',

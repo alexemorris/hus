@@ -114,7 +114,7 @@ export function FinishesSection({ entry }: FinishesSectionProps): JSX.Element | 
         onClick={() => setExpanded((prev) => !prev)}
       >
         <span class="shell-card-title">
-          <Icon name="palette" size={15} /> Finishes &amp; Notes
+          <Icon name="palette" size={15} /> Finishes &amp; notes
         </span>
         <span class="shell-finishes-head-right">
           {paintRows.length > 0 && (
@@ -185,7 +185,7 @@ export function FinishesSection({ entry }: FinishesSectionProps): JSX.Element | 
 
           {designNotes.length > 0 && (
             <div class="shell-finishes-notes-wrap">
-              <div class="shell-finishes-subhead">Specification &amp; Renovation Notes</div>
+              <div class="shell-finishes-subhead">Specification &amp; notes</div>
               <ul class="shell-finishes-notes">
                 {designNotes.map((note, idx) => (
                   <li key={idx}>{note}</li>

@@ -75,7 +75,7 @@ export interface CorstonToggleSwitchHandle {
   setGangDolly(gang: number, direction: 'up' | 'down'): void;
 }
 
-// --- Dimensions (metres) ------------------------------------------------------------------------
+// Dimensions (metres)
 
 const PLATE_HEIGHT = 0.088;
 const PLATE_DEPTH = 0.004;
@@ -93,7 +93,7 @@ export function facingToRotY(facing: WallFacing): number {
   return facing === 'south' ? 0 : facing === 'north' ? Math.PI : facing === 'east' ? Math.PI / 2 : -Math.PI / 2;
 }
 
-// --- Shared resources ---------------------------------------------------------------------------
+// Shared resources
 
 const plateGeoCache = new Map<number, THREE.BoxGeometry>();
 function plateGeo(gangCount: number): THREE.BoxGeometry {
@@ -142,7 +142,7 @@ function makeInteractive(
   interactiveMeshes.push(mesh);
 }
 
-// --- Builder ------------------------------------------------------------------------------------
+// Builder
 
 export function buildCorstonToggleSwitch(
   ctx: KnxFixtureBuildContext,

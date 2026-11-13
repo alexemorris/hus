@@ -75,8 +75,8 @@ function createHarnessContext(circuitIds: readonly string[]): {
   return { ctx, scene };
 }
 
-describe('Stages 4.3, 4.4, 4.5 & 4.10b — husjs Example & Showcase Homes', { timeout: 30_000 }, () => {
-  it('Stage 4.3 simple-flat: single-floor apartment, 2-way hallway switches & living dimmer', () => {
+describe('husjs Example Homes', { timeout: 30_000 }, () => {
+  it('simple-flat: single-floor apartment, 2-way hallway switches & living dimmer', () => {
     expect(simpleFlat.id).toBe('simple-flat');
     expect(simpleFlat.floors).toHaveLength(1);
     expect(simpleFlat.floors[0].id).toBe('level-0');
@@ -101,7 +101,7 @@ describe('Stages 4.3, 4.4, 4.5 & 4.10b — husjs Example & Showcase Homes', { ti
     expect(scene.children.length).toBeGreaterThan(3);
   });
 
-  it('Stage 4.4 simple-house: 2-storey pitched-roof house, 2-way landing, 3-way principal bedroom & terrain', () => {
+  it('simple-house: 2-storey pitched-roof house, 2-way landing, 3-way principal bedroom & terrain', () => {
     expect(simpleHouse.id).toBe('simple-house');
     expect(simpleHouse.floors.map((f) => f.id)).toEqual(['ground', 'first']);
     expect(simpleHouse.initialView).toEqual({ floor: 'all', sectionCut: false });
@@ -130,7 +130,7 @@ describe('Stages 4.3, 4.4, 4.5 & 4.10b — husjs Example & Showcase Homes', { ti
     expect(simpleHouse.terrainSampler?.sampleTerrainY(2.2, 5.2)).toBeCloseTo(-0.18, 2);
   });
 
-  it('Stage 4.5 stahl-house: Case Study House #22 HABS grid, cantilevered promontory DEM, Arcadia sliders & 2-way/3-way electrical', () => {
+  it('stahl-house: Case Study House #22 HABS grid, cantilevered promontory DEM, Arcadia sliders & 2-way/3-way electrical', () => {
     expect(stahlHouse.id).toBe('stahl-house');
     expect(stahlHouse.location.lat).toBeCloseTo(34.100437, 5);
     expect(stahlHouse.location.lon).toBeCloseTo(-118.370152, 5);
@@ -269,7 +269,7 @@ describe('Stages 4.3, 4.4, 4.5 & 4.10b — husjs Example & Showcase Homes', { ti
     expect(masterSliderLeaf!.parent!.visible).toBe(false);
   });
 
-  it('Stage 4.10b simple-house: Georgian double-fronted showcase, floorLayers, sash windows, runner w/ 15 brass stair rods & linked double wrought-iron gate', () => {
+  it('simple-house: Georgian double-fronted architecture, floorLayers, sash windows, runner w/ 15 brass stair rods & linked double wrought-iron gate', () => {
     expect(simpleHouse.initialView).toEqual({ floor: 'all', sectionCut: false });
 
     const profile = simpleHouse.createSceneProfile();

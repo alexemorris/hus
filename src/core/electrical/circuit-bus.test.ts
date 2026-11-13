@@ -40,7 +40,7 @@ describe('CircuitBus / ElectricalSystem — Conventional Mains Wiring', () => {
       wiring: wireOneWay('sw-porch-lantern'),
     });
 
-    // UK/Corston default: 'up' = OFF (0), 'down' = ON (1)
+    // UK toggle default: 'up' = OFF (0), 'down' = ON (1)
     expect(bus.getSwitchPose('sw-porch-lantern')).toBe('up');
     expect(bus.getPlateGangPose('cottage-entry-plate', 1)).toBe('up');
     expect(bus.getCircuitBrightness('porch-lantern')).toBe(0);

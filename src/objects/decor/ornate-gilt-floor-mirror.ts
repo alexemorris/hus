@@ -206,7 +206,7 @@ export function buildOrnateGiltFloorMirror(
     mirrorGroup.add(floorPad);
   }
 
-  // 1. Rear MDF / dark-lacquered metal backing plate (5 mm thick)
+  // Rear MDF / dark-lacquered metal backing plate (5 mm thick)
   const backingShape = buildVenosaShape(halfW - 0.003, 0.003, height - 0.003, outerBottomR - 0.003);
   const backingGeo = new THREE.ExtrudeGeometry(backingShape, {
     depth: 0.005,
@@ -220,7 +220,7 @@ export function buildOrnateGiltFloorMirror(
   backingMesh.receiveShadow = true;
   leanerAssembly.add(backingMesh);
 
-  // 2. Crisp flat silvered mirror glass plate (non-bevelled per Venosa spec)
+  // Crisp flat silvered mirror glass plate (non-bevelled per Venosa spec)
   const glassShape = buildVenosaShape(innerHalfW + 0.002, innerYMin - 0.002, innerYMax + 0.002, innerBottomR);
   const glassGeo = new THREE.ShapeGeometry(glassShape, 36);
   const glassMesh = new THREE.Mesh(glassGeo, mirrorGlassMat);
@@ -229,7 +229,7 @@ export function buildOrnateGiltFloorMirror(
   glassMesh.receiveShadow = true;
   leanerAssembly.add(glassMesh);
 
-  // 3. Slim 20 mm × 20 mm reeded Antique-Gold metal outer frame (matching venosa_4.jpg macro profile)
+  // Slim 20 mm × 20 mm reeded Antique-Gold metal outer frame
   // Profile in (d = outward depth 0..frameDepth, h = inward offset 0..-frameWidth from outer boundary):
   const rimProfile = new THREE.Shape();
   rimProfile.moveTo(0, 0);
@@ -283,7 +283,7 @@ export function buildOrnateGiltFloorMirror(
   innerLipMesh.name = `${name}.innerSightLip`;
   leanerAssembly.add(innerLipMesh);
 
-  // 4. Signature Venetian Inner Mirror-Pane Hairline Seam (inset 95 mm inside the inner sight edge)
+  // Signature Venetian Inner Mirror-Pane Hairline Seam (inset 95 mm inside the inner sight edge)
   const borderInset = 0.095;
   const paneHalfW = innerHalfW - borderInset; // 0.385 m
   const paneYMin = innerYMin + borderInset; // 0.115 m
@@ -310,7 +310,7 @@ export function buildOrnateGiltFloorMirror(
   paneSeamMesh.name = `${name}.venetianInnerSeam`;
   leanerAssembly.add(paneSeamMesh);
 
-  // 9 Radial / Perpendicular Border Division Seams & 9 Miniature Fluted Dark-Bronze Rosettes (matching venosa_1.jpg & venosa_4.jpg)
+  // 9 Radial / Perpendicular Border Division Seams & 9 Miniature Fluted Dark-Bronze Rosettes
   const addDivisionSeam = (
     seamId: string,
     x0: number,
@@ -344,7 +344,7 @@ export function buildOrnateGiltFloorMirror(
     disc.position.z = 0.0016;
     rosetteGrp.add(disc);
 
-    // Subtle fluted petals & central pip (matching venosa_4.jpg macro)
+    // Subtle fluted petals & central pip
     for (let p = 0; p < 8; p++) {
       const ang = (p / 8) * Math.PI * 2;
       const petal = new THREE.Mesh(
@@ -387,11 +387,11 @@ export function buildOrnateGiltFloorMirror(
     addDivisionSeam(`${sideTag}Mid`, sx * paneHalfW, midStileJoinY, sx * innerHalfW, midStileJoinY);
     addFlutedRosetteStud(`${sideTag}Mid`, sx * paneHalfW, midStileJoinY);
 
-    // Lower-stile horizontal division (just above inner bottom corner curve, matching venosa_1.jpg!)
+    // Lower-stile horizontal division (just above inner bottom corner curve)
     addDivisionSeam(`${sideTag}LowerSide`, sx * paneHalfW, lowerStileJoinY, sx * innerHalfW, lowerStileJoinY);
     addFlutedRosetteStud(`${sideTag}LowerSide`, sx * paneHalfW, lowerStileJoinY);
 
-    // Bottom vertical division (just inside inner bottom corner curve, matching venosa_1.jpg!)
+    // Bottom vertical division (just inside inner bottom corner curve)
     addDivisionSeam(`${sideTag}Bottom`, sx * bottomRailJoinX, paneYMin, sx * bottomRailJoinX, innerYMin);
     addFlutedRosetteStud(`${sideTag}Bottom`, sx * bottomRailJoinX, paneYMin);
   }

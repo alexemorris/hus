@@ -189,7 +189,7 @@ export function createEngineeredOakFloorTextures(): {
         [190, 163, 132], // Pale sandy heartwood oak (#bea384)
         [170, 143, 112], // Medium weathered taupe oak (#aa8f70)
         [194, 168, 137], // Light sunlit natural European oak (#c2a889)
-        [180, 153, 122], // Balanced matte-oiled farmhouse oak (#b4997a)
+        [180, 153, 122], // Balanced matte-oiled European oak (#b4997a)
         [173, 146, 115], // Muted warm umber-taupe oak (#ad9273)
         [187, 160, 129], // Soft biscuit-oak plank (#bba081)
       ];
@@ -231,7 +231,7 @@ export function createEngineeredOakFloorTextures(): {
           const [baseR, baseG, baseB] =
             oakPlankPalette[Math.abs(seed) % oakPlankPalette.length] ?? [168, 129, 90];
 
-          // 1. Base plank fill + handcrafted undulated surface shading across plank width & length
+          // Base plank fill + undulated surface shading across plank width & length
           cCtx.fillStyle = `rgb(${baseR}, ${baseG}, ${baseB})`;
           cCtx.fillRect(xStart, y0, segW, rowH);
 
@@ -258,7 +258,7 @@ export function createEngineeredOakFloorTextures(): {
           cCtx.fillStyle = plankGrad;
           cCtx.fillRect(xStart, y0, segW, rowH);
 
-          // 2. Sparse, natural knots: only ~4 subtle knots across the entire 18-plank (7.74 m²) tile!
+          // Sparse natural knots (~4 subtle knots across the 18-plank 7.74 m² tile)
           interface KnotSpec {
             readonly kx: number;
             readonly ky: number;
@@ -285,7 +285,7 @@ export function createEngineeredOakFloorTextures(): {
             knots.push({ kx, ky, rx, ry, angle });
           }
 
-          // 3. Heavily Brushed longitudinal woodgrain fibers & cathedral heartwood arches
+          // Brushed longitudinal woodgrain fibers & cathedral heartwood arches
           const cathedralCenterY = y0 + rowH * (0.32 + ((seed % 5) * 0.09));
           const numFibers = 76;
           const stepX = 16;
@@ -352,7 +352,7 @@ export function createEngineeredOakFloorTextures(): {
             bCtx.stroke();
           }
 
-          // 4. Render subtle Heritage knot (when present on this plank)
+          // Subtle knot (when present on this plank)
           for (const knot of knots) {
             cCtx.save();
             cCtx.translate(knot.kx, knot.ky);
@@ -399,7 +399,7 @@ export function createEngineeredOakFloorTextures(): {
             bCtx.restore();
           }
 
-          // 5. Balanced bevelled header end-joint V-groove at xStart (if > 0)
+          // Bevelled header end-joint V-groove at xStart (if > 0)
           if (xStart > 0) {
             cCtx.fillStyle = 'rgba(92, 62, 36, 0.36)';
             cCtx.fillRect(xStart - 1.1, y0, 2.2, rowH);
@@ -413,7 +413,7 @@ export function createEngineeredOakFloorTextures(): {
           }
         }
 
-        // 6. Balanced bevelled long-edge V-groove between wide 220mm planks
+        // Bevelled long-edge V-groove between wide 220mm planks
         cCtx.fillStyle = 'rgba(92, 62, 36, 0.4)';
         cCtx.fillRect(0, y0, size, 2.6);
         cCtx.fillStyle = 'rgba(64, 42, 23, 0.86)';
@@ -547,7 +547,6 @@ export function createNaturalOakJoineryTextures(): {
     return { colorMap, bumpMap };
   });
 }
-
 
 export interface LivingCopperPatinaMaps {
   readonly shellColorModMap: THREE.DataTexture;

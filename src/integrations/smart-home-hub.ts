@@ -47,7 +47,7 @@ export class SmartHomeHub {
   }
 
   private bindCrossProtocolSubscriptions(): void {
-    // 1. Listen to KNX Bus events and mirror gate state into UniFi Access
+    // Mirror KNX bus events and gate state into UniFi Access.
     this.knx.subscribe((ev) => {
       if (ev.type === 'telegram') {
         const tg = ev.telegram;
@@ -75,7 +75,7 @@ export class SmartHomeHub {
       }
     });
 
-    // 2. Listen to UniFi Access credential events -> bridge to KNX Gate Controller (1.1.22 / GA 1/5/1)
+    // Bridge UniFi Access credential events to the KNX gate controller.
     this.access.subscribe((_points, busEvent, unlockedEntry) => {
       if (busEvent) {
         this.recordBusEvent(busEvent);
@@ -102,7 +102,7 @@ export class SmartHomeHub {
       this.notify({ type: 'entityChanged' });
     });
 
-    // 3. Listen to UniFi Protect Smart Detections -> optional LPR gate & courtyard security link
+    // Forward UniFi Protect smart detections to the unified bus log.
     this.protect.subscribe((_cameras, busEvent) => {
       if (busEvent) {
         this.recordBusEvent(busEvent);
@@ -202,42 +202,42 @@ export class SmartHomeHub {
       };
     });
 
+    const project = this.knx.getProject();
+    const roomById = new Map(project.rooms.map((r) => [r.id, r]));
+    const detectors = this.knx.getPresenceDetectors();
+
+    const occupancyEntities: BinarySensorEntityState[] = detectors.map((detector) => {
+      const room = roomById.get(detector.zoneId);
+      const slug = detector.pa.replace(/[^a-zA-Z0-9]+/g, '_');
+      return {
+        entityId: `binary_sensor.knx_${detector.zoneId}_${slug}`,
+        name: detector.name,
+        shortName: detector.name,
+        protocol: 'knx',
+        buildingId: room?.buildingId ?? 'mainHouse',
+        floorId: room?.floorId ?? 'ground',
+        zoneId: detector.zoneId,
+        hardwareAddress: `${detector.pa} · ${detector.gaPresence}`,
+        kind: 'binarySensor',
+        deviceClass: 'occupancy',
+        isDetected: this.knx.getPresenceState(detector.pa).detected,
+      };
+    });
+
+    const primaryZoneId = detectors[0]?.zoneId ?? project.rooms[0]?.id ?? 'exterior';
+    const primaryRoom = roomById.get(primaryZoneId);
+    const primaryLuxPa = detectors[0]?.pa ?? project.centralPa.ipInterface;
     const sensorEntities: Array<BinarySensorEntityState | NumericSensorEntityState> = [
+      ...occupancyEntities,
       {
-        entityId: 'binary_sensor.knx_kitchen_occupancy',
-        name: 'Kitchen Ceiling PIR Presence Sensor',
-        shortName: 'Kitchen PIR',
+        entityId: 'sensor.knx_ambient_lux',
+        name: 'Ambient Illuminance Sensor',
+        shortName: 'Ambient Lux',
         protocol: 'knx',
-        buildingId: 'mainHouse',
-        floorId: 'ground',
-        zoneId: 'kitchen',
-        hardwareAddress: '1.1.12 · 1/4/1',
-        kind: 'binarySensor',
-        deviceClass: 'occupancy',
-        isDetected: this.knx.getKitchenMotionDetected(),
-      },
-      {
-        entityId: 'binary_sensor.knx_utility_occupancy',
-        name: 'Utility Room Ceiling PIR Presence Sensor',
-        shortName: 'Utility PIR',
-        protocol: 'knx',
-        buildingId: 'mainHouse',
-        floorId: 'ground',
-        zoneId: 'utility',
-        hardwareAddress: '1.1.13 · 1/4/3',
-        kind: 'binarySensor',
-        deviceClass: 'occupancy',
-        isDetected: this.knx.getUtilityMotionDetected(),
-      },
-      {
-        entityId: 'sensor.knx_kitchen_ambient_lux',
-        name: 'Kitchen Ambient Illuminance Sensor',
-        shortName: 'Kitchen Lux',
-        protocol: 'knx',
-        buildingId: 'mainHouse',
-        floorId: 'ground',
-        zoneId: 'kitchen',
-        hardwareAddress: '1.1.12 · 1/4/2',
+        buildingId: primaryRoom?.buildingId ?? 'mainHouse',
+        floorId: primaryRoom?.floorId ?? 'ground',
+        zoneId: primaryZoneId,
+        hardwareAddress: `${primaryLuxPa} · ${project.centralGa.ambientLux}`,
         kind: 'numericSensor',
         deviceClass: 'illuminance',
         value: this.knx.getAmbientLux(),

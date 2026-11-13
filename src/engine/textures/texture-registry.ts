@@ -43,8 +43,8 @@ export function isRecordingCanvasStub(canvas: unknown): boolean {
 }
 
 /**
- * Returns true specifically when running under `tools/snapshot/recording-canvas.ts`
- * (`npm run snapshot:check`), preserving exact pre-batch texture IDs and gradient handle IDs.
+ * Returns true when running under a headless recording canvas stub,
+ * preserving deterministic texture IDs and gradient handle IDs.
  */
 export function isSnapshotRecordingCanvas(canvas: unknown): boolean {
   if (typeof canvas !== 'object' || canvas === null) {
@@ -171,7 +171,7 @@ export function getOrCreateCachedTexture<T>(key: string, create: () => T): T {
 /**
  * Memoizes a deterministic prop/furnishing/signage texture or texture bundle by `key`
  * across repeated furniture and architectural prop instances (`Map<string, T>`),
- * while remaining transparent to headless `snapshot:check` recording runs.
+ * while remaining transparent to headless recording runs.
  */
 export function getOrCreateCachedPropTexture<T>(key: string, create: () => T): T {
   if (isSnapshotRecordingEnvironment()) {
@@ -187,7 +187,7 @@ export function getOrCreateCachedPropTexture<T>(key: string, create: () => T): T
 
 /**
  * Selects a right-sized browser canvas dimension while preserving exact legacy dimensions
- * during headless `snapshot:check` recording runs.
+ * during headless recording runs.
  */
 export function resolveRightSizedCanvasDim(snapshotDim: number, runtimeDim: number): number {
   if (isSnapshotRecordingEnvironment()) return snapshotDim;
@@ -411,7 +411,6 @@ export function createScalarDataTextureFromCanvas(
   return tex;
 }
 
-
 const compactedScalarDataTexCache = new Map<string, THREE.DataTexture>();
 
 /**
@@ -483,14 +482,13 @@ export function compactScalarRgbaDataTexture(
   return tex;
 }
 
-
 export interface RgbaDataTextureOptions extends ScalarDataTextureOptions {
   readonly colorSpace?: THREE.ColorSpace;
 }
 
 /**
  * Converts an `HTMLCanvasElement` into an RGBA8 `THREE.DataTexture` in browser runtime
- * (returning `null` for headless recording canvas stubs so `snapshot:check` remains 100% intact).
+ * (returning `null` for headless recording canvas stubs).
  * Eliminates deferred Skia 2D canvas flushes and `copyExternalImageToTexture` main-thread stalls.
  */
 export function createRgbaDataTextureFromCanvas(
@@ -552,7 +550,7 @@ export function createRgbaDataTextureFromCanvas(
 /**
  * Wraps a procedural `HTMLCanvasElement` in a `THREE.DataTexture` in browser runtime
  * (cast as `THREE.CanvasTexture` for API compatibility) while preserving `THREE.CanvasTexture`
- * for headless recording stubs during `snapshot:check` and unit tests.
+ * for headless recording stubs and unit tests.
  */
 export function createBrowserDataOrCanvasTexture(
   key: string,
@@ -575,7 +573,6 @@ export function createBrowserDataOrCanvasTexture(
   if (options.flipY !== undefined) tex.flipY = options.flipY;
   return tex;
 }
-
 
 /**
  * Returns a pure CPU `THREE.DataTexture` directly from an `ImageData` buffer in browser runtime

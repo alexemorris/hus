@@ -509,10 +509,6 @@ export function resolveSeasonalGroundStyle(params: {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Built-in Environment HDRI Specifications
-// ---------------------------------------------------------------------------
-
 export const ENGLISH_COUNTRYSIDE_HDR_SPEC: HouseEnvironmentHdrSpec = {
   id: 'english-countryside',
   label: 'English Countryside (Legacy 3-Slot)',

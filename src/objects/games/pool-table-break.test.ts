@@ -18,7 +18,7 @@ function createTestPoolController(): {
   const points = [{ x: -0.48, z: 0.06 }, ...createTriangleRack({ x: 0.46, z: 0 }, r)];
   const balls = points.map((p, idx) => {
     const m = new THREE.Mesh(new THREE.SphereGeometry(r, 8, 8), new THREE.MeshBasicMaterial());
-    m.name = `outbuildings.barn.poolTable.ball.${idx}`;
+    m.name = `poolTable.ball.${idx}`;
     m.position.set(p.x, ballY, p.z);
     tableGroup.add(m);
     return m;
@@ -45,7 +45,7 @@ function createTestPoolController(): {
 }
 
 describe('PoolTableBreakController (1st-person break & re-rack)', () => {
-  it('starts in racked phase with idle prompt and no active 1PV pose', () => {
+  it('starts in racked phase with idle prompt and no active first-person pose', () => {
     const { controller } = createTestPoolController();
     expect(controller.id).toBe(POOL_TABLE_BREAK_ID);
     expect(controller.phase).toBe('racked');
@@ -79,7 +79,7 @@ describe('PoolTableBreakController (1st-person break & re-rack)', () => {
     const impactPose = controller.sampleFirstPersonPose()!;
     expect(impactPose.fovBoostDeg).toBeGreaterThan(1.0);
 
-    // Step until break finishes -> rises to standing eye height and exits 1PV
+    // Step until break finishes -> rises to standing eye height and exits first-person mode
     for (let i = 0; i < 140 && controller.phase === 'breaking'; i++) {
       controller.step(0.05);
     }

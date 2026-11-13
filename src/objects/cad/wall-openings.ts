@@ -359,9 +359,9 @@ function buildMitredArchitraveGeometry(params: {
   const yOutTop = innerTopY + headWidth;
 
   // Decompose the 3-sided mitred architrave into 3 non-overlapping trapezoids in XY extruded [zMin, zMax]:
-  // 1) Left leg: (xOutL, yBot) -> (xInL, yBot) -> (xInL, yInTop) -> (xOutL, yOutTop)
-  // 2) Head:     (xInL, yInTop) -> (xInR, yInTop) -> (xOutR, yOutTop) -> (xOutL, yOutTop)
-  // 3) Right leg:(xInR, yBot) -> (xOutR, yBot) -> (xOutR, yOutTop) -> (xInR, yInTop)
+  // Left leg: (xOutL, yBot) -> (xInL, yBot) -> (xInL, yInTop) -> (xOutL, yOutTop)
+  // Head:     (xInL, yInTop) -> (xInR, yInTop) -> (xOutR, yOutTop) -> (xOutL, yOutTop)
+  // Right leg:(xInR, yBot) -> (xOutR, yBot) -> (xOutR, yOutTop) -> (xInR, yInTop)
   // Notice internal miter seams are SHARED (not emitted as duplicate internal end-caps), so zero internal faces!
   const positions: number[] = [];
   const normals: number[] = [];

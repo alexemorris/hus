@@ -24,7 +24,7 @@ function makeOptimizerHarness() {
   return { scene, layers, interactiveMeshes, dynamicSet, optimizer };
 }
 
-describe('SceneBatchOptimizer (Wave 2)', () => {
+describe('SceneBatchOptimizer', () => {
   it('unwraps uniform 6-slot Material[] BoxGeometry walls into batchable single-material meshes and restores losslessly', () => {
     const { scene, interactiveMeshes, optimizer } = makeOptimizerHarness();
     const brickMat = new THREE.MeshStandardMaterial({ color: 0x8b4513 });

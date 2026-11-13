@@ -4,7 +4,7 @@ import type { FloorViewMode, TimeOfDay } from '../../core/types/scene.ts';
 
 /**
  * Signals backing the legacy developer HUD (KNX bus log, status badge).
- * Developer tooling only — the everyday shell uses
+ * Developer tooling only; the everyday shell uses
  * src/state/shell-store.ts and src/state/notes-store.ts.
  */
 

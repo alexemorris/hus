@@ -4,7 +4,6 @@ import {
   createConformalDefenderPatchGeometry,
   createConformalLateralWindowOrPanelGeometry,
   type Defender110Materials,
-  lerp,
   sampleLateralSurfaceZAtXY,
 } from './defender-materials-and-monocoque.ts';
 import { tagHighLodDetail } from '../../shared/scene-helpers.ts';
@@ -40,7 +39,7 @@ export function buildDefenderStyle5098WheelAssembly(
   wheelGroup.name = meshName;
   parent.add(wheelGroup);
 
-  // 1. Goodyear Wrangler All-Terrain Adventure Tire Tread Cylinder (`openEnded = true` so wheel spokes & brakes are 100% visible)
+  // Goodyear Wrangler All-Terrain Adventure Tire Tread Cylinder (`openEnded = true` so wheel spokes & brakes are 100% visible)
   const treadW = tireWidth * 0.80;
   const treadCyl = new THREE.Mesh(
     sharedCylinderGeometry(tireRadius, tireRadius, treadW, 40, 1, true),
@@ -86,7 +85,7 @@ export function buildDefenderStyle5098WheelAssembly(
     wheelGroup.add(sidewallTorus);
   }
 
-  // 2. 22" Style 5098 Gloss Black Forged Alloy Wheel Barrel & Rim Flange
+  // 22" Style 5098 Gloss Black Forged Alloy Wheel Barrel & Rim Flange
   const barrel = new THREE.Mesh(
     sharedCylinderGeometry(rimRadius, rimRadius * 0.95, tireWidth * 0.80, 36, 1, true),
     materials.narvikGlossBlackMat
@@ -114,7 +113,7 @@ export function buildDefenderStyle5098WheelAssembly(
   rimLipRing.position.set(0, 0, outerFaceZ);
   wheelGroup.add(rimLipRing);
 
-  // 3. 22" Land Rover Style 5098 5-Spoke Gloss Black Forged Alloy Spokes (5 sculpted split/chamfered spokes)
+  // 22" Land Rover Style 5098 5-Spoke Gloss Black Forged Alloy Spokes (5 sculpted split/chamfered spokes)
   const hubRadius = 0.072;
   const spokeLen = rimRadius - hubRadius - 0.006;
   const spokeMidR = hubRadius + spokeLen * 0.5;
@@ -161,7 +160,7 @@ export function buildDefenderStyle5098WheelAssembly(
     spokeGroup.add(spokePocket);
   }
 
-  // 4. Center Hub, 5 Chrome Lug Bolts & Land Rover Oval Center Cap
+  // Center Hub, 5 Chrome Lug Bolts & Land Rover Oval Center Cap
   const hubCyl = new THREE.Mesh(
     sharedCylinderGeometry(hubRadius, hubRadius * 1.08, 0.048, 28),
     materials.narvikGlossBlackMat
@@ -208,7 +207,7 @@ export function buildDefenderStyle5098WheelAssembly(
   tagHighLodDetail(badgeDisk, 18);
   wheelGroup.add(badgeDisk);
 
-  // 5. Road-Corner Ventilated 380mm Steel Brake Disc Rotor + 6-Piston Front / 4-Piston Rear V8 Brake Caliper
+  // Road-Corner Ventilated 380mm Steel Brake Disc Rotor + 6-Piston Front / 4-Piston Rear V8 Brake Caliper
   if (!isSpare) {
     const rotorR = isFront ? 0.195 : 0.185;
     const rotorMesh = new THREE.Mesh(
@@ -393,8 +392,7 @@ export function buildDefender110GlazingTrimAndCabinInterior(
   glazingGroup.name = `${namePrefix}.glazing`;
   defenderGroup.add(glazingGroup);
 
-
-  // A. Conformal Flush Raked L663 Front Windshield (`x = -1.02m..-0.38m`) with Narvik Black A-Pillar Surround
+  // Conformal Flush Raked L663 Front Windshield (`x = -1.02m..-0.38m`) with Narvik Black A-Pillar Surround
   const windshieldBorderGeo = createConformalDefenderPatchGeometry(
     -1.03,
     -0.37,
@@ -425,15 +423,15 @@ export function buildDefender110GlazingTrimAndCabinInterior(
   windshieldMesh.name = `${namePrefix}.glazing`;
   glazingGroup.add(windshieldMesh);
 
-  // B. Conformal Flush Tumblehome Side Glazing (Front Door Window, Rear Door Window, and Rear Quarter Cargo Glass)
+  // Conformal Flush Tumblehome Side Glazing (Front Door Window, Rear Door Window, and Rear Quarter Cargo Glass)
   //    with Gloss Black B/C/D Pillar Surround from `x = -0.96m` to `x = +2.30m`, `y = 1.22m..1.865m`
   const sidePillarSurroundGeo = createConformalLateralWindowOrPanelGeometry(
     -0.96,
     2.30,
-    (x) => (x < -0.52 ? lerp(1.225, 1.22, (x - -0.96) / 0.44) : 1.22),
+    (x) => (x < -0.52 ? THREE.MathUtils.lerp(1.225, 1.22, (x - -0.96) / 0.44) : 1.22),
     (x) =>
       x < -0.38
-        ? lerp(1.28, 1.865, Math.max(0, (x - -0.96) / 0.58))
+        ? THREE.MathUtils.lerp(1.28, 1.865, Math.max(0, (x - -0.96) / 0.58))
         : 1.865,
     42,
     14,
@@ -451,7 +449,7 @@ export function buildDefender110GlazingTrimAndCabinInterior(
     () => 1.235,
     (x) =>
       x < -0.38
-        ? lerp(1.30, 1.845, Math.max(0, (x - -0.90) / 0.52))
+        ? THREE.MathUtils.lerp(1.30, 1.845, Math.max(0, (x - -0.90) / 0.52))
         : 1.845,
     18,
     12,
@@ -502,7 +500,7 @@ export function buildDefender110GlazingTrimAndCabinInterior(
   rearTailgateGlass.rotation.z = 0.095;
   glazingGroup.add(rearTailgateGlass);
 
-  // C. 4 Flush Body-Color Door Handles (`x = -0.18m` front doors, `x = +0.62m` rear doors) &
+  // 4 Flush Body-Color Door Handles (`x = -0.18m` front doors, `x = +0.62m` rear doors) &
   //    Sculpted Twin-Arm Defender Wing Mirrors (`x = -0.76m, y = 1.22m`) with puddle-light housings
   for (const sideZ of [-1, 1] as const) {
     for (const handleX of [-0.18, 0.62] as const) {

@@ -271,7 +271,7 @@ describe('CameraRig + GrabPanController zoomed-out pan stability', () => {
     const canvas = createMockCanvas(1200, 800);
     const rig = new CameraRig(canvas, () => {});
 
-    // Place camera past maxDistance (58 m > 44 m) looking down at the farmhouse site.
+    // Place camera past maxDistance (58 m > 44 m) looking down at the property site.
     rig.controls.target.set(0, 1.05, 0);
     const dirFromTarget = new THREE.Vector3(0.32, 0.68, 0.66).normalize();
     rig.perspCamera.position.copy(rig.controls.target).addScaledVector(dirFromTarget, 58);

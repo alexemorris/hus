@@ -3,8 +3,8 @@
  * ZONES (stored zone scenes, Full / Night / Off central objects, push-buttons
  * and presence detectors).
  *
- * It mirrors the methods `KNXPropertyBusController` gains on the knx-lighting
- * branch, so the app layer can feature-detect them with {@link isKnxZoneBus}
+ * Mirrors the zone methods on `KNXPropertyBusController`, so the app layer
+ * can feature-detect them with {@link isKnxZoneBus}
  * and fall back to a derived zone model on controllers that predate them.
  * Only plain data and ids — no engine or integration imports.
  */

@@ -35,7 +35,7 @@ export type FixtureMetalFinish = BrasswareFinishCode | CorstonFinishPreset;
  * Perrin & Rowe UK brassware design collections:
  * - `'armstrong'`: Industrial-heritage machined cylinders & diamond-knurled collars
  * - `'langbourn'`: Mid-century / contemporary smooth stepped collars & sleek levers
- * - `'traditional'`: Country-house Edwardian turned baluster collars & porcelain levers
+ * - `'traditional'`: Edwardian turned baluster collars & porcelain levers
  * - `'deco'`: 1920s Art Deco 8-faceted octagonal collars & stepped spouts
  */
 export type PerrinRoweCollectionStyle = 'armstrong' | 'langbourn' | 'traditional' | 'deco';
@@ -429,7 +429,7 @@ export interface ThomasCrapperDownhamBasinOptions {
   readonly wasteFinish?: BrasswareFinishCode;
   /** Optional composable tap slot (`PerrinRoweBasinTapSpec`, custom `THREE.Object3D`, `'default'`, or `'none'`). Omit for 0-tap-hole surface basin. */
   readonly tap?: BasinTapSlotValue;
-  /** Glazed fireclay finish (`'white'` for `TCDO400WH` default; `'antiqueWhite'` for bespoke glaze match). */
+  /** Glazed fireclay finish (`'white'` for `TCDO400WH` default; `'antiqueWhite'` for warm off-white glaze). */
   readonly ceramicFinish?: ThomasCrapperCeramicFinish;
   /** Overall CAD width along `local X` in metres (`TCDO400` = `0.425` — 425mm W). */
   readonly widthM?: number;

@@ -78,9 +78,7 @@ export function buildBedroomAndBathroomInteriors(
     sheen: 'estate-eggshell',
   });
 
-  // =========================================================================
-  // 1. DOUBLE BEDROOM (`flatBedroom`: `x in [-4.188, -0.66], z in [-3.388, 1.04]`)
-  // =========================================================================
+  // DOUBLE BEDROOM (`flatBedroom`: `x in [-4.188, -0.66], z in [-3.388, 1.04]`)
   const bedRug = buildCuratedMirrorsArtAndRugs({
     name: 'simpleFlat.bedroom.pebbleWoolRug',
     kind: 'coxPebbleWool',
@@ -341,9 +339,7 @@ export function buildBedroomAndBathroomInteriors(
     );
   }
 
-  // =========================================================================
-  // 2. SHOWER BATHROOM (`flatBathroom`: `x in [-4.188, -2.26], z in [1.16, 3.388]`)
-  // =========================================================================
+  // SHOWER BATHROOM (`flatBathroom`: `x in [-4.188, -2.26], z in [1.16, 3.388]`)
   const showerEnclosure = new THREE.Group();
   showerEnclosure.name = 'simpleFlat.bathroom.walkInShower';
   addFlatBox(showerEnclosure, 'simpleFlat.bathroom.showerTray', [0.86, 0.036, 1.05], [-3.754, 0.0185, 1.692], carraraMat, 0.9);

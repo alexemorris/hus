@@ -53,7 +53,7 @@ function makeControllerHarness() {
   };
 }
 
-describe('SceneAnnotationController (Wave 2)', () => {
+describe('SceneAnnotationController', () => {
   it('skips hidden floors and hidden cutaway subtrees during pin/measure raycasting', () => {
     const { scene, layers, raycaster, controller } = makeControllerHarness();
     const mat = new THREE.MeshStandardMaterial({ color: 0xcccccc });

@@ -29,10 +29,6 @@ import type { InteractionTarget } from '../geometry/mesh-traits.ts';
 import { InteractionRegistry } from '../interaction/interaction-registry.ts';
 import { getRoomZoneRegistrations } from '../rooms/room-zone-registry.ts';
 
-// -----------------------------------------------------------------------------
-// Types
-// -----------------------------------------------------------------------------
-
 export interface AssetInteractionAudio {
   /** One-shot spatial foley played on open / activation. */
   readonly openPreset?: FoleyAudioPreset;
@@ -115,10 +111,6 @@ export interface ResolvedAssetMetadataHit {
   readonly metadata: AssetMetadata;
 }
 
-// -----------------------------------------------------------------------------
-// WeakMap Storage (Zero userData key mutations!)
-// -----------------------------------------------------------------------------
-
 const metadataMap = new WeakMap<THREE.Object3D, AssetMetadata>();
 const interactionSpecsMap = new WeakMap<THREE.Object3D, AssetInteractionSpec[]>();
 const boundSpecsByRegistry = new WeakMap<InteractionRegistry, WeakSet<AssetInteractionSpec>>();
@@ -145,10 +137,6 @@ function getBoundSet(registry: InteractionRegistry): WeakSet<AssetInteractionSpe
   }
   return set;
 }
-
-// -----------------------------------------------------------------------------
-// Public Metadata API
-// -----------------------------------------------------------------------------
 
 /**
  * Attaches product, finish, dimensional, and technical schematic metadata to `object3d`
@@ -199,10 +187,6 @@ export function resolveAssetMetadataHit(
 export function getAssetMetadata(object3d: THREE.Object3D | null | undefined): AssetMetadata | null {
   return resolveAssetMetadataHit(object3d)?.metadata ?? null;
 }
-
-// -----------------------------------------------------------------------------
-// Public Interaction Attachment & Auto-Discovery API
-// -----------------------------------------------------------------------------
 
 /**
  * Attaches a declarative, zero-`ctx` interaction specification (plus optional spatial foley /
@@ -351,10 +335,6 @@ export function bindSmartAssetsInScene(
   return { boundInteractions, registeredAudioEmitters };
 }
 
-// -----------------------------------------------------------------------------
-// Procurement & Schematic Schedule Extractor
-// -----------------------------------------------------------------------------
-
 const tmpSchedulePos = new THREE.Vector3();
 
 function inferZoneForObject(
@@ -436,7 +416,7 @@ export function collectSceneAssetSchedule(
   let totalPlacedAssets = 0;
 
   // Walk hierarchy; when a parent asset embeds a sub-asset that also carries its own metadata
-  // (e.g. a washstand that embeds a deck mixer tap, or a bespoke bathroom with standalone taps),
+  // (e.g. a washstand that embeds a deck mixer tap, or a custom bathroom with standalone taps),
   // both are counted unless they are literally the same Object3D.
   scene.traverse((obj) => {
     const meta = metadataMap.get(obj);

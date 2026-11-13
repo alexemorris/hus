@@ -164,7 +164,7 @@ export class PostProcessingPipeline {
     this.fxaaEnabled = settings.postProcessing;
     this.bloomEnabled = settings.postProcessing && settings.bloom;
     this.sharpenEnabled = settings.postProcessing && settings.sharpen;
-    // Keep per-pixel velocity motion blur off by default (4K 120 FPS razor-sharp 1PV & orbit;
+    // Keep per-pixel velocity motion blur off by default (4K 120 FPS sharp first-person & orbit;
     // still toggleable on demand via HUD / API).
     this.motionBlurEnabled =
       settings.postProcessing && this.motionBlurUserOverride === true;

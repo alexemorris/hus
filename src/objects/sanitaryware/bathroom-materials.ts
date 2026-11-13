@@ -8,7 +8,7 @@ import type {
 
 /**
  * Reusable PBR materials and pure in-memory `THREE.DataTexture` procedural surface maps
- * for the Main House bathroom sanitaryware & brassware collection.
+ * for the bathroom sanitaryware & brassware collection.
  *
  * Uses `Uint8Array` RGBA `DataTexture` buffers exclusively (zero DOM `document` access)
  * so materials work identically in browser WebGL, Node Vitest suites, and headless
@@ -41,18 +41,14 @@ function hash2DPeriodic(ix: number, iy: number, periodX: number, periodY: number
   return (h >>> 0) / 4294967295;
 }
 
-function smoothstep(t: number): number {
-  return t * t * (3 - 2 * t);
-}
-
 /** Seamless tileable 2D value noise in `[0, 1]` over `[0..1) x [0..1)` UV coordinates. */
 function seamlessNoise2D(u: number, v: number, freqX: number, freqY: number, seed: number): number {
   const x = u * freqX;
   const y = v * freqY;
   const x0 = Math.floor(x);
   const y0 = Math.floor(y);
-  const fx = smoothstep(x - x0);
-  const fy = smoothstep(y - y0);
+  const fx = THREE.MathUtils.smoothstep(x - x0, 0, 1);
+  const fy = THREE.MathUtils.smoothstep(y - y0, 0, 1);
 
   const n00 = hash2DPeriodic(x0, y0, freqX, freqY, seed);
   const n10 = hash2DPeriodic(x0 + 1, y0, freqX, freqY, seed);
@@ -101,9 +97,7 @@ function configureDataTexture(
   return tex;
 }
 
-// ---------------------------------------------------------------------------
 // Cached Procedural DataTextures
-// ---------------------------------------------------------------------------
 
 let brushedMetalMapsCache: {
   readonly roughnessMap: THREE.DataTexture;
@@ -366,9 +360,7 @@ function getTissueCrepeBumpMap(): THREE.DataTexture {
   return tissueCrepeBumpCache;
 }
 
-// ---------------------------------------------------------------------------
 // Cached Sanitaryware & Brassware Materials
-// ---------------------------------------------------------------------------
 
 let agedBrassPatinaCache: { colorMap: THREE.DataTexture; roughnessMap: THREE.DataTexture } | null = null;
 function getAgedBrassPatinaMaps(): { colorMap: THREE.DataTexture; roughnessMap: THREE.DataTexture } {
@@ -509,7 +501,7 @@ export function getBathroomBrassMaterials(finish: BrasswareFinishCode): Bathroom
       break;
     }
     case 'AB': {
-      // Aged Brass — warm antique patinated ochre-bronze English living solid brass (Master Bathroom Room 17)
+      // Aged Brass — warm antique patinated ochre-bronze living solid brass
       const patina = getAgedBrassPatinaMaps();
       primary = new THREE.MeshPhysicalMaterial({
         name: 'bathroom.brass.AB.primary',
@@ -1062,9 +1054,7 @@ export function getPaintedShakerCabinetMaterials(
   return palette;
 }
 
-// ---------------------------------------------------------------------------
 // Shared Geometry & Scene-Graph Invariant Helpers
-// ---------------------------------------------------------------------------
 
 /**
  * Enforces all sanitaryware scene-graph invariants across `root`:
@@ -1103,9 +1093,7 @@ export function finalizeSanitaryGroup(
   return root;
 }
 
-// ---------------------------------------------------------------------------
-// Bespoke Master Bathroom Dark Oak Veneer, Carrara Marble & Waffle Textiles
-// ---------------------------------------------------------------------------
+// Smoked Dark Oak Veneer, Carrara Marble & Waffle Textiles
 
 export interface DarkOakVeneerMaterialPalette {
   readonly veneer: THREE.MeshPhysicalMaterial;
@@ -1116,7 +1104,7 @@ export interface DarkOakVeneerMaterialPalette {
 let darkOakVeneerCache: DarkOakVeneerMaterialPalette | null = null;
 
 /**
- * Rich smoked dark-stained European oak veneer PBR palette (matching Emily's Slide 3 vanity):
+ * Rich smoked dark-stained European oak veneer PBR palette:
  * deep umber-espresso heartwood (#3e2c1e .. #523b29) with warm bronze-brown cathedral grain,
  * open-pore bump relief, and hand-rubbed satin lacquer sheen (~0.46 roughness).
  */
@@ -1271,8 +1259,7 @@ export function getHonedCarraraMarbleMaterial(): THREE.MeshPhysicalMaterial {
 let zelligeShowerTileCache: THREE.MeshPhysicalMaterial | null = null;
 
 /**
- * Artisan glazed warm-cream vertical zellige ceramic wall tile material for the enlarged
- * Master Bathroom walk-in shower (matching Slide 3 middle-left swatch).
+ * Glazed warm-cream vertical zellige ceramic wall tile material for walk-in showers.
  */
 export function getZelligeCreamWallTileMaterial(): THREE.MeshPhysicalMaterial {
   if (zelligeShowerTileCache) return zelligeShowerTileCache;
@@ -1297,7 +1284,7 @@ export function getZelligeCreamWallTileMaterial(): THREE.MeshPhysicalMaterial {
 
       const groutX = Math.min(fx, 1 - fx) * (w / cols);
       const groutY = Math.min(fy, 1 - fy) * (h / rows);
-      const groutMask = smoothstep(Math.min(1, Math.min(groutX, groutY) / 2.1));
+      const groutMask = THREE.MathUtils.smoothstep(Math.min(1, Math.min(groutX, groutY) / 2.1), 0, 1);
 
       const tileTone = hash2DPeriodic(colIdx, rowIdx, cols, rows, 16111) - 0.5;
       const handRipple = seamlessFbm2D(u, v, 16, 3, 16223) - 0.5;
@@ -1344,7 +1331,7 @@ let bathroomTextilesCache: {
 
 /**
  * Tactile honeycomb waffle-weave cotton-linen bathrobe materials & woven ticking-stripe
- * bath towel material (matching Slide 3 right-hand towel rail & #12 hanging robes).
+ * bath towel material.
  */
 export function getBathroomTextileMaterials(): {
   readonly ivoryWaffleRobe: THREE.MeshStandardMaterial;
@@ -1361,7 +1348,7 @@ export function getBathroomTextileMaterials(): {
 
   for (let y = 0; y < h; y++) {
     const v = y / h;
-    // Horizontal woven taupe-grey stripes on warm ivory cotton (matching Slide 3 towel rail photo)
+    // Horizontal woven taupe-grey stripes on warm ivory cotton
     const stripeCycle = (v * 18) % 1;
     const isStripe = stripeCycle > 0.30 && stripeCycle < 0.56 ? 1 : 0;
     const slub = seamlessNoise2D(0.5, v, 4, 64, 17107) - 0.5;
@@ -1480,8 +1467,10 @@ export function getOliveGreenVerticalMetroTileMaterial(): THREE.MeshPhysicalMate
       const edgeDistM = Math.min(distXM, distYM);
 
       // tileMask = 0 inside 2.2mm grout joint, smoothly rising to 1 across glazed bevel arris
-      const tileMask = smoothstep(
-        Math.max(0, Math.min(1, (edgeDistM - (halfGroutM - 0.0002)) / 0.00075))
+      const tileMask = THREE.MathUtils.smoothstep(
+        Math.max(0, Math.min(1, (edgeDistM - (halfGroutM - 0.0002)) / 0.00075)),
+        0,
+        1
       );
 
       // Per-tile kiln temperature & glaze thickness variation (#484F3C .. #616854 around #555C47 muted grey-olive)
@@ -1503,10 +1492,10 @@ export function getOliveGreenVerticalMetroTileMaterial(): THREE.MeshPhysicalMate
       // Artisanal glaze pooling: darker olive band 1.6mm..7.5mm inside the tile edge,
       // plus subtle translucent glaze thinning right on the 1.5mm bevel crest
       const poolBand =
-        smoothstep(Math.max(0, Math.min(1, (edgeDistM - 0.0014) / 0.0018))) *
-        (1 - smoothstep(Math.max(0, Math.min(1, (edgeDistM - 0.0036) / 0.0052))));
+        THREE.MathUtils.smoothstep(Math.max(0, Math.min(1, (edgeDistM - 0.0014) / 0.0018)), 0, 1) *
+        (1 - THREE.MathUtils.smoothstep(Math.max(0, Math.min(1, (edgeDistM - 0.0036) / 0.0052)), 0, 1));
       const crestThin =
-        tileMask * (1 - smoothstep(Math.max(0, Math.min(1, (edgeDistM - 0.0013) / 0.0016))));
+        tileMask * (1 - THREE.MathUtils.smoothstep(Math.max(0, Math.min(1, (edgeDistM - 0.0013) / 0.0016)), 0, 1));
       const poolFactor = 1 - poolBand * 0.13 + crestThin * 0.05;
       tileR *= poolFactor;
       tileG *= poolFactor;
@@ -1542,7 +1531,7 @@ export function getOliveGreenVerticalMetroTileMaterial(): THREE.MeshPhysicalMate
       clearcoatData[idx + 3] = 255;
 
       // Bump height: recessed grout channel + pillowed ceramic bevel + artisanal hand-glazed ripple
-      const bevelDome = smoothstep(Math.max(0, Math.min(1, (edgeDistM - halfGroutM) / 0.0045)));
+      const bevelDome = THREE.MathUtils.smoothstep(Math.max(0, Math.min(1, (edgeDistM - halfGroutM) / 0.0045)), 0, 1);
       const tileHeight = 148 + bevelDome * 42 + handRipple * 26 + glazeWave * 14;
       const bByte = clampByte(52 * (1 - tileMask) + tileHeight * tileMask);
       bumpData[idx] = bByte;
@@ -1600,9 +1589,7 @@ export function getOliveGreenVerticalMetroTileMaterial(): THREE.MeshPhysicalMate
   return oliveGreenVerticalMetroTileCache;
 }
 
-// ---------------------------------------------------------------------------
 // 1920s/1930s Art Deco Fluted Prismatic Opal Glass (IP44 Vanity Sconces)
-// ---------------------------------------------------------------------------
 
 export interface ArtDecoFlutedGlassMaterialPalette {
   readonly flutedShade: THREE.MeshPhysicalMaterial;
@@ -1612,9 +1599,9 @@ export interface ArtDecoFlutedGlassMaterialPalette {
 let artDecoFlutedGlassCache: ArtDecoFlutedGlassMaterialPalette | null = null;
 
 /**
- * Procedural 28-flute vertical prismatic opal-glass material for Room 20's twin IP44
- * Art Deco wall sconces (`userData.baseEmissiveIntensity` wired into `bedroom3Pendant`
- * lighting circuit; zero `transmission` so no extra WebGPU transmission pass is triggered).
+ * Procedural 28-flute vertical prismatic opal-glass material for IP44 Art Deco wall sconces
+ * (`userData.baseEmissiveIntensity` is wired into the room lighting circuit; uses emissive
+ * glow instead of `transmission` to avoid an extra WebGPU transmission pass).
  */
 export function getArtDecoFlutedGlassMaterials(): ArtDecoFlutedGlassMaterialPalette {
   if (artDecoFlutedGlassCache) return artDecoFlutedGlassCache;

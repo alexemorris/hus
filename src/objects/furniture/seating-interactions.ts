@@ -63,7 +63,7 @@ function playSeatAudio(
       const { now } = tk;
       const isSit = mode === 'sit';
 
-      // 1. Low-frequency cushion / frame compression thump
+      // Low-frequency cushion / frame compression thump
       const startFreq =
         material === 'timber'
           ? isSit
@@ -100,7 +100,7 @@ function playSeatAudio(
         attackSec: 0.022,
       });
 
-      // 2. Filtered fabric / air-sigh / microbead / leather texture layer
+      // Filtered fabric / air-sigh / microbead / leather texture layer
       const noiseDuration =
         material === 'beanbag' ? (isSit ? 0.34 : 0.24) : isSit ? 0.25 : 0.17;
       const centerFreq =
@@ -141,7 +141,7 @@ function playSeatAudio(
  * counter stool, bar stool, bench, beanbag, or pouffe.
  *
  * Clicking the seat in Orbit View or 1st-Person View (or pressing `F` while looking at
- * or standing near it in 1PV) smoothly transitions the camera onto the seat cushion facing
+ * or standing near it in first-person mode) smoothly transitions the camera onto the seat cushion facing
  * its natural viewing direction with full 360° free look (`allowFreeLook: true`).
  * Pressing `W`/`A`/`S`/`D`, Arrow keys, `Space`, or `F` (or clicking the seat again)
  * smoothly stands the player up to the clear floor spot in front of the seat.

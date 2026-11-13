@@ -1,3 +1,4 @@
+import { MathUtils } from 'three';
 import type {
   AcousticOcclusionState,
   AcousticSurfaceMaterial,
@@ -41,27 +42,24 @@ export const OUTDOOR_ACOUSTIC_OCCLUSION: AcousticOcclusionState = {
   reverbWetSend: 0.05,
 };
 
-function clamp(value: number, min: number, max: number): number {
-  if (!Number.isFinite(value)) return min;
-  return Math.max(min, Math.min(max, value));
-}
-
 /**
  * Computes room reverberation decay time (RT60, in seconds) via the Sabine approximation,
  * accounting for room volume, interior finish absorption, and open exterior portal area
  * (which acts as an anechoic $\alpha = 1.0$ aperture).
  */
 export function computeSabineRt60(params: ComputeSabineRt60Params): number {
-  const volumeM3 = clamp(params.volumeM3 ?? 75, 12, 2500);
+  const rawVolumeM3 = params.volumeM3 ?? 75;
+  const volumeM3 = Number.isFinite(rawVolumeM3) ? MathUtils.clamp(rawVolumeM3, 12, 2500) : 12;
   const surfaceAreaM2 = 6 * Math.cbrt(volumeM3) ** 2;
   const fallbackAlpha = SURFACE_ABSORPTION_COEFFS[params.primarySurface ?? 'plaster'];
-  const absorptionCoeff = clamp(params.absorptionCoeff ?? fallbackAlpha, 0.03, 0.95);
+  const rawAlpha = params.absorptionCoeff ?? fallbackAlpha;
+  const absorptionCoeff = Number.isFinite(rawAlpha) ? MathUtils.clamp(rawAlpha, 0.03, 0.95) : 0.03;
   const openArea =
     params.openPortalAreaM2 !== undefined && Number.isFinite(params.openPortalAreaM2)
       ? Math.max(0, params.openPortalAreaM2)
       : 0;
 
-  return clamp(
+  return MathUtils.clamp(
     (0.161 * volumeM3) / Math.max(1.5, surfaceAreaM2 * absorptionCoeff + openArea),
     0.12,
     2.2
@@ -88,24 +86,26 @@ export function computeAcousticOcclusion(
     const [lx, ly, lz] = params.listenerPos;
     for (let i = 0; i < portals.length; i++) {
       const portal = portals[i]!;
-      const openness = clamp(portal.openness, 0, 1);
+      const openness = Number.isFinite(portal.openness) ? MathUtils.clamp(portal.openness, 0, 1) : 0;
       if (openness <= 0) continue;
 
       const rawArea = portal.areaM2 ?? 4.0;
-      const areaM2 = clamp(rawArea, 0.05, 120);
+      const areaM2 = Number.isFinite(rawArea) ? MathUtils.clamp(rawArea, 0.05, 120) : 0.05;
       const dx = portal.position[0] - lx;
       const dy = portal.position[1] - ly;
       const dz = portal.position[2] - lz;
       const dist = Math.hypot(dx, dy, dz);
 
       const distWeight = 1 / (1 + (dist / 5.5) ** 2);
-      const areaFactor = clamp(areaM2 / 8, 0.25, 2.0);
+      const areaFactor = MathUtils.clamp(areaM2 / 8, 0.25, 2.0);
       sumContributions += openness * areaFactor * distWeight;
       openArea += openness * areaM2;
     }
   }
 
-  const effectiveOpenness = clamp(1 - Math.exp(-sumContributions * 1.35), 0, 0.96);
+  const effectiveOpenness = Number.isFinite(sumContributions)
+    ? MathUtils.clamp(1 - Math.exp(-sumContributions * 1.35), 0, 0.96)
+    : 0;
   const exteriorLowpassHz = 720 * Math.pow(18000 / 720, effectiveOpenness);
   const exteriorHighShelfDb = -14 * (1 - effectiveOpenness);
   const exteriorGainScale = 0.18 + 0.78 * effectiveOpenness;
@@ -120,7 +120,7 @@ export function computeAcousticOcclusion(
       : {}),
     openPortalAreaM2: openArea,
   });
-  const reverbWetSend = clamp(
+  const reverbWetSend = MathUtils.clamp(
     (0.12 + 0.14 * Math.min(1, reverbDecaySec / 1.2)) * (1 - 0.35 * effectiveOpenness),
     0.06,
     0.38

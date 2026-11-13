@@ -5,7 +5,7 @@ import type { HingedDoorState } from './hinged-doors.ts';
 import { wrapInHingePivot } from './hinge-pivot.ts';
 import { prepareFadeMaterialsForGroup, type SlidingDrawerState } from './sliding-drawers.ts';
 
-/** Fixed interactable id of the Barn TrackMan golf simulator shot. */
+/** Fixed interactable id of the golf simulator shot. */
 export const GOLF_SIMULATOR_SHOT_ID = 'golf-simulator-shot';
 
 export interface GolfSimulatorShotConfig {
@@ -81,7 +81,7 @@ export function createGolfSimulatorShotState(
 
 /**
  * Builds the track-mounted sliding golf simulator stance mat (as a hinged-door state with
- * `isFoldingFloorMat`) and the linked fade-out Callaway Tour golf bag (as a drawer state).
+ * `isFoldingFloorMat`) and the linked fade-out golf bag (as a drawer state).
  * The mat pivot is added to `parent`; the caller registers both as clickable.
  */
 export function createFoldingGolfMat(
@@ -181,12 +181,7 @@ export function collectGolfMatTrackDynamicObjects(
   outSet: Set<THREE.Object3D>
 ): void {
   matDoor.pivot.parent?.traverse((c) => {
-    if (
-      c.userData?.isGolfOutsideTrackLiftGroup ||
-      c.userData?.isGolfTrackCamLink ||
-      c.userData?.isGolfTrackLiftLeverPivot ||
-      c.name.includes('trackSystem')
-    ) {
+    if (c.name.includes('trackSystem')) {
       c.traverse((sub) => outSet.add(sub));
     }
   });
@@ -425,15 +420,7 @@ export function stepGolfSimulatorShot(gs: GolfSimulatorShotState, dtSeconds: num
   const bagPos = gs.bagStowPos;
   const bagRot = gs.bagStowRot;
 
-  // 1. 3D Golf Club Bag-Grab, Address, Swing & Return Kinematics (`0.00s -> 4.50s`)
-  //    - Phase 1A (`0.00s -> 0.28s`): Grab club inside Callaway Tour Bag & pull straight up out of the top divider cuff
-  //    - Phase 1B (`0.28s -> 0.72s`): Carry club from above the golf bag across to the Golfer Address Stance behind the teed ball
-  //    - Phase 1C (`0.72s -> 1.28s`): Takeaway & Full Backswing (`+z` / `+x` away from screen)
-  //    - Phase 1D (`1.28s -> 1.48s`): High-Speed Downswing accelerating through ball impact at `t = 1.48s` (`rz = 0`)
-  //    - Phase 1E (`1.48s -> 1.92s`): Follow-Through whipping toward the impact screen (`-z` / `-x`) into high tour finish
-  //    - Phase 1F (`1.92s -> 3.45s`): Hold high finish pose while watching projected ball flight
-  //    - Phase 1G (`3.45s -> 4.10s`): Carry club back to above the Callaway Tour Bag opening
-  //    - Phase 1H (`4.10s -> 4.50s`): Slide grip & shaft smoothly down into the golf bag divider cuff
+  // Club draw, address, backswing, downswing impact (1.48s), follow-through, and bag return (0.00s -> 4.50s)
   const pullOutX = -0.02;
   const pullOutY = 0.48;
   const pullOutZ = 1.48;
@@ -537,8 +524,7 @@ export function stepGolfSimulatorShot(gs: GolfSimulatorShotState, dtSeconds: num
   }
   gs.clubSwingPivot.updateMatrixWorld(true);
 
-  // 2. Physical 3D Golf Ball Launch to Screen (`1.48s -> 1.63s`),
-  //    Screen Fabric Ripple & Turf Rebound/Roll (`1.63s -> 3.47s`)
+  // Ball launch to impact screen (1.48s -> 1.63s), screen deflection, and turf rebound (1.63s -> 3.47s)
   const x0 = gs.baseBallPos.x; // +0.138m inside foldingMatGroup
   const y0 = gs.baseBallPos.y; // +0.036m inside foldingMatGroup
   const z0 = gs.baseBallPos.z; // 0.0m
@@ -562,7 +548,7 @@ export function stepGolfSimulatorShot(gs: GolfSimulatorShotState, dtSeconds: num
     const bz = z0 + (zHitLocal - z0) * f;
     gs.teedBall.position.set(bx, by, bz);
 
-    // Position & orient glowing TrackMan launch streak in simGroup coordinates (`foldingMatGroup` is at `+0.982, +0.017, 0`)
+    // Position and orient the launch streak in simGroup coordinates (`foldingMatGroup` is at `+0.982, +0.017, 0`)
     tmpStreakStart.set(0.982 + x0, 0.017 + y0, z0);
     tmpStreakEnd.set(0.982 + bx, 0.017 + by, bz);
     tmpStreakDir.subVectors(tmpStreakEnd, tmpStreakStart);
@@ -651,7 +637,7 @@ export function stepGolfSimulatorShot(gs: GolfSimulatorShotState, dtSeconds: num
   }
   gs.teedBall.updateMatrixWorld(true);
 
-  // 3. Live Projected Ball Trajectory on Widescreen Impact Screen & 27" Control Monitor (`1.62s -> 4.27s`)
+  // Projected ball trajectory on the impact screen and control monitor (1.62s -> 4.27s)
   if (t >= 1.62) {
     const rawFlight = Math.max(0, Math.min(1, (t - 1.62) / 2.65));
     // Ease-out curve so the ball rockets off the screen face and settles smoothly on the green

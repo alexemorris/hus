@@ -107,9 +107,7 @@ export function buildLivingKitchenAndHallInteriors(
     roughness: 0.9,
   });
 
-  // =========================================================================
-  // 1. ENTRANCE HALL (`flatHall`: `x in [-2.14, -0.66], z in [1.16, 3.388]`)
-  // =========================================================================
+  // ENTRANCE HALL (`flatHall`: `x in [-2.14, -0.66], z in [1.16, 3.388]`)
   const hallRunner = buildCuratedMirrorsArtAndRugs({
     name: 'simpleFlat.hall.runnerRug',
     kind: 'rogerOatesRunnerSwatch',
@@ -236,9 +234,7 @@ export function buildLivingKitchenAndHallInteriors(
     ],
   });
 
-  // =========================================================================
-  // 2. CHICHESTER IN-FRAME SHAKER KITCHEN & DINING (`flatLivingKitchen`)
-  // =========================================================================
+  // CHICHESTER IN-FRAME SHAKER KITCHEN & DINING (`flatLivingKitchen`)
   const splashBelowWin = addFlatBox(
     livGroup,
     'simpleFlat.kitchen.zelligeSplashUnderWindow',
@@ -515,9 +511,7 @@ export function buildLivingKitchenAndHallInteriors(
   });
   livGroup.add(diningPendant);
 
-  // =========================================================================
-  // 3. LIVING LOUNGE (`x in [1.45, 4.18], z in [0.55, 3.38]`)
-  // =========================================================================
+  // LIVING LOUNGE (`x in [1.45, 4.18], z in [0.55, 3.38]`)
   const livingRug = buildCuratedMirrorsArtAndRugs({
     name: 'simpleFlat.living.oushakRug',
     kind: 'zieglerOushak',
@@ -554,9 +548,9 @@ export function buildLivingKitchenAndHallInteriors(
   });
   livGroup.add(armchair);
 
-  // Bespoke Shaker bookcase with 3 mm non-overlapping joinery clearances (`0` z-fight!)
+  // Shaker bookcase with 3 mm non-overlapping joinery clearances
   const bookcase = new THREE.Group();
-  bookcase.name = 'simpleFlat.living.bespokeBookcase';
+  bookcase.name = 'simpleFlat.living.shakerBookcase';
   bookcase.position.set(3.55, 0, IN_Z - 0.195);
   addFlatBox(bookcase, 'simpleFlat.living.bookcase.plinth', [1.0, 0.084, 0.34], [0, 0.043, 0], shakerJoineryPaint);
   addFlatBox(bookcase, 'simpleFlat.living.bookcase.carcassLow', [1.02, 0.616, 0.36], [0, 0.396, 0], shakerJoineryPaint);
@@ -586,7 +580,7 @@ export function buildLivingKitchenAndHallInteriors(
     }
   }
   attachAssetMetadata(bookcase, {
-    name: 'Bespoke Shaker Library & Media Cabinet',
+    name: 'Shaker Library & Media Cabinet',
     brand: 'Neptune',
     collection: 'Chichester',
     finish: 'Farrow & Ball Pigeon No. 25 / Honed Carrara / Character Oak',

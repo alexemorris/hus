@@ -337,14 +337,14 @@ export function createHerringboneTerracottaQuarryTileTextures(): {
       bCtx.fillStyle = '#181818';
       bCtx.fillRect(0, 0, size, size);
 
-      // Muted, naturally aged Staffordshire & reclaimed farmhouse terracotta quarry tile palette (Issue #11: slightly lower saturation)
+      // Muted, naturally aged Staffordshire & reclaimed terracotta quarry tile palette
       const quarryPalette: ReadonlyArray<readonly [number, number, number]> = [
         [142, 84, 64],  // Muted sealed terracotta clay
         [132, 77, 58],  // Deep kiln-fired quarry russet
         [150, 91, 68],  // Warm muted sienna clay
         [124, 72, 55],  // Earthy russet brown-red
         [145, 86, 65],  // Soft heritage terracotta
-        [136, 80, 61],  // Mid farmhouse weathered clay
+        [136, 80, 61],  // Mid weathered terracotta clay
         [118, 69, 53],  // Toasted kiln-edge umber-russet
         [154, 94, 71],  // Sunlit sealed warm clay
         [129, 76, 58],  // Aged iron-oxide earth
@@ -1260,11 +1260,9 @@ export function createFelliniOlivaSquareTileTextures(): {
   });
 }
 
-// ---------------------------------------------------------------------------
 // Sandberg Wallpaper — Mimi Sandstone (SKU: S10267, Kolonin Collection)
 // 13.25cm × 13.30cm straight-match alternating checkerboard botanical print
 // (rendered as a 2 × 2 = 0.265m × 0.266m seamless 1024 × 1024 PBR repeat)
-// ---------------------------------------------------------------------------
 
 export const SANDBERG_MIMI_SANDSTONE_REPEAT_U = 0.265;
 export const SANDBERG_MIMI_SANDSTONE_REPEAT_V = 0.266;
@@ -1619,7 +1617,7 @@ export function createSandbergMimiSandstoneWallpaperTextures(): {
       size,
       size,
       (cCtx, bCtx) => {
-        // 1. Warm sandstone-ecru matte non-woven paper ground (#F1EEE7 = rgb(241, 238, 231), ~93% open ground)
+        // Warm sandstone-ecru matte non-woven paper ground (#F1EEE7 = rgb(241, 238, 231), ~93% open ground)
         cCtx.fillStyle = MIMI_PAPER_GROUND;
         cCtx.fillRect(0, 0, size, size);
 
@@ -1643,7 +1641,7 @@ export function createSandbergMimiSandstoneWallpaperTextures(): {
           if (fx + fw > size) bCtx.fillRect(fx - size, fy, fw, fh);
         }
 
-        // 2. Exact alternating checkerboard grid inside each 13.25 × 13.30cm (512 × 512px) repeat:
+        // Alternating checkerboard grid inside each 13.25 × 13.30cm (512 × 512px) repeat:
         //    - Even rows (v = 0.25 of cell): Wild-violet sprig (+1) at u = 0.25, '×' cross floret at u = 0.75
         //    - Odd rows  (v = 0.75 of cell): '×' cross floret at u = 0.25, Mirrored wild-violet sprig (-1) at u = 0.75
         for (let gy = 0; gy < 2; gy++) {

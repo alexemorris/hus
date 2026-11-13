@@ -110,7 +110,7 @@ export function SettingsModal(): JSX.Element | null {
           <section class="shell-settings-section">
             <h3>Graphics</h3>
             <p class="shell-muted">
-              Current: <strong>{graphicsTierLabel.value || '—'}</strong>
+              Current: <strong>{graphicsTierLabel.value || '-'}</strong>
               {fps !== null && <> · {Math.round(fps)} fps</>}
             </p>
             <div class="shell-radio-list" role="radiogroup" aria-label="Graphics quality">
@@ -132,15 +132,15 @@ export function SettingsModal(): JSX.Element | null {
             </div>
             <div class="shell-toggle-row" style={{ marginTop: '12px' }}>
               <span class="shell-radio-text">
-                <span>Motion Blur (Cinematic Shutter)</span>
-                <span class="shell-muted">Subtle 6-tap depth-aware camera velocity shutter blur</span>
+                <span>Motion blur</span>
+                <span class="shell-muted">Camera shutter blur during fast movement</span>
               </span>
               <button
                 type="button"
                 class={`shell-switch${motionBlurEnabled ? ' is-on' : ''}`}
                 role="switch"
                 aria-checked={motionBlurEnabled}
-                aria-label="Motion Blur (Cinematic Shutter)"
+                aria-label="Motion blur"
                 onClick={() => {
                   const next = !motionBlurEnabled;
                   ctl.api.graphics.setMotionBlurEnabled(next);
@@ -152,15 +152,15 @@ export function SettingsModal(): JSX.Element | null {
             </div>
             <div class="shell-toggle-row" style={{ marginTop: '8px' }}>
               <span class="shell-radio-text">
-                <span>SSAO (Screen-Space Ambient Occlusion)</span>
-                <span class="shell-muted">8-tap bilateral depth-curvature contact shadows (+ baked 3D room AO)</span>
+                <span>Ambient occlusion (SSAO)</span>
+                <span class="shell-muted">Soft contact shadows in corners and crevices</span>
               </span>
               <button
                 type="button"
                 class={`shell-switch${ssaoEnabled ? ' is-on' : ''}`}
                 role="switch"
                 aria-checked={ssaoEnabled}
-                aria-label="SSAO (Screen-Space Ambient Occlusion)"
+                aria-label="Ambient occlusion (SSAO)"
                 onClick={() => {
                   const next = !ssaoEnabled;
                   ctl.api.graphics.setSsaoEnabled(next);
@@ -172,15 +172,15 @@ export function SettingsModal(): JSX.Element | null {
             </div>
             <div class="shell-toggle-row" style={{ marginTop: '8px' }}>
               <span class="shell-radio-text">
-                <span>FXAA 3.11 (Edge Anti-Aliasing)</span>
-                <span class="shell-muted">Directional luma-edge span search + sub-pixel smoothing</span>
+                <span>Anti-aliasing (FXAA)</span>
+                <span class="shell-muted">Smooths jagged geometry edges</span>
               </span>
               <button
                 type="button"
                 class={`shell-switch${fxaaEnabled ? ' is-on' : ''}`}
                 role="switch"
                 aria-checked={fxaaEnabled}
-                aria-label="FXAA 3.11 anti-aliasing"
+                aria-label="Anti-aliasing (FXAA)"
                 onClick={() => {
                   const next = !fxaaEnabled;
                   ctl.api.graphics.setFxaaEnabled(next);
@@ -193,18 +193,18 @@ export function SettingsModal(): JSX.Element | null {
           </section>
 
           <section class="shell-settings-section">
-            <h3>Sound &amp; Acoustics</h3>
+            <h3>Sound &amp; acoustics</h3>
             <div class="shell-toggle-row">
               <span class="shell-radio-text">
-                <span>Enable Audio</span>
-                <span class="shell-muted">Procedural Web Audio 3D spatial soundscape &amp; reverb</span>
+                <span>Enable audio</span>
+                <span class="shell-muted">3D spatial audio and room acoustics</span>
               </span>
               <button
                 type="button"
                 class={`shell-switch${!audioMuted ? ' is-on' : ''}`}
                 role="switch"
                 aria-checked={!audioMuted}
-                aria-label="Enable Audio"
+                aria-label="Enable audio"
                 onClick={() => {
                   const nextMuted = !audioMuted;
                   ctl.api.audio?.setMuted(nextMuted);
@@ -216,8 +216,8 @@ export function SettingsModal(): JSX.Element | null {
             </div>
             <div class="shell-toggle-row" style={{ marginTop: '8px' }}>
               <span class="shell-radio-text">
-                <span>Master Volume ({Math.round(audioVolume * 100)}%)</span>
-                <span class="shell-muted">Overall level for spatial SFX and ambient soundscape</span>
+                <span>Master volume ({Math.round(audioVolume * 100)}%)</span>
+                <span class="shell-muted">Overall volume for sound effects and ambient audio</span>
               </span>
               <input
                 type="range"
@@ -225,7 +225,7 @@ export function SettingsModal(): JSX.Element | null {
                 max={100}
                 step={1}
                 value={Math.round(audioVolume * 100)}
-                aria-label="Master Volume"
+                aria-label="Master volume"
                 style={{ width: '130px', accentColor: 'var(--shell-accent, #f59e0b)' }}
                 onInput={(e) => {
                   const nextVol = Number(e.currentTarget.value) / 100;
@@ -236,15 +236,15 @@ export function SettingsModal(): JSX.Element | null {
             </div>
             <div class="shell-toggle-row" style={{ marginTop: '8px' }}>
               <span class="shell-radio-text">
-                <span>Ambient Soundscape</span>
-                <span class="shell-muted">Outdoor breeze, daytime birdsong &amp; evening crickets</span>
+                <span>Ambient soundscape</span>
+                <span class="shell-muted">Outdoor breeze, daytime birdsong, and evening crickets</span>
               </span>
               <button
                 type="button"
                 class={`shell-switch${ambientEnabled ? ' is-on' : ''}`}
                 role="switch"
                 aria-checked={ambientEnabled}
-                aria-label="Ambient Soundscape"
+                aria-label="Ambient soundscape"
                 onClick={() => {
                   const next = !ambientEnabled;
                   ctl.api.audio?.setAmbientEnabled(next);
@@ -256,15 +256,15 @@ export function SettingsModal(): JSX.Element | null {
             </div>
             <div class="shell-toggle-row" style={{ marginTop: '8px' }}>
               <span class="shell-radio-text">
-                <span>Spatial 3D Sound Effects</span>
-                <span class="shell-muted">Footsteps, doors, switches, golf bay, pool table &amp; gym</span>
+                <span>Spatial sound effects</span>
+                <span class="shell-muted">Footsteps, doors, switches, and interactive objects</span>
               </span>
               <button
                 type="button"
                 class={`shell-switch${sfxEnabled ? ' is-on' : ''}`}
                 role="switch"
                 aria-checked={sfxEnabled}
-                aria-label="Spatial 3D Sound Effects"
+                aria-label="Spatial sound effects"
                 onClick={() => {
                   const next = !sfxEnabled;
                   ctl.api.audio?.setSfxEnabled(next);
@@ -314,13 +314,13 @@ export function SettingsModal(): JSX.Element | null {
             <h3>App &amp; tutorial</h3>
             <div class="shell-toggle-row" style={{ marginBottom: '10px' }}>
               <span class="shell-radio-text">
-                <span>Hus.js Digital Twin Web App (PWA)</span>
+                <span>Installable web app</span>
                 <span class="shell-muted">
                   {pwaInstalled.value
-                    ? 'Installed — running as a standalone app with offline caching'
+                    ? 'Installed: running as a standalone app with offline caching'
                     : pwaCanInstall.value
                       ? 'Install to your home screen or desktop dock for full-screen access'
-                      : 'Add to Home Screen / Install from your browser menu for full-screen app mode'}
+                      : 'Add to home screen or install from your browser menu for full-screen mode'}
                 </span>
               </span>
               {pwaCanInstall.value && !pwaInstalled.value && (

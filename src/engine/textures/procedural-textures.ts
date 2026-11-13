@@ -76,7 +76,7 @@ export function createNaturalOakJoineryTextures(): {
       (cCtx, bCtx) => {
         const clampByte = (v: number): number => Math.max(0, Math.min(255, Math.round(v)));
 
-        // Issue #14: Richer warm honey European oak base (#be986b) so skirtings, architraves & stripped joinery
+        // Warm honey European oak base (#be986b) so skirtings, architraves & stripped joinery
         // read as authentic warm oiled oak rather than pale bleached beige
         const baseR = 190; // #be
         const baseG = 152; // #98

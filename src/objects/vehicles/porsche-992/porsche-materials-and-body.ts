@@ -406,15 +406,6 @@ export function createPorsche992Materials(): Porsche992Materials {
   };
 }
 
-export function smoothstep(edge0: number, edge1: number, x: number): number {
-  const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
-  return t * t * (3 - 2 * t);
-}
-
-export function lerp(a: number, b: number, t: number): number {
-  return a + (b - a) * t;
-}
-
 /**
  * Evaluates a piecewise monotone-clamped cubic Hermite spline through sorted `(x, y)` control knots
  * so there is zero overshoot between stations.
@@ -449,20 +440,18 @@ export function evalSpline(x: number, knots: readonly (readonly [number, number]
 /**
  * Plan-view wrap-around shift `xWrapShift(x, z)`:
  * Curves the outer front bumper corners rearward (`+x`) and outer rear bumper corners
- * forward (`-x`) so the nose and tail have the sculpted 992 plan-view curvature seen in the photo.
+ * forward (`-x`) so the nose and tail have the sculpted 992 plan-view curvature.
  */
 export function getPlanWrapShiftX(x: number, z: number): number {
-  const noseWrap = smoothstep(-1.72, -2.24, x);
-  const tailWrap = smoothstep(1.75, 2.24, x);
+  const noseWrap = 1 - THREE.MathUtils.smoothstep(x, -2.24, -1.72);
+  const tailWrap = THREE.MathUtils.smoothstep(x, 1.75, 2.24);
   const zNorm = Math.min(1.18, Math.abs(z) / 0.90);
   return noseWrap * Math.pow(zNorm, 1.85) * 0.175 - tailWrap * Math.pow(zNorm, 1.9) * 0.185;
 }
 
-// ============================================================================
 // AUTHENTIC PORSCHE 911 (992.2) TURBO S LONGITUDINAL FEATURE CURVES
 // (`x = -2.24m` front bumper nose to `x = +2.24m` rear bumper tail, `L = 4.48m`,
 //  wheelbase `2.45m`: front axle at `x = -1.25m`, rear axle at `x = +1.20m`)
-// ============================================================================
 
 /**
  * 1. Centerline profile `yCenter(x)`:
@@ -602,21 +591,21 @@ export function sampleMonocoqueHalfProfile(x: number, nv: number): [number, numb
   const zMax = evalSpline(x, BODY_WIDTH_Z_KNOTS);
   const zCrown = Math.min(zMax * 0.82, evalSpline(x, CROWN_WIDTH_Z_KNOTS));
 
-  const frontApproach = smoothstep(-1.62, -2.24, x);
-  const rearDeparture = smoothstep(1.56, 2.24, x);
+  const frontApproach = 1 - THREE.MathUtils.smoothstep(x, -2.24, -1.62);
+  const rearDeparture = THREE.MathUtils.smoothstep(x, 1.56, 2.24);
   const yBaseSill = 0.13 + frontApproach * 0.032 + rearDeparture * 0.055;
   const yArchCut = sampleWheelArchCutoutY(x, yBaseSill);
 
-  const hoodWeight = (1 - smoothstep(-0.98, -0.78, x)) * smoothstep(-2.14, -1.94, x);
-  const cabinWeight = smoothstep(-0.92, -0.62, x) * (1 - smoothstep(1.42, 1.85, x));
+  const hoodWeight = (1 - THREE.MathUtils.smoothstep(x, -0.98, -0.78)) * THREE.MathUtils.smoothstep(x, -2.14, -1.94);
+  const cabinWeight = THREE.MathUtils.smoothstep(x, -0.92, -0.62) * (1 - THREE.MathUtils.smoothstep(x, 1.42, 1.85));
 
   // Side intercooler intake recess on the Turbo S rear fender leading flank (`x = 0.54..0.92m`)
   const intakeLongitudinal =
-    smoothstep(0.52, 0.64, x) * (1 - smoothstep(0.78, 0.94, x));
+    THREE.MathUtils.smoothstep(x, 0.52, 0.64) * (1 - THREE.MathUtils.smoothstep(x, 0.78, 0.94));
 
   // Lower door aero undercut channel (`x = -0.82..+0.68m`) that feeds into the widebody rear haunch
   const doorFlankWeight =
-    smoothstep(-0.86, -0.55, x) * (1 - smoothstep(0.45, 0.78, x));
+    THREE.MathUtils.smoothstep(x, -0.86, -0.55) * (1 - THREE.MathUtils.smoothstep(x, 0.45, 0.78));
 
   const pts: [number, number][] = [];
   for (let j = 0; j <= nv; j++) {
@@ -633,9 +622,9 @@ export function sampleMonocoqueHalfProfile(x: number, nv: number): [number, numb
       y = yCenter + camber;
     } else if (v <= 0.58) {
       const u = (v - 0.32) / 0.26;
-      const shelfBlend = smoothstep(0.0, 1.0, u);
+      const shelfBlend = THREE.MathUtils.smoothstep(u, 0.0, 1.0);
       const glassSlopeU = Math.min(1, u * 1.38);
-      const yCabinTransition = lerp(
+      const yCabinTransition = THREE.MathUtils.lerp(
         yCenter,
         yShoulder,
         0.74 * glassSlopeU + 0.26 * shelfBlend * shelfBlend
@@ -643,32 +632,32 @@ export function sampleMonocoqueHalfProfile(x: number, nv: number): [number, numb
       // Iconic 911 cannon-barrel raised front fender pontoon dome (`u = 0.15..0.85`)
       const pontoonArch = hoodWeight * 0.036 * Math.sin(Math.pow(u, 0.85) * Math.PI);
       y =
-        lerp(yCenter, yShoulder, shelfBlend) * (1 - cabinWeight) +
+        THREE.MathUtils.lerp(yCenter, yShoulder, shelfBlend) * (1 - cabinWeight) +
         yCabinTransition * cabinWeight +
         pontoonArch;
-      z = lerp(zCrown, zMax * 0.94, Math.pow(u, 0.82));
+      z = THREE.MathUtils.lerp(zCrown, zMax * 0.94, Math.pow(u, 0.82));
     } else if (v <= 0.90) {
       const u = (v - 0.58) / 0.32;
-      const yFlankNominal = lerp(yShoulder, yBaseSill + 0.035, u);
+      const yFlankNominal = THREE.MathUtils.lerp(yShoulder, yBaseSill + 0.035, u);
       const yClampedMin = yArchCut + 0.022 + (1 - u) * 0.04;
-      y = Math.max(yFlankNominal, lerp(yShoulder, yClampedMin, u));
+      y = Math.max(yFlankNominal, THREE.MathUtils.lerp(yShoulder, yClampedMin, u));
 
       const flankBelly = Math.sin(u * Math.PI * 0.82);
       // Taut lower door sculpture + flared lower rocker shelf (`u > 0.72`)
       const doorSculptureZ =
-        doorFlankWeight * (-0.014 * Math.sin(u * Math.PI) + smoothstep(0.68, 0.95, u) * 0.022);
-      z = lerp(zMax * 0.94, zMax * 0.96, u) + flankBelly * 0.038 + doorSculptureZ;
+        doorFlankWeight * (-0.014 * Math.sin(u * Math.PI) + THREE.MathUtils.smoothstep(u, 0.68, 0.95) * 0.022);
+      z = THREE.MathUtils.lerp(zMax * 0.94, zMax * 0.96, u) + flankBelly * 0.038 + doorSculptureZ;
 
       if (intakeLongitudinal > 0.01) {
-        const intakeV = smoothstep(0.16, 0.32, u) * (1 - smoothstep(0.58, 0.76, u));
+        const intakeV = THREE.MathUtils.smoothstep(u, 0.16, 0.32) * (1 - THREE.MathUtils.smoothstep(u, 0.58, 0.76));
         z -= intakeLongitudinal * intakeV * 0.056;
       }
     } else {
       const u = (v - 0.90) / 0.10;
-      const yTop = Math.max(lerp(yShoulder, yBaseSill + 0.035, 1.0), yArchCut + 0.022);
-      y = lerp(yTop, yArchCut, u);
-      const isWheelArch = smoothstep(yBaseSill + 0.01, yBaseSill + 0.12, yArchCut);
-      const tuckIn = lerp(0.052, 0.018, isWheelArch);
+      const yTop = Math.max(THREE.MathUtils.lerp(yShoulder, yBaseSill + 0.035, 1.0), yArchCut + 0.022);
+      y = THREE.MathUtils.lerp(yTop, yArchCut, u);
+      const isWheelArch = THREE.MathUtils.smoothstep(yArchCut, yBaseSill + 0.01, yBaseSill + 0.12);
+      const tuckIn = THREE.MathUtils.lerp(0.052, 0.018, isWheelArch);
       z = zMax * 0.96 - u * tuckIn;
     }
 
@@ -689,7 +678,7 @@ export function sampleLateralSurfaceZAtXY(x: number, yTarget: number): number {
     const yMinSeg = Math.min(y0, y1);
     if (yTarget <= yMaxSeg && yTarget >= yMinSeg) {
       const t = Math.abs(y0 - y1) > 1e-5 ? (yTarget - y0) / (y1 - y0) : 0;
-      return lerp(z0, z1, t);
+      return THREE.MathUtils.lerp(z0, z1, t);
     }
     const diff = Math.abs(y0 - yTarget);
     if (diff < bestDiff) {
@@ -720,7 +709,7 @@ export function createSideWindowDloGeometry(
   const evalDloTopY = (x: number): number => {
     if (x < -0.30) {
       const u = Math.max(0, Math.min(1, (x - -0.82) / (-0.30 - -0.82)));
-      return lerp(0.875, 1.195, Math.pow(u, 0.92)) + marginY;
+      return THREE.MathUtils.lerp(0.875, 1.195, Math.pow(u, 0.92)) + marginY;
     }
     const u = Math.max(0, Math.min(1, (x - -0.30) / (0.96 - -0.30)));
     const arch = 1.195 + 0.045 * Math.sin(u * Math.PI * 0.65) - 0.25 * Math.pow(u, 1.55);
@@ -729,8 +718,8 @@ export function createSideWindowDloGeometry(
 
   const evalDloBotY = (x: number): number => {
     const u = Math.max(0, Math.min(1, (x - -0.82) / (0.96 - -0.82)));
-    const rearSweep = smoothstep(0.62, 1.0, u);
-    return lerp(0.872, 0.885, u) + rearSweep * 0.060 - marginY;
+    const rearSweep = THREE.MathUtils.smoothstep(u, 0.62, 1.0);
+    return THREE.MathUtils.lerp(0.872, 0.885, u) + rearSweep * 0.060 - marginY;
   };
 
   for (const sideZ of [-1, 1] as const) {
@@ -738,13 +727,13 @@ export function createSideWindowDloGeometry(
     for (let ix = 0; ix <= segX; ix++) {
       const tx = ix / segX;
       const shapedTx = 0.5 - 0.5 * Math.cos(tx * Math.PI);
-      const x = lerp(xStart, xEnd, lerp(tx, shapedTx, 0.55));
+      const x = THREE.MathUtils.lerp(xStart, xEnd, THREE.MathUtils.lerp(tx, shapedTx, 0.55));
       const yBot = evalDloBotY(x);
       const yTop = Math.max(yBot + 0.004, evalDloTopY(x));
 
       for (let iy = 0; iy <= segY; iy++) {
         const ty = iy / segY;
-        const py = lerp(yBot, yTop, ty);
+        const py = THREE.MathUtils.lerp(yBot, yTop, ty);
         const zSurf = sampleLateralSurfaceZAtXY(x, py);
         const pz = sideZ * (zSurf + outwardZOffset);
         const vx = x + getPlanWrapShiftX(x, pz);
@@ -796,7 +785,7 @@ export function createUnifiedPorsche992BodyGeometry(): THREE.BufferGeometry {
   for (let i = 0; i <= nx; i++) {
     const t = i / nx;
     const shapedT = 0.5 - 0.5 * Math.cos(t * Math.PI);
-    const x = lerp(xMin, xMax, lerp(t, shapedT, 0.35));
+    const x = THREE.MathUtils.lerp(xMin, xMax, THREE.MathUtils.lerp(t, shapedT, 0.35));
     const halfPts = sampleMonocoqueHalfProfile(x, nv);
 
     for (let k = -nv; k <= nv; k++) {
@@ -822,7 +811,7 @@ export function createUnifiedPorsche992BodyGeometry(): THREE.BufferGeometry {
       const vFrac = j / nv;
       const [, pzOrig] = lastHalfPts[j]!;
       const pz = signZ * pzOrig * tuckScaleZ;
-      const py = lerp(targetCenterY, 0.185, Math.pow(vFrac, 0.75));
+      const py = THREE.MathUtils.lerp(targetCenterY, 0.185, Math.pow(vFrac, 0.75));
       const vx = extraX + getPlanWrapShiftX(extraX, pz);
 
       positions.push(vx, py, pz);
@@ -873,14 +862,14 @@ export function createConformalBodyPatchGeometry(
     const baseVertex = positions.length / 3;
     for (let ix = 0; ix <= segX; ix++) {
       const tx = ix / segX;
-      const x = lerp(xStart, xEnd, tx);
+      const x = THREE.MathUtils.lerp(xStart, xEnd, tx);
       const halfPts = sampleMonocoqueHalfProfile(x, nv);
       const v0 = vStartFunc(x);
       const v1 = vEndFunc(x);
 
       for (let iv = 0; iv <= segV; iv++) {
         const tv = iv / segV;
-        const v = mirrorBothSides ? lerp(v0, v1, tv) : lerp(-v1, v1, tv);
+        const v = mirrorBothSides ? THREE.MathUtils.lerp(v0, v1, tv) : THREE.MathUtils.lerp(-v1, v1, tv);
         const absV = Math.abs(v);
         const sign = mirrorBothSides ? sideZ : v < 0 ? -1 : 1;
 
@@ -891,8 +880,8 @@ export function createConformalBodyPatchGeometry(
 
         const p0 = halfPts[j0]!;
         const p1 = halfPts[j1]!;
-        const py = lerp(p0[0], p1[0], frac) + outwardOffset * 0.85;
-        const pz = sign * (lerp(p0[1], p1[1], frac) + outwardOffset * 0.65);
+        const py = THREE.MathUtils.lerp(p0[0], p1[0], frac) + outwardOffset * 0.85;
+        const pz = sign * (THREE.MathUtils.lerp(p0[1], p1[1], frac) + outwardOffset * 0.65);
         const vx = x + getPlanWrapShiftX(x, pz);
 
         positions.push(vx, py, pz);
@@ -960,8 +949,8 @@ export function createConformalEllipticalHeadlightPatch(
       const p1 = halfPts[j1]!;
 
       const domeLift = outwardOffset + (1 - fracR * fracR) * 0.0065;
-      const py = lerp(p0[0], p1[0], frac) + domeLift * 0.88;
-      const pz = sideZ * (lerp(p0[1], p1[1], frac) + domeLift * 0.48);
+      const py = THREE.MathUtils.lerp(p0[0], p1[0], frac) + domeLift * 0.88;
+      const pz = sideZ * (THREE.MathUtils.lerp(p0[1], p1[1], frac) + domeLift * 0.48);
       const vx = x + getPlanWrapShiftX(x, pz) - domeLift * 0.25;
 
       positions.push(vx, py, pz);
@@ -1096,7 +1085,7 @@ export function buildPorsche992BodyAndUnderbody(
   mats: Porsche992Materials,
   namePrefix = 'porsche992TurboS'
 ): void {
-  // 0. Soft Ambient Occlusion Contact Shadow Pad + Plan-Conformal Undertray
+  // Soft Ambient Occlusion Contact Shadow Pad + Plan-Conformal Undertray
   const shadowPlane = new THREE.Mesh(
     new THREE.PlaneGeometry(4.76, 2.12),
     new THREE.MeshBasicMaterial({
@@ -1121,7 +1110,7 @@ export function buildPorsche992BodyAndUnderbody(
   undertray.position.set(0, 0.145, 0);
   carGroup.add(undertray);
 
-  // 1. Unified Smooth Monocoque 992.2 Widebody Shell (`porsche992TurboS.bodyShell`)
+  // Unified Smooth Monocoque 992.2 Widebody Shell (`porsche992TurboS.bodyShell`)
   const bodyShellGeo = createUnifiedPorsche992BodyGeometry();
   const bodyShellMesh = new THREE.Mesh(bodyShellGeo, mats.oceanBlueBodyMat);
   bodyShellMesh.name = `${namePrefix}.bodyShell`;
@@ -1129,7 +1118,7 @@ export function buildPorsche992BodyAndUnderbody(
   bodyShellMesh.receiveShadow = true;
   carGroup.add(bodyShellMesh);
 
-  // 1B. Gloss-Black Panoramic Glass Sunroof Panel (`x = -0.28..+0.44m`) matching the reference photo
+  // Gloss-Black Panoramic Glass Sunroof Panel (`x = -0.28..+0.44m`)
   const sunroofGeo = createConformalBodyPatchGeometry(
     -0.28,
     0.44,
@@ -1144,7 +1133,7 @@ export function buildPorsche992BodyAndUnderbody(
   sunroofMesh.name = `${namePrefix}.panoramicSunroof`;
   carGroup.add(sunroofMesh);
 
-  // 1C. Crisp 992 Frunk Hood Shut-Line & Twin Longitudinal Hood Crease Accents (`x = -2.06..-0.94m`)
+  // Crisp 992 Frunk Hood Shut-Line & Twin Longitudinal Hood Crease Accents (`x = -2.06..-0.94m`)
   for (const sideZ of [-1, 1] as const) {
     const shutLineGeo = createConformalBodyPatchGeometry(
       -2.05,
@@ -1176,7 +1165,7 @@ export function buildPorsche992BodyAndUnderbody(
   frontTransverseShutMesh.name = `${namePrefix}.frunkFrontShutLine`;
   carGroup.add(frontTransverseShutMesh);
 
-  // 1D. Right-Front Fender Circular Fuel Filler Flap (`x = -0.96m, v = 0.44..0.52, sideZ = +1`) visible in reference photo
+  // Right-Front Fender Circular Fuel Filler Flap (`x = -0.96m, v = 0.44..0.52, sideZ = +1`)
   const fillerFlapRingGeo = createConformalEllipticalHeadlightPatch(-0.96, 0.48, 0.058, 0.042, 0.002, 1);
   const fillerFlapRing = new THREE.Mesh(fillerFlapRingGeo, mats.glossBlackTrimMat);
   fillerFlapRing.name = `${namePrefix}.fuelFillerFlap.seam`;
@@ -1218,8 +1207,8 @@ export function buildPorsche992BodyAndUnderbody(
     const rockerPts: THREE.Vector3[] = [];
     for (let i = 0; i <= 20; i++) {
       const t = i / 20;
-      const rx = lerp(-0.86, 0.80, t);
-      const flareZ = lerp(0.842, 0.905, Math.pow(t, 1.45));
+      const rx = THREE.MathUtils.lerp(-0.86, 0.80, t);
+      const flareZ = THREE.MathUtils.lerp(0.842, 0.905, Math.pow(t, 1.45));
       rockerPts.push(new THREE.Vector3(rx, 0.142, sideZ * flareZ));
     }
     const rockerCurve = new THREE.CatmullRomCurve3(rockerPts);

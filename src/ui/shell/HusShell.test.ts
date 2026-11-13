@@ -8,7 +8,7 @@ import {
   TERRAIN_SCULPT_DEFAULT_STRENGTH_M,
   type TerrainSculptSnapshot,
 } from '../../core/geo/terrain-sculpt.ts';
-import { getLoadingScreen, HUS_RIBBON_MARK_SVG } from './loading.ts';
+import { getLoadingScreen } from './loading.ts';
 import { mountHusShell } from './mount-shell.tsx';
 
 class FakeClassList {
@@ -706,16 +706,14 @@ describe('Self-contained <HusShell /> & dynamic loading screen (zero index.html 
       // Verify dynamic loading screen works on bareDiv without #loading-screen in index.html
       const loading = getLoadingScreen(
         bareDiv as unknown as HTMLElement,
-        'Case Study House #22 — Stahl House'
+        'Case Study House #22 (Stahl House)'
       );
       const loadingScreenEl = bareDiv.querySelector('.loading-screen');
       expect(loadingScreenEl).not.toBeNull();
       expect(bareDiv.querySelector('.loading-card')).not.toBeNull();
       expect(bareDiv.querySelector('.loading-mark svg')).not.toBeNull();
-      expect(HUS_RIBBON_MARK_SVG).toContain('viewBox="0 0 64 64"');
-      expect(HUS_RIBBON_MARK_SVG).toContain('stop-color="#F25A2E"');
       expect(bareDiv.querySelector('.loading-title')?.textContent).toBe(
-        'Case Study House #22 — Stahl House'
+        'Case Study House #22 (Stahl House)'
       );
       // Verify .loading-label is rendered before .loading-bar in .loading-card
       const cardChildren = bareDiv.querySelector('.loading-card')?.children ?? [];

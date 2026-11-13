@@ -95,7 +95,7 @@ export interface KnxPushButtonParams {
   readonly longPressMs: number;
 }
 
-/** A wall push-button (Corston dolly toggle on a KNX bus coupler) with 1–3 gangs. */
+/** A wall push-button (toggle switch on a KNX bus coupler) with 1–3 gangs. */
 export interface KnxPushButtonDevice {
   readonly pa: string;
   readonly name: string;

@@ -75,9 +75,7 @@ export function mountTapOnFixture(
   return tap;
 }
 
-// ---------------------------------------------------------------------------
 // Shared Geometric Primitives (Collection-Accurate Collars, Spouts & Handles)
-// ---------------------------------------------------------------------------
 
 const OCT_AF_TO_RADIUS = 1 / (2 * Math.cos(Math.PI / 8));
 
@@ -420,9 +418,7 @@ export function buildPerrinRoweBasinWaste(opts: {
   return group;
 }
 
-// ---------------------------------------------------------------------------
-// 1. Unified Parametric Perrin & Rowe Basin Tap Dispatcher
-// ---------------------------------------------------------------------------
+// Unified Parametric Perrin & Rowe Basin Tap Dispatcher
 
 function addDeckBaseCollar(
   parent: THREE.Group,
@@ -1080,9 +1076,7 @@ export function buildPerrinRoweBasinTap(opts: PerrinRoweBasinTapOptions): THREE.
   });
 }
 
-// ---------------------------------------------------------------------------
-// 2. Unified Parametric Perrin & Rowe Kitchen Tap Dispatcher
-// ---------------------------------------------------------------------------
+// Unified Parametric Perrin & Rowe Kitchen Tap Dispatcher
 
 /**
  * Builds a parametric Perrin & Rowe kitchen mixer across all 4 models
@@ -1445,9 +1439,7 @@ export function buildPerrinRoweKitchenTap(opts: PerrinRoweKitchenTapOptions): TH
   });
 }
 
-// ---------------------------------------------------------------------------
 // Internal Slot Resolution Helpers for Sanitaryware & Joinery Builders
-// ---------------------------------------------------------------------------
 
 export function buildBasinTapFromSpec(
   spec: PerrinRoweBasinTapSpec,

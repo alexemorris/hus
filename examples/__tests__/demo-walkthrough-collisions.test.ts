@@ -280,8 +280,8 @@ function buildPostBatchWalkthroughRig(house: Pick<typeof simpleHouse, 'createSce
   };
 }
 
-describe('1PV Post-Batch Walkthrough Collisions, Door Auto-Barge & Staircase Ascent/Descent', () => {
-  it('simple-house: blocks walls/furniture/balustrades, auto-barges doors, and climbs/descends stairs post-batch', () => {
+describe('First-Person Walkthrough Collisions, Door Auto-Barge & Staircase Ascent/Descent', () => {
+  it('simple-house: blocks walls/furniture/balustrades, auto-barges doors, and climbs/descends stairs', () => {
     const rig = buildPostBatchWalkthroughRig(simpleHouse);
     // Simulate Ground-only floorViewMode before entering walkthrough to verify walkthrough forces all floors visible
     rig.cutaways.setFloorViewMode('ground');
@@ -405,7 +405,7 @@ describe('1PV Post-Batch Walkthrough Collisions, Door Auto-Barge & Staircase Asc
     expect(Math.abs(backInHall.y - 0.0)).toBeLessThan(0.02);
   }, 60_000);
 
-  it('simple-flat: blocks extruded walls & furniture and auto-barges all apartment doors post-batch', () => {
+  it('simple-flat: blocks extruded walls & furniture and auto-barges all apartment doors', () => {
     const rig = buildPostBatchWalkthroughRig(simpleFlat);
 
     // Extruded perimeter & spine partition walls (BufferGeometry from extrudePlanarSolidWithHoles)

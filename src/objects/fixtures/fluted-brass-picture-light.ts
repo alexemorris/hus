@@ -44,7 +44,7 @@ export function buildFlutedBrassPictureLight(
   wallLightGroup.name = name;
   wallLightGroup.userData.zone = options.zone;
 
-  // 1. Circular Stepped Antique-Brass Wall Rosette Backplate with beaded rim (facing +Z into the room)
+  // Circular Stepped Antique-Brass Wall Rosette Backplate with beaded rim (facing +Z into the room)
   const backplate = new THREE.Mesh(new THREE.CylinderGeometry(0.044, 0.048, 0.014, 24), activeMats.brass);
   backplate.name = `${name}.backplate`;
   backplate.rotation.x = Math.PI / 2;
@@ -63,7 +63,7 @@ export function buildFlutedBrassPictureLight(
   centerBoss.position.set(0, 0, 0.018);
   wallLightGroup.add(centerBoss);
 
-  // 2. Curved Swan-Neck Antique-Brass Arm arching outward (+Z) and slightly down to hold the horizontal shade
+  // Curved Swan-Neck Antique-Brass Arm arching outward (+Z) and slightly down to hold the horizontal shade
   const swanArmRise = new THREE.Mesh(new THREE.CylinderGeometry(0.0065, 0.0075, 0.095, 12), activeMats.brass);
   if (!swanArmRise.name) swanArmRise.name = 'fixture.pictureLight.swanArmRise';
   swanArmRise.rotation.x = Math.PI * 0.38;
@@ -95,7 +95,7 @@ export function buildFlutedBrassPictureLight(
   centerStrap.position.set(0, shadeY, shadeZ);
   wallLightGroup.add(centerStrap);
 
-  // 3. Horizontal Fluted / Reeded Cylindrical Brass Picture-Light Shade across the top of the picture
+  // Horizontal Fluted / Reeded Cylindrical Brass Picture-Light Shade across the top of the picture
   const shadeW = options.shadeWidth ?? 0.34;
   const shadeR = 0.022;
   const shadeCore = new THREE.Mesh(new THREE.CylinderGeometry(shadeR, shadeR, shadeW, 20), activeMats.brass);
@@ -135,7 +135,7 @@ export function buildFlutedBrassPictureLight(
     wallLightGroup.add(finial);
   }
 
-  // 4. Warm Downward Diffuser Slit illuminating the picture beneath
+  // Warm Downward Diffuser Slit illuminating the picture beneath
   const glowSlit = new THREE.Mesh(new THREE.BoxGeometry(shadeW - 0.024, 0.012, 0.026), mats.glow);
   glowSlit.name = `${name}.bulb`;
   glowSlit.position.set(0, shadeY - shadeR + 0.001, shadeZ - 0.002);

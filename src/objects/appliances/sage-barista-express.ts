@@ -291,7 +291,7 @@ function sampleSquircleRing(
 }
 
 /**
- * Build a museum-grade 1:1 procedural 3D model of the **Sage Barista Express (BES875BSS)**
+ * Build a 1:1 procedural 3D model of the **Sage Barista Express (BES875BSS)**
  * in Brushed Stainless Steel, sculpted from official studio orthographics and real dimensions:
  * - Width:  ~318 mm (X in [-0.159, +0.159])
  * - Depth:  ~351 mm (Z in [-0.160, +0.191] including locked 54 mm portafilter)
@@ -321,7 +321,7 @@ export function buildSageBaristaExpress(
     return mesh;
   };
 
-  // ── Physical Material Suite ──
+  // Physical Material Suite
 
   const {
     matBrushedSS,
@@ -351,9 +351,7 @@ export function buildSageBaristaExpress(
     matTempStrip,
   } = getSageMaterialSuite();
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // NON-SLIP FEET, LOWER CHASSIS PLINTH & CURVED DRIP TRAY (y = 0..0.060 m)
-  // ═══════════════════════════════════════════════════════════════════════════
   const baseGroup = new THREE.Group();
   baseGroup.name = `${namePrefix}.baseAndDripTray`;
   root.add(baseGroup);
@@ -512,9 +510,7 @@ export function buildSageBaristaExpress(
   applyShadow(rimMesh);
   baseGroup.add(rimMesh);
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // SEAMLESS MONOCOQUE TOWER, BREW BAY & REAR TANK (y = 0.056..0.336 m)
-  // ═══════════════════════════════════════════════════════════════════════════
   const housingGroup = new THREE.Group();
   housingGroup.name = `${namePrefix}.housing`;
   root.add(housingGroup);
@@ -705,9 +701,7 @@ export function buildSageBaristaExpress(
   applyShadow(tankLid);
   tankGroup.add(tankLid);
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // TOP CUP-WARMING DECK & CERAMIC DEMITASSE CUPS (y = 0.334..0.382 m)
-  // ═══════════════════════════════════════════════════════════════════════════
   const topDeckGroup = new THREE.Group();
   topDeckGroup.name = `${namePrefix}.topCupWarmingDeck`;
   root.add(topDeckGroup);
@@ -801,9 +795,7 @@ export function buildSageBaristaExpress(
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // SQUAT BEAN HOPPER WITH VERTICAL THROAT COLLAR & FINE ESPRESSO BEANS
-  // ═══════════════════════════════════════════════════════════════════════════
   const hopperGroup = new THREE.Group();
   hopperGroup.name = `${namePrefix}.beanHopper`;
   hopperGroup.position.set(-0.056, 0, 0.004);
@@ -916,9 +908,7 @@ export function buildSageBaristaExpress(
   lockDialKnob.position.y = 0.4024;
   hopperGroup.add(lockDialKnob);
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // TILTED FRONT CONTROL FASCIA, UNOBSTRUCTED PRESSURE GAUGE & SIDE DIALS
-  // ═══════════════════════════════════════════════════════════════════════════
   const controlsGroup = new THREE.Group();
   controlsGroup.name = `${namePrefix}.frontControlFascia`;
   root.add(controlsGroup);
@@ -1190,7 +1180,7 @@ export function buildSageBaristaExpress(
   dialDisc.position.z = -0.0034;
   gaugeGroup.add(dialDisc);
 
-  // 3D tapered crimson gauge needle resting at 7:30 ready position (like studio photo)
+  // 3D tapered crimson gauge needle resting at 7:30 ready position
   const needleShape = new THREE.Shape();
   needleShape.moveTo(-0.0048, -0.0014);
   needleShape.lineTo(0.0185, -0.0005);
@@ -1291,10 +1281,8 @@ export function buildSageBaristaExpress(
   applyShadow(steamGripBlade);
   steamDialGroup.add(steamGripBlade);
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // BREW BAY HARDWARE: TAMPER (-0.118), OPEN CRADLE (-0.054),
   //    CHROME 54mm GROUP HEAD (+0.036), PORTAFILTER, HOT WATER & STEAM WAND (+0.115)
-  // ═══════════════════════════════════════════════════════════════════════════
   const brewBayGroup = new THREE.Group();
   brewBayGroup.name = `${namePrefix}.brewBay`;
   root.add(brewBayGroup);
@@ -1578,9 +1566,7 @@ export function buildSageBaristaExpress(
   applyShadow(fingerLoop);
   wandGripGroup.add(fingerLoop);
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // 480 ml SAGE BRUSHED STAINLESS MILK PITCHER WITH TEMP STRIP
-  // ═══════════════════════════════════════════════════════════════════════════
   if (withMilkPitcher) {
     const pitcherGroup = new THREE.Group();
     pitcherGroup.name = `${namePrefix}.milkPitcher`;

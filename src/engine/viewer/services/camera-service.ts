@@ -75,10 +75,6 @@ export class CameraService {
     return this.rig.controls.target;
   }
 
-  // ---------------------------------------------------------------------------
-  // Fly-to
-  // ---------------------------------------------------------------------------
-
   public flyToPreset(presetName: CameraPresetName | string): void {
     const walkthrough = this.host.getWalkthrough();
     if (walkthrough.isActive()) walkthrough.exit();
@@ -165,10 +161,6 @@ export class CameraService {
     this.host.refreshView();
     this.host.renderer.requestRender();
   }
-
-  // ---------------------------------------------------------------------------
-  // State
-  // ---------------------------------------------------------------------------
 
   public getPoseSnapshot(): SceneCameraPoseSnapshot {
     const pos = this.rig.getActiveCamera().position;
@@ -267,10 +259,6 @@ export class CameraService {
     s.floorViewMode = this.computeFloorViewMode(camPos, isWalkthrough);
     this.viewChanged.emit(s);
   }
-
-  // ---------------------------------------------------------------------------
-  // Projection & picking
-  // ---------------------------------------------------------------------------
 
   /** Projects a world point with the active camera to CSS px relative to the canvas. */
   public projectToScreen(x: number, y: number, z: number): ScreenPoint {

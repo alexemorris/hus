@@ -211,10 +211,6 @@ export class SceneAnnotationController {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Mode / tool state
-  // ---------------------------------------------------------------------------
-
   public isAnnotationMode(): boolean {
     return this.annotationMode;
   }
@@ -305,10 +301,6 @@ export class SceneAnnotationController {
     this.host.requestRender();
   }
 
-  // ---------------------------------------------------------------------------
-  // Callbacks
-  // ---------------------------------------------------------------------------
-
   public setOnAnnotationPick(cb: ((hit: SceneAnnotationHit) => void) | null): void {
     this.onAnnotationPick = cb;
   }
@@ -330,10 +322,6 @@ export class SceneAnnotationController {
   public setOnMeasureComplete(cb: MeasureCompleteCallback | null): void {
     this.onMeasureComplete = cb;
   }
-
-  // ---------------------------------------------------------------------------
-  // Markers & saved moves
-  // ---------------------------------------------------------------------------
 
   public syncAnnotationMarkers(
     records: readonly SceneAnnotationRecord[],
@@ -386,10 +374,6 @@ export class SceneAnnotationController {
     this.host.invalidateShadows();
     this.host.requestRender();
   }
-
-  // ---------------------------------------------------------------------------
-  // Move / rotate gizmo
-  // ---------------------------------------------------------------------------
 
   public detachMoveGizmo(): void {
     if (this.transformControls) {
@@ -505,10 +489,6 @@ export class SceneAnnotationController {
     this.host.requestRender();
   }
 
-  // ---------------------------------------------------------------------------
-  // Pointer input (called by the owning scene's pointer handlers)
-  // ---------------------------------------------------------------------------
-
   public isGizmoDragging(): boolean {
     return this.transformControls?.dragging ?? false;
   }
@@ -576,7 +556,7 @@ export class SceneAnnotationController {
    * annotation marker or an annotation tool.
    */
   public handleClick(raycaster: THREE.Raycaster, e: PointerEvent): boolean {
-    // 1. Check if clicking an existing 3D annotation marker (unless currently picking Measure Point B)
+    // Check if clicking an existing 3D annotation marker (unless currently picking Measure Point B)
     if (!this.isAwaitingMeasureEnd()) {
       const firstMarker = this.intersectMarkers(raycaster)[0];
       if (firstMarker) {
@@ -588,7 +568,7 @@ export class SceneAnnotationController {
       }
     }
 
-    // 2. If in Annotation Mode (or holding Shift), dispatch to the active tool ('pin' | 'move' | 'rotate' | 'measure')
+    // If in Annotation Mode (or holding Shift), dispatch to the active tool ('pin' | 'move' | 'rotate' | 'measure')
     if (!this.annotationMode && !e.shiftKey) {
       return false;
     }
@@ -658,10 +638,6 @@ export class SceneAnnotationController {
     }
     return true;
   }
-
-  // ---------------------------------------------------------------------------
-  // Internals
-  // ---------------------------------------------------------------------------
 
   private isRootContainerGroup(obj: THREE.Object3D): boolean {
     const layers = this.host.layers;

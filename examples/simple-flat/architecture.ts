@@ -508,9 +508,7 @@ export function buildSimpleFlatArchitecture(ctx: SceneBuilderContext): SimpleFla
   tagCutaway(addFlatBox(root, 'simpleFlat.wall.westBathroomWetTile', [0.012, westCoreH, 2.24 - 1.161], [-IN_X + 0.006, westCoreMidY, (1.161 + 2.24) * 0.5], wetTileMat, 0.85), westCut);
   tagCutaway(addFlatBox(root, 'simpleFlat.wall.westBathroomPlaster', [0.012, westCoreH, IN_Z - 0.013 - 2.243], [-IN_X + 0.006, westCoreMidY, (2.243 + IN_Z - 0.013) * 0.5], schemes.bathroom.walls), westCut);
 
-  // =========================================================================
   // 240 mm SOLID LOAD-BEARING CENTRAL SPINE WALL (`X in [-0.78, -0.54]`)
-  // =========================================================================
   const spineArchMinZ = 1.43;
   const spineArchMaxZ = 2.47;
   const spineArchTopY = 2.202;
@@ -601,10 +599,8 @@ export function buildSimpleFlatArchitecture(ctx: SceneBuilderContext): SimpleFla
     clearMinU: 1.45, clearMaxU: 2.45, clearHeightY: 2.18, trimMat,
   });
 
-  // =========================================================================
   // KNOCK-THROUGH LIVING/KITCHEN STEEL RSJ (`flat.structure.livingKitchenRsj`)
   // 203 x 133 x 30 UB at Z = -1.14 m, X in [-0.54, +4.20], on engaged piers & padstones
-  // =========================================================================
   const rsjZ = -1.14;
   const pierMinZ = -1.26;
   const pierMaxZ = -1.02;
@@ -656,9 +652,7 @@ export function buildSimpleFlatArchitecture(ctx: SceneBuilderContext): SimpleFla
   }
   root.add(rsjGroup);
 
-  // =========================================================================
   // SOLID 120 mm INTERIOR PARTITIONS (`BED_BATH_Z` & `BATH_HALL_X` — zero cracks or shafts!)
-  // =========================================================================
   const bedDoorHoleMinX = -1.85;
   const bedDoorHoleMaxX = -0.96;
   const bedDoorHoleTopY = 2.122;

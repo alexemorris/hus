@@ -33,10 +33,6 @@ function hash2DPeriodic(
   return (h >>> 0) / 4294967295;
 }
 
-function smoothstep(t: number): number {
-  return t * t * (3 - 2 * t);
-}
-
 export function seamlessValueNoise2D(
   u: number,
   v: number,
@@ -50,8 +46,8 @@ export function seamlessValueNoise2D(
   const y = vf * freqY;
   const x0 = Math.floor(x);
   const y0 = Math.floor(y);
-  const fx = smoothstep(x - x0);
-  const fy = smoothstep(y - y0);
+  const fx = THREE.MathUtils.smoothstep(x - x0, 0, 1);
+  const fy = THREE.MathUtils.smoothstep(y - y0, 0, 1);
 
   const n00 = hash2DPeriodic(x0, y0, freqX, freqY, seed);
   const n10 = hash2DPeriodic(x0 + 1, y0, freqX, freqY, seed);
@@ -419,8 +415,8 @@ export function getTimberGrainMaps(
       const y0 = Math.floor(y);
       const x1 = (x0 + 1) % gw;
       const y1 = (y0 + 1) % gh;
-      const fx = smoothstep(x - x0);
-      const fy = smoothstep(y - y0);
+      const fx = THREE.MathUtils.smoothstep(x - x0, 0, 1);
+      const fy = THREE.MathUtils.smoothstep(y - y0, 0, 1);
       const n00 = g[y0 * gw + x0]!;
       const n10 = g[y0 * gw + x1]!;
       const n01 = g[y1 * gw + x0]!;

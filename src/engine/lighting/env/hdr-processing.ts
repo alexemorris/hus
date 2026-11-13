@@ -64,11 +64,6 @@ function smoothPeriodicGrid3x3(src: Float32Array, W: number, H: number): Float32
   return dst;
 }
 
-function smoothstep(edge0: number, edge1: number, x: number): number {
-  const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
-  return t * t * (3 - 2 * t);
-}
-
 function wrapPi(angleRad: number): number {
   let theta = angleRad % (Math.PI * 2);
   while (theta > Math.PI) theta -= Math.PI * 2;
@@ -230,10 +225,10 @@ export function bakeProceduralSky(cfg: EnvPresetConfig, width = 512, height = 25
         tmpCol.lerp(glowCol, Math.min(0.85, glowFactor));
         const cloudWave =
           0.5 + 0.3 * Math.sin(az * 6.0 + ny * 9.0) + 0.2 * Math.cos(az * 15.0 - ny * 14.0);
-        const cloudBand = smoothstep(0.06, 0.35, ny) * (1 - smoothstep(0.55, 0.92, ny));
+        const cloudBand = THREE.MathUtils.smoothstep(ny, 0.06, 0.35) * (1 - THREE.MathUtils.smoothstep(ny, 0.55, 0.92));
         tmpCol.lerp(glowCol, Math.max(0, cloudWave - 0.45) * cloudBand * 0.45);
         if (ny < hedgerowH) {
-          tmpCol.lerp(groundCol, smoothstep(hedgerowH, hedgerowH * 0.35, ny) * 0.82);
+          tmpCol.lerp(groundCol, (1 - THREE.MathUtils.smoothstep(ny, hedgerowH * 0.35, hedgerowH)) * 0.82);
         }
         const disc = Math.exp(-sunDist * sunDist * 1400.0) * sunPeak;
         const corona = Math.exp(-sunDist * 9.5) * (sunPeak * 0.14);
@@ -242,8 +237,8 @@ export function bakeProceduralSky(cfg: EnvPresetConfig, width = 512, height = 25
         tmpCol.b += sunCol.b * (disc + corona);
       } else {
         const downSin = Math.sin(-elevation);
-        tmpCol.copy(pastureCol).lerp(groundCol, smoothstep(0.0, 0.38, downSin));
-        const nadirNeutralMix = smoothstep(0.06, 0.35, downSin) * 0.85;
+        tmpCol.copy(pastureCol).lerp(groundCol, THREE.MathUtils.smoothstep(downSin, 0.0, 0.38));
+        const nadirNeutralMix = THREE.MathUtils.smoothstep(downSin, 0.06, 0.35) * 0.85;
         if (nadirNeutralMix > 0) {
           const lum = 0.299 * tmpCol.r + 0.587 * tmpCol.g + 0.114 * tmpCol.b;
           tmpCol.r = tmpCol.r * (1 - nadirNeutralMix) + lum * 1.06 * nadirNeutralMix;
@@ -252,7 +247,7 @@ export function bakeProceduralSky(cfg: EnvPresetConfig, width = 512, height = 25
         }
         const bounceLift = cfg.envGroundBounceLift ?? 0;
         if (bounceLift > 0) {
-          const lift = bounceLift * smoothstep(0.02, 0.52, downSin);
+          const lift = bounceLift * THREE.MathUtils.smoothstep(downSin, 0.02, 0.52);
           tmpCol.r += lift * 1.04;
           tmpCol.g += lift * 1.00;
           tmpCol.b += lift * 0.93;
@@ -408,7 +403,7 @@ export function fuseGainmapDetailToHalfFloat(
 
     // Gentle chromaticity alignment ONLY in bright unoccluded sky/zenith (bLum > 0.14 & tLum > 0.14);
     // dark foliage/ridge silhouettes (bLum <= 0.14) use 100% pure scalar luminance gain.
-    const tintWeight = smoothstep(0.14, 0.48, Math.min(tLum, bLum)) * 0.45;
+    const tintWeight = THREE.MathUtils.smoothstep(Math.min(tLum, bLum), 0.14, 0.48) * 0.45;
     let gr = scalarGain;
     let gg = scalarGain;
     let gb = scalarGain;
@@ -514,7 +509,7 @@ export function fuseGainmapDetailToHalfFloat(
         lowLumGrid[p10]! * w10 +
         lowLumGrid[p01]! * w01 +
         lowLumGrid[p11]! * w11;
-      const skyEmissiveMask = smoothstep(0.38, 0.95, bPxLum);
+      const skyEmissiveMask = THREE.MathUtils.smoothstep(bPxLum, 0.38, 0.95);
       const addVis = skyEmissiveMask * Math.min(1.25, (bPxLum + 0.02) / (lowLum + 0.02));
 
       let r = br * gr + ar * addVis;
@@ -649,12 +644,12 @@ export function prepareHdrBuffers(
 
   for (let y = 0; y < H; y++) {
     const vTop = y / (H - 1);
-    const nadirBlend = y > yNadirStart ? smoothstep(yNadirStart, yNadirFull, y) : 0;
-    const deepNadirMix = y > yNadirStart ? smoothstep(yNadirStart, H - 1, y) * 0.72 : 0;
+    const nadirBlend = y > yNadirStart ? THREE.MathUtils.smoothstep(y, yNadirStart, yNadirFull) : 0;
+    const deepNadirMix = y > yNadirStart ? THREE.MathUtils.smoothstep(y, yNadirStart, H - 1) * 0.72 : 0;
     const envNeutralMix =
-      y > yEnvNeutralStart ? smoothstep(yEnvNeutralStart, yEnvNeutralFull, y) * 0.88 : 0;
+      y > yEnvNeutralStart ? THREE.MathUtils.smoothstep(y, yEnvNeutralStart, yEnvNeutralFull) * 0.88 : 0;
     const zenithFactor =
-      cfg.zenithDarkening > 0 && vTop < 0.48 ? smoothstep(0.48, 0.05, vTop) * cfg.zenithDarkening : 0;
+      cfg.zenithDarkening > 0 && vTop < 0.48 ? (1 - THREE.MathUtils.smoothstep(vTop, 0.05, 0.48)) * cfg.zenithDarkening : 0;
 
     const cleanX = Math.floor(((cfg.hdrSunU + 0.32) % 1.0) * W);
     const cleanIdx = (y * W + cleanX) * 4;
@@ -675,7 +670,7 @@ export function prepareHdrBuffers(
         const oldDv = vTop - 0.35;
         const oldDist = Math.hypot(du * 1.8, oldDv);
         if (oldDist < 0.14) {
-          const heal = 1 - smoothstep(0.02, 0.14, oldDist);
+          const heal = 1 - THREE.MathUtils.smoothstep(oldDist, 0.02, 0.14);
           sunHealWeight = heal * 0.88;
           r = r * (1 - sunHealWeight) + rowCleanR * sunHealWeight;
           g = g * (1 - sunHealWeight) + rowCleanG * sunHealWeight;
@@ -734,7 +729,7 @@ export function prepareHdrBuffers(
       }
       const bounceLift = cfg.envGroundBounceLift ?? 0;
       if (bounceLift > 0 && y > yEnvNeutralStart) {
-        const lift = bounceLift * smoothstep(yEnvNeutralStart, H - 1, y);
+        const lift = bounceLift * THREE.MathUtils.smoothstep(y, yEnvNeutralStart, H - 1);
         envR += lift * 1.04;
         envG += lift * 1.00;
         envB += lift * 0.93;

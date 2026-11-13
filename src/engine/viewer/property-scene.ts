@@ -60,8 +60,6 @@ type Unsubscribe = () => void;
 export class PropertyScene<
   TSecurity extends SecurityOverlay3D = SecurityOverlay3D,
 > extends ViewerComposition<TSecurity> {
-  // --- Camera ---------------------------------------------------------------------
-
   public flyToPreset(preset: CameraPresetName | string): void { this.camera.flyToPreset(preset); }
   public flyToCameraPose(pose: SceneCameraPoseSnapshot): void { this.camera.flyToCameraPose(pose); }
   public flyToRoomBounds(b: RoomFramingBounds, floor: FloorViewMode): void { this.camera.flyToRoomBounds(b, floor); }
@@ -77,16 +75,12 @@ export class PropertyScene<
   /** @deprecated use `onSurfaceDoubleClick` (multi-listener). */
   public setOnSurfaceDoubleClick(cb: ((point: THREE.Vector3) => void) | null): void { this.input.surfaceDoubleClick.setSlot(cb); }
 
-  // --- Floors & cutaways ------------------------------------------------------------
-
   /** Display name of the property, when its profile declares one. */
   public getPropertyName(): string | undefined { return this.profile.name; }
   /** The property's storeys, lowest first. */
   public getFloors(): readonly FloorDefinition[] { return this.cutaways.getFloors(); }
   public getFloorViewMode(): FloorViewMode { return this.cutaways.getFloorViewMode(); }
   public isCeilingCutaway(): boolean { return this.cutaways.isCeilingCutaway(); }
-
-  // --- Rooms & LOD --------------------------------------------------------------------
 
   public getCurrentRoomId(): RoomZoneId | null { return this.rooms.getCurrent(); }
   public onCurrentRoomChanged(cb: (zoneId: RoomZoneId | null) => void): Unsubscribe { return this.rooms.changed.add(cb); }
@@ -99,8 +93,6 @@ export class PropertyScene<
   public getLodController(): RoomLodController { return this.lodController; }
   public getLodDiagnostics(): RoomLodDiagnostics { return this.lodController.getDiagnostics(); }
   public getFocusedRoomShortName(): string { return this.lodController.getFocusedRoomShortName(); }
-
-  // --- Graphics -------------------------------------------------------------------------
 
   public getGraphicsMode(): GraphicsMode { return this.graphics.getMode(); }
   public setGraphicsMode(mode: GraphicsMode): void { this.graphics.setMode(mode); }
@@ -119,21 +111,15 @@ export class PropertyScene<
   public isFxaaEnabled(): boolean { return this.graphics.isFxaaEnabled(); }
   public setFxaaEnabled(enabled: boolean): void { this.graphics.setFxaaEnabled(enabled); }
 
-  // --- Trade views ------------------------------------------------------------------------
-
   public getTradeView(): TradeView { return this.trades.getView(); }
   public setTradeView(view: TradeView): void { this.trades.setView(view); }
   public onTradeViewChanged(cb: (view: TradeView) => void): Unsubscribe { return this.trades.changed.add(cb); }
   public exportServiceSchedule(view?: TradeView): string { return this.trades.exportServiceSchedule(view); }
 
-  // --- Walkthrough --------------------------------------------------------------------------
-
   public getWalkthrough(): WalkthroughController { return this.walkthrough; }
   public getWalkthroughSpawns(): readonly WalkthroughSpawnPoint[] { return this.walkthrough.getSpawns(); }
   public isWalkthroughMode(): boolean { return this.walkthrough.isActive(); }
   public toggleWalkthroughMode(spawnId?: string): boolean { return this.setWalkthroughMode(!this.walkthrough.isActive(), spawnId); }
-
-  // --- Devices, lighting & overlays -----------------------------------------------------------
 
   public handleInteractableClick(interactableId: string): boolean { return this.devices.handleInteractable(interactableId); }
   public onDeviceStateChanged(cb: () => void): Unsubscribe { return this.devices.changed.add(cb); }
@@ -153,8 +139,6 @@ export class PropertyScene<
   public toggleUfhZone(zoneId: UfhZoneId): boolean { return this.devices.toggleUfhZone(zoneId); }
   public setAllUfhZones(on: boolean): void { this.devices.setAllUfhZones(on); }
   public syncUniFiSecurity3D(cameras: readonly CctvCameraEntityState[], aps: readonly AccessPointEntityState[]): void { this.devices.syncSecurity(cameras, aps); }
-
-  // --- Annotation tools ---------------------------------------------------------------------------
 
   public isAnnotationMode(): boolean { return this.annotations.isActive(); }
   public setAnnotationMode(enabled: boolean): void {

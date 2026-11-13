@@ -19,10 +19,10 @@ const SCULPT_MODES: readonly {
   readonly label: string;
   readonly hint: string;
 }[] = [
-  { id: 'raise', label: 'Raise', hint: 'Lift terrain mound along brush stroke' },
-  { id: 'lower', label: 'Lower', hint: 'Carve hollow / swale along brush stroke' },
-  { id: 'smooth', label: 'Smooth', hint: 'Relax terrain toward surrounding ring average' },
-  { id: 'flatten', label: 'Flatten', hint: 'Level terrain toward initial stroke elevation' },
+  { id: 'raise', label: 'Raise', hint: 'Raise terrain along stroke' },
+  { id: 'lower', label: 'Lower', hint: 'Lower terrain along stroke' },
+  { id: 'smooth', label: 'Smooth', hint: 'Smooth terrain toward surrounding height' },
+  { id: 'flatten', label: 'Flatten', hint: 'Flatten terrain to stroke start height' },
 ];
 
 export function TerrainSculptPanel(): JSX.Element | null {
@@ -39,15 +39,15 @@ export function TerrainSculptPanel(): JSX.Element | null {
       aria-label="Terrain sculpt inspector"
     >
       <header class="shell-inspector-head is-static">
-        <span class="shell-inspector-title">Terrain Sculpt</span>
-        <span class="shell-pill" title="Accumulated TerrainStamp count">
+        <span class="shell-inspector-title">Terrain sculpt</span>
+        <span class="shell-pill" title="Sculpt stamp count">
           {snap.stampCount} stamps
         </span>
         <button
           class="shell-icon-btn shell-icon-btn-sm"
           type="button"
-          title="Close Terrain Sculpt (Esc)"
-          aria-label="Close Terrain Sculpt"
+          title="Close terrain sculpt (Esc)"
+          aria-label="Close terrain sculpt"
           onClick={() => ctl.setTool('orbit')}
         >
           <Icon name="close" size={16} />
@@ -132,7 +132,7 @@ export function TerrainSculptPanel(): JSX.Element | null {
             <button
               type="button"
               class="hud-action-btn annotator-copy-btn"
-              title="Copy { kind: 'sculptStamps', ... } TerrainModifier JSON to paste into defineHouse({ terrain: { modifiers: [...] } })"
+              title="Copy terrain modifiers as JSON"
               onClick={() => {
                 void ctl.copyTerrainSculptModifier('json').then((ok) => {
                   if (ok) {
@@ -142,12 +142,12 @@ export function TerrainSculptPanel(): JSX.Element | null {
                 });
               }}
             >
-              {copyFeedback === 'json' ? 'Copied JSON!' : 'Copy TerrainModifier JSON'}
+              {copyFeedback === 'json' ? 'Copied JSON' : 'Copy modifier JSON'}
             </button>
             <button
               type="button"
               class="hud-inline-btn"
-              title="Copy sculptStamps(...) TypeScript helper snippet"
+              title="Copy terrain modifiers as TypeScript"
               onClick={() => {
                 void ctl.copyTerrainSculptModifier('ts').then((ok) => {
                   if (ok) {
@@ -157,7 +157,7 @@ export function TerrainSculptPanel(): JSX.Element | null {
                 });
               }}
             >
-              {copyFeedback === 'ts' ? 'Copied TS!' : 'Copy TS'}
+              {copyFeedback === 'ts' ? 'Copied TypeScript' : 'Copy TypeScript'}
             </button>
           </div>
         </section>

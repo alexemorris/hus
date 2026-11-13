@@ -455,7 +455,7 @@ export function buildNorthPrivacyCoreAndSteelPortalHeaders(
     readonly southPrivatePoolCut: CutawayWallDescriptor;
   }
 ): void {
-  // 1. Solid structural steel-stud & sheathing core bays inside stahl.northPrivacyWall (seals 109 mm hollow trench Z in [-6.153, -6.044])
+  // Solid structural steel-stud & sheathing core bays inside stahl.northPrivacyWall (seals 109 mm hollow trench Z in [-6.153, -6.044])
   const coreZMid = (Z0 - 0.055 + Z0 + 0.05) * 0.5; // -6.0985, Z in [-6.151, -6.046]
   const coreDepth = 0.105;
   const coreBotY = 0.002;
@@ -516,7 +516,7 @@ export function buildNorthPrivacyCoreAndSteelPortalHeaders(
   carportCap.position.set(X1 + 0.017, 2.6015, (cpZ0 + cpZ1) * 0.5);
   carportTrimGroup.add(carportCap);
 
-  // 2. Welded steelCharcoal moment-frame header / collar tie channels (102 mm wide, Y in [2.588, 2.6402])
+  // Welded steelCharcoal moment-frame header / collar tie channels (102 mm wide, Y in [2.588, 2.6402])
   // Tying all 14 4" WF H-columns along the 20' x 20' grid in root so overhead Section cutaway stays structurally continuous.
   const portalGroup = new THREE.Group();
   portalGroup.name = "stahl.steel.portalHeaders";

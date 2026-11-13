@@ -57,7 +57,7 @@ function buildStahlTestScene(): THREE.Scene {
   return scene;
 }
 
-describe('Stage 4.12 — Slope-Driven Arid Terrain Biome & Stahl House Rocky Cliff Escarpment', () => {
+describe('Slope-Driven Arid Terrain Biome & Stahl House Rocky Cliff Escarpment', () => {
   it('resolves TerrainBiomePreset defaults cleanly while keeping lush-meadow as the backwards-compatible default', () => {
     const defaultBiome = resolveTerrainBiomeConfig(undefined);
     expect(defaultBiome.preset).toBe('lush-meadow');

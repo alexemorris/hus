@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import type { SceneInteractionManager } from '../interaction/interaction-manager.ts';
 import { addCasedArchitravePortal, buildMitredWallSkirtingGeometry } from './swept-moulding.ts';
 
-
 /**
  * 2D world coordinate `[x, z]` in meters.
  */
@@ -722,7 +721,7 @@ export function buildAngledWallSegment(
       });
     }
 
-    // Step riser & bullnose tread if upperFloorY > lowerFloorY (Issue #1: Carpenter-built single-board
+    // Step riser & bullnose tread if upperFloorY > lowerFloorY (single-board
     // solid oak bullnose step tread flush with upperFloorY + recessed one-piece vertical riser,
     // with continuous lengthwise oak grain UVs mapped inside a single knot-free plank course!)
     if (highFloorY > op.lowerFloorY + 0.01 && op.stepMaterial) {
@@ -851,7 +850,7 @@ export function buildAngledWallSegment(
       group.add(handleGrip);
     }
 
-    // Hinged traditional 4-panel period door leaf + hardware (Issue #18: parented to wall group with closedAngle = 0 so it closes flush)
+    // Hinged traditional 4-panel period door leaf + hardware (parented to wall group with closedAngle = 0 so it closes flush)
     if (op.kind === 'hinged-door' && op.doorLeafMaterial) {
       const leafW = op.width - 0.022;
       const leafH = op.doorHeight - 0.02;

@@ -276,7 +276,7 @@ describe('husjs/materials — Procedural Brick, Cobblestone & Stone Masonry PBR 
   });
 
   it('applies metric world-space masonry UVs across BoxGeometry, CylinderGeometry, ExtrudeGeometry, and wall ribbons', () => {
-    // 1. BoxGeometry via applyMetricMasonryUVs with [tileW, tileH] tuple
+    // BoxGeometry via applyMetricMasonryUVs with [tileW, tileH] tuple
     const wallBox = new THREE.BoxGeometry(2.7, 2.4, 0.3);
     applyMetricMasonryUVs(wallBox, {
       tileSizeM: [UK_BRICK_TILE_W_M, UK_BRICK_TILE_H_M],
@@ -297,7 +297,7 @@ describe('husjs/materials — Procedural Brick, Cobblestone & Stone Masonry PBR 
     expect(minVerticalV).toBeCloseTo(0, 5);
     expect(maxVerticalV).toBeCloseTo(2.4 / UK_BRICK_TILE_H_M, 5);
 
-    // 2. CylinderGeometry via applyMetricMasonryUVs with radius
+    // CylinderGeometry via applyMetricMasonryUVs with radius
     const radius = 0.6;
     const drum = new THREE.CylinderGeometry(radius, radius, 1.2, 16);
     applyMetricMasonryUVs(drum, {
@@ -316,7 +316,7 @@ describe('husjs/materials — Procedural Brick, Cobblestone & Stone Masonry PBR 
     }
     expect(maxDrumU).toBeCloseTo((2 * Math.PI * radius) / UK_BRICK_TILE_W_M, 4);
 
-    // 3. Direct applyMetricBoxUVs, applyMetricCylinderUVs, applyMetricExtrudeUVs, buildMetricWallRibbonGeo
+    // Direct applyMetricBoxUVs, applyMetricCylinderUVs, applyMetricExtrudeUVs, buildMetricWallRibbonGeo
     const box2 = applyMetricBoxUVs(new THREE.BoxGeometry(1.15, 0.05, 1.15), {
       tileW: YORKSTONE_COPING_TILE_M,
     });

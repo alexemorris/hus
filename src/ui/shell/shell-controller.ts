@@ -250,9 +250,7 @@ export class ShellController {
     }
   }
 
-  // ---------------------------------------------------------------------------
   // Rooms
-  // ---------------------------------------------------------------------------
 
   public roomLabel(zoneId: RoomZoneId | null): string {
     return zoneId ? this.api.rooms.getLabel(zoneId) : PROPERTY_NAME;
@@ -266,9 +264,7 @@ export class ShellController {
     this.api.rooms.highlight(zoneId);
   }
 
-  // ---------------------------------------------------------------------------
   // Navigation
-  // ---------------------------------------------------------------------------
 
   public selectRoom(zoneId: RoomZoneId, fly = true): void {
     const { api } = this;
@@ -430,8 +426,8 @@ export class ShellController {
     const ok = await copyTextWithFallback(text);
     showToast(
       ok
-        ? `TerrainModifier ${format.toUpperCase()} copied (${tsApi.getStamps().length} stamps)`
-        : 'Could not copy TerrainModifier'
+        ? `Terrain modifiers ${format.toUpperCase()} copied (${tsApi.getStamps().length} stamps)`
+        : 'Could not copy terrain modifiers'
     );
     return ok;
   }
@@ -454,9 +450,7 @@ export class ShellController {
     tradeView.value = this.api.trades.getView();
   }
 
-  // ---------------------------------------------------------------------------
   // Graphics
-  // ---------------------------------------------------------------------------
 
   /** The engine persists the chosen mode; the shell only mirrors it. */
   public setGraphicsMode(mode: GraphicsMode): void {
@@ -471,9 +465,7 @@ export class ShellController {
     graphicsFps.value = Number.isFinite(stats.fps) && stats.fps > 0 ? stats.fps : null;
   }
 
-  // ---------------------------------------------------------------------------
   // Lights & devices
-  // ---------------------------------------------------------------------------
 
   /** Throttled mirror of KNX live levels into the panel. */
   private pushLiveLevels(levels: Readonly<CircuitLevels>): void {
@@ -671,9 +663,7 @@ export class ShellController {
     if (!handled) showToast(`${label} isn't available right now`);
   }
 
-  // ---------------------------------------------------------------------------
   // Notes
-  // ---------------------------------------------------------------------------
 
   public focusNote(id: number): void {
     this.notesTools.focusRecord(id);
@@ -736,9 +726,7 @@ export class ShellController {
     });
   }
 
-  // ---------------------------------------------------------------------------
   // Sharing
-  // ---------------------------------------------------------------------------
 
   public captureShareState(guest = true): ShareViewState {
     const { api } = this;
@@ -762,7 +750,7 @@ export class ShellController {
     showToast(
       ok
         ? `Link copied · opens this view (${viewLabel}) read-only`
-        : 'Could not copy the link — check clipboard permissions',
+        : 'Could not copy the link: check clipboard permissions',
       3600
     );
   }

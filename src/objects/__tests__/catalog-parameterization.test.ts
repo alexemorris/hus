@@ -73,7 +73,7 @@ function countMeshes(root: THREE.Object3D): number {
   return count;
 }
 
-describe('Stage 4.13 catalog parameterization: 9-finish metal matrix & composable tap slots', () => {
+describe('Catalog parameterization: 9-finish metal matrix & composable tap slots', () => {
   it('re-exports unified tap builders, anchors, and finish constants from husjs/catalog barrels', () => {
     expect(ALL_BRASSWARE_FINISH_CODES).toEqual([
       'CP',
@@ -277,7 +277,7 @@ describe('Stage 4.13 catalog parameterization: 9-finish metal matrix & composabl
     expect(collectMeshMaterials(downhamWithWallTap).has(getBathroomBrassMaterials('BZ').primary)).toBe(true);
     assertZeroZFighting(downhamWithWallTap, 'downhamWithWallTap');
 
-    // Lefroy Brooks La Chapelle washstand (ceramic basin geometry frozen bit-for-bit for golden Room 20)
+    // Lefroy Brooks La Chapelle washstand (ceramic basin geometry preserved)
     const laChapelleBaselineFights = detectZFighting(
       buildLefroyBrooksLaChapelleWashstand({ namePrefix: 'laChapelleBase' }),
       { epsilonM: 0.00035 }

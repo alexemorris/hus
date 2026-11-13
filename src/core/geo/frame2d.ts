@@ -106,10 +106,6 @@ export class Frame2D {
     return new Frame2D({ originX, originZ, rotationY, elevationY });
   }
 
-  // ---------------------------------------------------------------------------
-  // Point transforms
-  // ---------------------------------------------------------------------------
-
   /** Transforms local `(x, z)` to world `[wx, wz]`. */
   public toWorldXZ(x: number, z: number): [number, number] {
     return [
@@ -145,10 +141,6 @@ export class Frame2D {
     ];
   }
 
-  // ---------------------------------------------------------------------------
-  // Vector / direction transforms (translation-free)
-  // ---------------------------------------------------------------------------
-
   /** Rotates a local 2D direction/displacement `(vx, vz)` into world `[wx, wz]`. */
   public vectorToWorldXZ(vx: number, vz: number): [number, number] {
     return [vx * this.cos + vz * this.sin, -vx * this.sin + vz * this.cos];
@@ -169,10 +161,6 @@ export class Frame2D {
     return [wx * this.cos - wz * this.sin, wy, wx * this.sin + wz * this.cos];
   }
 
-  // ---------------------------------------------------------------------------
-  // Angle transforms
-  // ---------------------------------------------------------------------------
-
   /** Converts a local Y-rotation angle (radians) to world Y-rotation angle. */
   public angleToWorldY(localRotY: number): number {
     return this.rotationY + localRotY;
@@ -182,10 +170,6 @@ export class Frame2D {
   public angleToLocalY(worldRotY: number): number {
     return worldRotY - this.rotationY;
   }
-
-  // ---------------------------------------------------------------------------
-  // Analytical Half-Space / Cutaway-Plane transforms
-  // ---------------------------------------------------------------------------
 
   /**
    * Transforms a local half-plane `nx * x + nz * z + constant >= 0` into world `(X, Z)`
@@ -320,10 +304,6 @@ export class Frame2D {
     return this.boundsToWorldAabb({ minX, maxX, minY, maxY, minZ, maxZ });
   }
 
-  // ---------------------------------------------------------------------------
-  // OBB & Bounds transforms
-  // ---------------------------------------------------------------------------
-
   /**
    * Transforms a local axis-aligned rectangle `[minX, maxX] x [minZ, maxZ]` into
    * its 4 world-space corners `[[x0, z0], [x1, z1], [x2, z2], [x3, z3]]`
@@ -429,10 +409,6 @@ export class Frame2D {
     const insideDist = Math.min(Math.max(qx, qz), 0);
     return outsideDist + insideDist;
   }
-
-  // ---------------------------------------------------------------------------
-  // Group Composition / Inverse
-  // ---------------------------------------------------------------------------
 
   /** Returns the exact `SE(2) x R` inverse frame mapping world coordinates back to local coordinates. */
   public inverse(): Frame2D {

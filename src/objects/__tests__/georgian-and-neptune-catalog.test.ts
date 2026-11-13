@@ -173,7 +173,7 @@ function assertCatalogGroupInvariants(group: THREE.Group, expectedPrefix: string
   expect(zFightPairs, `coplanar z-fighting in ${expectedPrefix}`).toEqual([]);
 }
 
-describe('Stage 4.10a husjs/catalog/* Neptune, Lacanche, White Company, Cox & Cox & Georgian builders', () => {
+describe('Catalog builders: Neptune, Lacanche, White Company, Cox & Cox & Georgian architecture', () => {
   it('builds Neptune kitchen joinery & Shaws Belfast sink via husjs/catalog/architectural', () => {
     const interactiveMeshes: THREE.Object3D[] = [];
     const interactions = new InteractionRegistry(interactiveMeshes);

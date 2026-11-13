@@ -203,11 +203,11 @@ describe('HDR panorama full-resolution fidelity', () => {
 });
 
 describe('Astronomical Cotswolds calibration, SITE_SHADOW_BOX & continuous EnvironmentLighting', () => {
-  it('extends SITE_SHADOW_BOX.min[1] to -3.0m so lower Main Street / valley receivers never clip shadows', () => {
+  it('extends SITE_SHADOW_BOX.min[1] to -3.0m so lower road / valley receivers never clip shadows', () => {
     expect(SITE_SHADOW_BOX.min[1]).toBe(-3.0);
   });
 
-  it('uses curated df64873 front-lit dusk & overhead day presets by default while keeping astronomical ephemeris opt-in', () => {
+  it('uses curated front-lit dusk & overhead day presets by default while keeping astronomical ephemeris opt-in', () => {
     expect(ENV_PRESETS.day.sunDirection).toEqual([0.18, 0.96, -0.20]);
     expect(ENV_PRESETS.dusk.sunDirection).toEqual([0.72, 0.48, 0.50]);
     expect(ENV_PRESETS.dusk.sunDirection[0]).toBeGreaterThan(0.6);
@@ -302,7 +302,7 @@ describe('Astronomical Cotswolds calibration, SITE_SHADOW_BOX & continuous Envir
   });
 });
 
-describe('Stream A site-ground exclusion, lazy active-only HDR & throttled transition shadows', () => {
+describe('Site-ground exclusion, lazy active-only HDR & throttled transition shadows', () => {
   it('marks exterior siteGround material with excludeIndoorLighting so valley terrain skips 27 PointLights & 3D volume GI', () => {
     const ground = createSiteGround();
     expect((ground.mesh.material as THREE.Material).userData['excludeIndoorLighting']).toBe(true);
@@ -460,13 +460,13 @@ describe('Stream A site-ground exclusion, lazy active-only HDR & throttled trans
   });
 });
 
-describe('Punchy Direct Daylight, Camera-Fitted 4096 Shadows & platform37 Cloud Cover', () => {
+describe('Direct Daylight, Camera-Fitted 4096 Shadows & Volumetric Cloud Cover', () => {
   it('delivers high direct-to-ambient contrast & dual Main-Street/Courtyard SE incidence in Day mode while keeping Dusk & Night untouched', () => {
     const day = ENV_PRESETS.day;
     const dusk = ENV_PRESETS.dusk;
     const night = ENV_PRESETS.night;
 
-    // Restored df64873 overhead daylight preset ([0.18, 0.96, -0.20])
+    // Curated overhead daylight preset ([0.18, 0.96, -0.20])
     expect(day.sunDirection).toEqual([0.18, 0.96, -0.20]);
     expect(day.sunIntensity).toBe(4.6);
     expect(day.hemiIntensity).toBe(0.72);
@@ -702,7 +702,7 @@ describe('Punchy Direct Daylight, Camera-Fitted 4096 Shadows & platform37 Cloud 
     expect(shadowInvalidations).toBe(3);
     expect(posEvening.distanceTo(posMidday)).toBeGreaterThan(35);
 
-    // Discrete preset pill restores curated df64873 dusk direction
+    // Discrete preset pill restores curated dusk direction
     env.setTimeOfDay('dusk');
     const posPresetDusk = new THREE.Vector3().setFromMatrixPosition(sunLight.matrixWorld);
     expect(posPresetDusk.distanceTo(posAtBoot)).toBeLessThan(0.05);
@@ -954,14 +954,14 @@ describe('Zero-config HouseLocation decoupling & instance-isolated bearings', ()
     const sceneA = new THREE.Scene();
     const sceneB = new THREE.Scene();
     const envA = new EnvironmentLighting(sceneA, undefined, undefined, {
-      lat: 52.544462,
-      lon: -0.947371,
+      lat: 51.84,
+      lon: -1.79,
       plusXTrueBearingDeg: 340.17,
       timezone: 'Europe/London',
     });
     const envB = new EnvironmentLighting(sceneB, undefined, undefined, {
-      lat: 52.544462,
-      lon: -0.947371,
+      lat: 51.84,
+      lon: -1.79,
       plusXTrueBearingDeg: 90,
       timezone: 'Europe/London',
     });

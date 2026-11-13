@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { soundEngine } from '../../audio/sound-engine.ts';
 import { easeInOutCubic, stepProgress } from '../interaction-math.ts';
 
-/** Fixed interactable id of the Utility Room pulley maid airer. */
+/** Fixed interactable id of the ceiling pulley clothes airer. */
 export const PULLEY_MAID_ID = 'pulley-maid';
 
 export interface PulleyMaidConfig {

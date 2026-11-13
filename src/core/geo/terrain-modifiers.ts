@@ -16,10 +16,6 @@ export interface QuantizedHeightGridSpec {
   readonly base64Int16Mm: string;
 }
 
-// ---------------------------------------------------------------------------
-// 1. `.husgrid.json` Format & Decoded Heightgrid Types
-// ---------------------------------------------------------------------------
-
 export interface HusGridLayerSpec extends QuantizedHeightGridSpec {
   readonly minX: number;
   readonly maxX: number;
@@ -74,54 +70,27 @@ export interface DecodedTerrainGrid {
   readonly heightsM: Float32Array;
 }
 
-// ---------------------------------------------------------------------------
-// Pure JS Base64 Decoder (zero Node `Buffer` or DOM dependency)
-// ---------------------------------------------------------------------------
-
-const BASE64_LUT = /* @__PURE__ */ (() => {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-  const lut = new Int16Array(256);
-  lut.fill(-1);
-  for (let i = 0; i < chars.length; i++) {
-    lut[chars.charCodeAt(i)] = i;
-  }
-  lut['-'.charCodeAt(0)] = 62;
-  lut['_'.charCodeAt(0)] = 63;
-  return lut;
-})();
-
 export function decodeBase64Bytes(base64: string): Uint8Array {
-  let validChars = 0;
-  for (let i = 0; i < base64.length; i++) {
-    const code = base64.charCodeAt(i);
-    if (code < 256 && BASE64_LUT[code]! >= 0) {
-      validChars++;
-    }
+  const cleaned = base64.replace(/\s+/g, '');
+  if (cleaned.length === 0) {
+    return new Uint8Array(0);
   }
-  const byteLength = (validChars * 3) >> 2;
-  const out = new Uint8Array(byteLength);
-  let acc = 0;
-  let bits = 0;
-  let outIdx = 0;
-  for (let i = 0; i < base64.length; i++) {
-    const code = base64.charCodeAt(i);
-    const val = code < 256 ? BASE64_LUT[code]! : -1;
-    if (val < 0) continue;
-    acc = (acc << 6) | val;
-    bits += 6;
-    if (bits >= 8) {
-      bits -= 8;
-      if (outIdx < byteLength) {
-        out[outIdx++] = (acc >> bits) & 0xff;
-      }
+  const normalized = cleaned.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = normalized.padEnd(
+    normalized.length + ((4 - (normalized.length % 4)) % 4),
+    '='
+  );
+  const bufferCtor = (
+    globalThis as {
+      readonly Buffer?: { from(input: string, encoding: 'base64'): Uint8Array };
     }
+  ).Buffer;
+  if (typeof bufferCtor !== 'undefined') {
+    return new Uint8Array(bufferCtor.from(padded, 'base64'));
   }
-  return out;
+  const binary = atob(padded);
+  return Uint8Array.from(binary, (ch) => ch.charCodeAt(0));
 }
-
-// ---------------------------------------------------------------------------
-// Math & Signed-Distance Primitives
-// ---------------------------------------------------------------------------
 
 /** Hermite C1 smoothstep interpolation in `[0, 1]`. */
 export function smoothstep(edge0: number, edge1: number, x: number): number {
@@ -239,10 +208,6 @@ function signedPolygonDist2D(
   const dist = Math.sqrt(minDist2);
   return inside ? -dist : dist;
 }
-
-// ---------------------------------------------------------------------------
-// Heightgrid Decoding & Multi-Tier Bilinear Sampling
-// ---------------------------------------------------------------------------
 
 const decodedGridCache = new WeakMap<HusGridLayerSpec, DecodedTerrainGrid>();
 
@@ -376,10 +341,6 @@ export function sampleHusGridLayers(
   return sampleDecodedLayersFromIndex(decoded, 0, wx, wz);
 }
 
-// ---------------------------------------------------------------------------
-// 2. Composable Non-Destructive `TerrainModifier` Union & Builders
-// ---------------------------------------------------------------------------
-
 export type TerrainBlendMode = 'blend' | 'min' | 'max';
 
 export type TerrainFeatherSide = 'outside' | 'inside' | 'centered';
@@ -400,8 +361,6 @@ function applyBlendMode(
   if (weight >= 1) return effectiveTarget;
   return currentY * (1 - weight) + effectiveTarget * weight;
 }
-
-// ---- 2a. `gradePad` ----
 
 export interface GradePadOptions {
   readonly id?: string;
@@ -625,8 +584,6 @@ function evalGradePad(mod: GradePadModifier, wx: number, wz: number, currentY: n
     mod.elevationY + mod.slopeX * (lx - mod.refX) + mod.slopeZ * (lz - mod.refZ);
   return applyBlendMode(currentY, targetY, w, mod.mode);
 }
-
-// ---- 2b. `splinePath` ----
 
 export type SplineControlPoint = readonly [number, number, number?];
 
@@ -998,8 +955,6 @@ function evalSplinePath(
   return applyBlendMode(currentY, targetY, w, mod.mode);
 }
 
-// ---- 2c. `carveBasin` ----
-
 export type BasinShape = 'ellipse' | 'box' | 'polygon';
 export type BasinProfile = 'smooth' | 'flatBottom';
 
@@ -1264,8 +1219,6 @@ function evalCarveBasin(mod: CarveBasinModifier, wx: number, wz: number, current
   return applyBlendMode(currentY, floorY, w, mod.mode);
 }
 
-// ---- 2d. `sculptStamps` ----
-
 export type TerrainStampFalloff = 'smooth' | 'gaussian' | 'plateau';
 
 export interface TerrainStamp {
@@ -1453,8 +1406,6 @@ function evalSculptStamps(
   return y;
 }
 
-// ---- 2e. `customTerrainModifier` ----
-
 export interface CustomTerrainModifier {
   readonly kind: 'custom';
   readonly id?: string;
@@ -1471,8 +1422,6 @@ export function customTerrainModifier(
     evaluate: fn,
   };
 }
-
-// ---- Union & Pipeline Evaluation ----
 
 export type TerrainModifier =
   | GradePadModifier
@@ -1517,10 +1466,6 @@ export function evaluateTerrainModifiers(
   }
   return y;
 }
-
-// ---------------------------------------------------------------------------
-// 3. `TerrainSurfaceSampler` (`createTerrainSampler`)
-// ---------------------------------------------------------------------------
 
 export type TerrainBaseSource =
   | 'flat'

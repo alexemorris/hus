@@ -7,8 +7,8 @@ export type ExampleHouseId = 'simple-house' | 'stahl-house' | 'simple-flat';
 
 export const HOUSE_BOOT_TITLES: Readonly<Record<ExampleHouseId, string>> = {
   'simple-house': 'Georgian Country House',
-  'stahl-house': 'Stahl House — Case Study #22',
-  'simple-flat': 'pied-à-terre Apartment',
+  'stahl-house': 'Stahl House (Case Study #22)',
+  'simple-flat': 'Pied-à-terre Apartment',
 };
 
 export function resolveSelectedHouseId(search?: string): ExampleHouseId {
@@ -32,7 +32,7 @@ export function applyInitialHouseBootTitle(
   const initialTitle = HOUSE_BOOT_TITLES[houseId];
   if (doc) {
     if (typeof doc.title === 'string') {
-      doc.title = `${initialTitle} — Hus`;
+      doc.title = `${initialTitle} · Hus`;
     }
     getLoadingScreen(doc, initialTitle);
   }

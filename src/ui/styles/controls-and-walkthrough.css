@@ -1,6 +1,4 @@
-/* ============================================================================
-   Single Toggle Rocker & Segmented Controls
-   ============================================================================ */
+/* Single toggle rocker & segmented controls */
 
 .hud-rocker-btn {
   width: 100%;
@@ -211,9 +209,7 @@
 }
 
 
-/* ============================================================================
-   Compact Channel Sliders
-   ============================================================================ */
+/* Compact channel sliders */
 
 .hud-sliders {
   display: flex;
@@ -285,9 +281,7 @@
   text-align: right;
 }
 
-/* ============================================================================
-   Environment Row & Inline Buttons
-   ============================================================================ */
+/* Environment row & inline buttons */
 
 .hud-env-row {
   display: flex;
@@ -460,9 +454,7 @@
 }
 
 
-/* ==========================================================================
-   First-Person Walkthrough HUD & Crosshair Reticle
-   ========================================================================== */
+/* First-person walkthrough HUD & crosshair reticle */
 
 .hud-walkthrough-bar {
   margin-top: 5px;

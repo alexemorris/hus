@@ -26,11 +26,6 @@ export interface TraditionalWindowCurtainsOptions {
   readonly brassMat: THREE.Material;
 }
 
-function smoothstep(edge0: number, edge1: number, x: number): number {
-  const t = THREE.MathUtils.clamp((x - edge0) / (edge1 - edge0), 0, 1);
-  return t * t * (3 - 2 * t);
-}
-
 interface DraperySurfaceEval {
   readonly x: number;
   readonly y: number;
@@ -39,7 +34,7 @@ interface DraperySurfaceEval {
 }
 
 /**
- * Evaluates a point on a traditional English country-house triple-pinch-pleat
+ * Evaluates a point on a traditional triple-pinch-pleat
  * interlined curtain panel for `u in [0, 1]` (0 = inner leading edge toward window
  * center, 1 = outer wall pier edge) and `v in [0, 1]` (0 = top buckram heading
  * under pole, 1 = weighted bottom hem kissing the floor).
@@ -94,7 +89,7 @@ function evaluateCurtainSurfacePoint(
     const tSweep = (v - 0.055) / (vTie - 0.055);
     // Classic catenary-like sweep: vertical near the buckram header, curving gracefully into the tie-back loop
     const catenaryBlend =
-      0.55 * Math.pow(tSweep, 1.45) + 0.45 * smoothstep(0, 1, tSweep);
+      0.55 * Math.pow(tSweep, 1.45) + 0.45 * THREE.MathUtils.smoothstep(tSweep, 0, 1);
     innerOffZ = THREE.MathUtils.lerp(innerTopOffZ, innerTieOffZ, catenaryBlend);
   } else {
     const tSkirt = (v - vTie) / (1 - vTie);
@@ -119,19 +114,19 @@ function evaluateCurtainSurfacePoint(
 
   // Vertical coordinate with subtle organic floor kiss wave along the bottom hem
   const bottomWaveY =
-    smoothstep(0.88, 1.0, v) * 0.0035 * Math.cos(phase);
+    THREE.MathUtils.smoothstep(v, 0.88, 1.0) * 0.0035 * Math.cos(phase);
   const y = curtainTopY - v * curtainH + bottomWaveY;
 
-  // --- X Depth Profile (Triple-Pinch-Pleat Heading + Soft Rounded Flutes + Tie-Back Waist Cinch) ---
-  // 1. Top Triple-Pinch-Pleat (French Pleat) Buckram Heading (v = 0..0.085)
-  const headingZone = 1 - smoothstep(0.035, 0.095, v);
+  // X Depth Profile (Triple-Pinch-Pleat Heading + Soft Rounded Flutes + Tie-Back Waist Cinch)
+  // Top Triple-Pinch-Pleat (French Pleat) Buckram Heading (v = 0..0.085)
+  const headingZone = 1 - THREE.MathUtils.smoothstep(v, 0.035, 0.095);
   const pinchClasp = Math.exp(-Math.pow((v - 0.042) / 0.02, 2));
   const pleatCrestEnvelope = Math.pow(0.5 + 0.5 * Math.cos(phase), 1.4);
   // 3-finger fan sub-pleats at each French pleat crown, pinched tightly at v = 0.042
   const tripleFingerWave =
     Math.cos(phase * 3) * pleatCrestEnvelope * (1 - 0.55 * pinchClasp);
 
-  // 2. Main Soft Rounded Drapery Flutes (primary wave + fullness harmonics)
+  // Main Soft Rounded Drapery Flutes (primary wave + fullness harmonics)
   const primaryFlute = Math.cos(phase);
   const secondaryFullness =
     0.26 * Math.cos(phase * 2) - 0.07 * Math.cos(phase * 3);
@@ -139,12 +134,12 @@ function evaluateCurtainSurfacePoint(
 
   // Vertical envelope of fold amplitude:
   // Neat at buckram heading -> deep in body -> compressed ~30% at tie-back waist -> flared +35% at bottom hem
-  const bodyGrowth = THREE.MathUtils.lerp(0.026, 0.044, smoothstep(0.0, 0.3, v));
-  const skirtFlareAmp = smoothstep(vTie, 1.0, v) * 0.016;
+  const bodyGrowth = THREE.MathUtils.lerp(0.026, 0.044, THREE.MathUtils.smoothstep(v, 0.0, 0.3));
+  const skirtFlareAmp = THREE.MathUtils.smoothstep(v, vTie, 1.0) * 0.016;
   const waistCompression = 1 - 0.32 * waistGauss;
   const foldAmplitude = (bodyGrowth + skirtFlareAmp) * waistCompression;
 
-  // 3. Diagonal tension folds sweeping from the upper/inner leading edge into the tie-back waist cinch
+  // Diagonal tension folds sweeping from the upper/inner leading edge into the tie-back waist cinch
   const diagPhase = (u * 4.5 + (v - vTie) * 3.8) * Math.PI;
   const diagCrease =
     Math.sin(diagPhase) *
@@ -152,7 +147,7 @@ function evaluateCurtainSurfacePoint(
     Math.sin(u * Math.PI) *
     0.011;
 
-  // 4. Overall X projection from pole line:
+  // Overall X projection from pole line:
   // Pulled ~1.8cm closer to the wall at the tie-back waist, billowing softly forward below the tie-back
   const waistPullBackX = -0.018 * waistGauss * (0.45 + 0.55 * u);
   const lowerBillowX =
@@ -391,7 +386,7 @@ function createConformingBandGeometry(
 }
 
 /**
- * Issue #2: Builds traditional English country-house triple-pinch-pleat interlined
+ * Builds traditional triple-pinch-pleat interlined
  * drapery panels that sweep in a graceful catenary curve into a sculpted fabric
  * tie-back sash and flare softly down to the floor, complete with a 38mm aged-brass
  * curtain pole, turned ball finials, wall brackets, and curtain rings.
@@ -445,7 +440,7 @@ export function buildTraditionalWindowCurtains(
     metalness: 0.02,
   });
 
-  // 1. 38mm (r = 0.019m) straight aged-brass curtain pole
+  // 38mm (r = 0.019m) straight aged-brass curtain pole
   const poleHalfLenZ = halfWindowSpanZ + poleExtensionZ;
   const poleLenZ = poleHalfLenZ * 2;
   const straightPole = new THREE.Mesh(
@@ -459,7 +454,7 @@ export function buildTraditionalWindowCurtains(
   straightPole.receiveShadow = true;
   curtainGroup.add(straightPole);
 
-  // 2. Turned brass ball finials & decorative collar rings at both ends
+  // Turned brass ball finials & decorative collar rings at both ends
   for (const dirZ of [-1, 1] as const) {
     const endZ = centerZ + dirZ * poleHalfLenZ;
 
@@ -500,7 +495,7 @@ export function buildTraditionalWindowCurtains(
     curtainGroup.add(finialNipple);
   }
 
-  // 3. 3 heavy wall support brackets & circular backplates projecting from wallFaceX to poleX
+  // 3 heavy wall support brackets & circular backplates projecting from wallFaceX to poleX
   const bracketOffsetZ = halfWindowSpanZ + Math.max(0.2, poleExtensionZ - 0.1);
   const bracketSpanX = Math.max(0.02, Math.abs(poleX - wallFaceX));
   const bracketMidX = (wallFaceX + poleX) * 0.5;
@@ -540,7 +535,7 @@ export function buildTraditionalWindowCurtains(
     curtainGroup.add(poleCradle);
   }
 
-  // 4. North (sideZ = -1) and South (sideZ = +1) Traditional Triple-Pinch-Pleat Drapery Panels
+  // North (sideZ = -1) and South (sideZ = +1) Traditional Triple-Pinch-Pleat Drapery Panels
   const curtainTopY = poleY - 0.018;
   const curtainBotY = floorY + 0.01;
   const curtainH = curtainTopY - curtainBotY;

@@ -507,7 +507,7 @@ export function buildTopographicSiteGroundGeometry(
     : buildSegmentedAxisCoords(-VALLEY_HALF_EXTENT, [
         { end: -165, steps: 4, power: -2.1 },
         { end: -44, steps: 4 },
-        { end: -22.5, steps: 8 }, // ~2.69m across Main Street & front verge right up to West wall
+        { end: -22.5, steps: 8 }, // ~2.69m across front road & verge right up to West wall
         { end: 11.5, steps: 38 }, // ~0.89m across House, Courtyard & Outbuilding walls
         { end: 24, steps: 7 }, // ~1.79m across Walled Garden
         { end: 96, steps: 18 }, // 4.00m across deep back garden & sloped paddock

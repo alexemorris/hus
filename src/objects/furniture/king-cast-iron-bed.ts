@@ -570,11 +570,9 @@ export function buildKingCastIronBed(
     metalness: 0.02,
   });
 
-  // =========================================================================
-  // 1. VICTORIAN CAST-IRON & AGED-BRASS BEDSTEAD FRAME
+  // VICTORIAN CAST-IRON & AGED-BRASS BEDSTEAD FRAME
   //    Right-sized compact UK King (1.52m W × 1.97m L) or UK Double (1.40m W × 1.91m L)
   //    with low period footboard (0.74m to finial tip) preserving walk-in sightlines.
-  // =========================================================================
   const isDouble = options.size === 'ukDouble';
   const halfSpanZ = isDouble ? 0.675 : 0.735;
   const headX = 0.032;
@@ -798,9 +796,7 @@ export function buildKingCastIronBed(
     bedGroup.add(sideRail);
   }
 
-  // =========================================================================
-  // 2. MATTRESS, SCULPTED 3D DRAPED DUVET, TICKING TURN-DOWN & FOOT THROW
-  // =========================================================================
+  // MATTRESS, SCULPTED 3D DRAPED DUVET, TICKING TURN-DOWN & FOOT THROW
   const mattressLenX = isDouble ? 1.74 : 1.80;
   const mattressWidZ = isDouble ? 1.24 : 1.36;
   const drapeTopHalfZ = isDouble ? 0.592 : 0.652;
@@ -891,9 +887,7 @@ export function buildKingCastIronBed(
   footThrowMesh.receiveShadow = true;
   bedGroup.add(footThrowMesh);
 
-  // =========================================================================
-  // 3. PINCHED-SEAM FEATHER PILLOWS & SCATTER CUSHIONS
-  // =========================================================================
+  // PINCHED-SEAM FEATHER PILLOWS & SCATTER CUSHIONS
   const pillowWidthZ = isDouble ? 0.55 : 0.60;
   const pillowOffsetZ = isDouble ? 0.295 : 0.325;
   const backPillowGeo = createPinchedPillowGeometry(0.16, 0.37, pillowWidthZ, false);

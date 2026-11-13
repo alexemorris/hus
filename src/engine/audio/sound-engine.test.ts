@@ -561,7 +561,7 @@ describe('sound-engine & soundscape-controller', () => {
     const baselinePannerCount = ctx.panners.length;
     const baselineGainCount = ctx.gains.length;
 
-    // 1. Dry 2D UI click via playUi: zero PannerNode, zero ConvolverNode wet send
+    // Dry 2D UI click via playUi: zero PannerNode, zero ConvolverNode wet send
     engine.playUi(
       (tk) => {
         tk.tone({
@@ -584,7 +584,7 @@ describe('sound-engine & soundscape-controller', () => {
     // Temporary UI inputGain disconnected from sfxGain (only persistent reverbGain remains)
     expect(sfxGain.incomingSources.size).toBe(1);
 
-    // 2. Spatial 3D foley with multiple overlapping sources: disconnects voice only after maxEndTime source ends
+    // Spatial 3D foley with multiple overlapping sources: disconnects voice only after maxEndTime source ends
     const oscStartIdx = ctx.oscillators.length;
     const bufSrcStartIdx = ctx.bufferSources.length;
 
@@ -633,7 +633,7 @@ describe('sound-engine & soundscape-controller', () => {
     expect(reverbConvolver.incomingSources.size).toBe(0);
     expect(panner.connectedTargets.size).toBe(0);
 
-    // 3. triggerSpatialFoley routes spatial when worldPos defined and dry UI when undefined
+    // triggerSpatialFoley routes spatial when worldPos defined and dry UI when undefined
     engine.triggerSpatialFoley(undefined, (tk) => {
       tk.tone({
         startTime: tk.now,

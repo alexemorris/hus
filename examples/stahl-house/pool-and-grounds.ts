@@ -317,7 +317,7 @@ function buildPerimeterPipeSafetyRailing(root: THREE.Group, steelBracketMat: THR
     railGroup.add(run, capA, capB);
   };
 
-  // 1. East & South Cantilevered Catwalk Guardrail
+  // East & South Cantilevered Catwalk Guardrail
   const slatCount = 6;
   const slatW = 0.056;
   const innerOffset = 0.085;
@@ -382,7 +382,7 @@ function buildPerimeterPipeSafetyRailing(root: THREE.Group, steelBracketMat: THR
     addCatwalkPost(px, southRailZ, 'south');
   }
 
-  // 2. South & West Pool Terrace Cliff Perimeter Guardrail
+  // South & West Pool Terrace Cliff Perimeter Guardrail
   const poolRailSouthZ = 9.44;
   const poolRailWestX = -13.64;
   const poolRailEastX = -0.44;

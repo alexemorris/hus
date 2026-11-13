@@ -218,10 +218,6 @@ function deduplicate3DRing(
   return out;
 }
 
-// -----------------------------------------------------------------------------
-// 1. Analytical Sutherland-Hodgman Convex Half-Space Polygon & Profile Clipping
-// -----------------------------------------------------------------------------
-
 /**
  * Clips a 2D polygon against an array of analytical 2D half-planes
  * (`nx * x + ny * y + constant >= 0`), deduplicating near-coincident vertices.
@@ -444,10 +440,6 @@ export function clipProfileToPlanes(
 
   return { outer: clippedOuter, holes: validHoles };
 }
-
-// -----------------------------------------------------------------------------
-// 2. Planar Extrusion with Holes & Explicit +1 Jacobian Determinant Verification
-// -----------------------------------------------------------------------------
 
 interface Resolved3DBasis {
   readonly origin: THREE.Vector3;
@@ -745,10 +737,6 @@ export function extrudePlanarSolidWithHoles(
   geo.computeBoundingSphere();
   return geo;
 }
-
-// -----------------------------------------------------------------------------
-// 3. Mitered 2D Profile Sweep Along Open or Closed 2D / 3D Polylines
-// -----------------------------------------------------------------------------
 
 interface PathSegmentFrame {
   readonly p0: THREE.Vector3;
@@ -1194,10 +1182,6 @@ export function sweepMouldingAlongPath(
   geo.computeBoundingSphere();
   return geo;
 }
-
-// -----------------------------------------------------------------------------
-// 4. Metric World-Space Box / Triplanar UV Projection (1 unit = 1 m)
-// -----------------------------------------------------------------------------
 
 type DominantAxis = 0 | 1 | 2;
 

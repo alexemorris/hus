@@ -231,9 +231,6 @@ export function buildAnnotationMarker3D(
 ): THREE.Group {
   const kind: AnnotationKind = record.kind ?? 'pin';
 
-  // -------------------------------------------------------------------------
-  // 1. MEASUREMENT SPAN MARKER (Start Point A <-> End Point B, HTML tag handles label)
-  // -------------------------------------------------------------------------
   if (kind === 'measure' && record.measurement) {
     const m = record.measurement;
     const markerGroup = new THREE.Group();
@@ -321,9 +318,6 @@ export function buildAnnotationMarker3D(
     return markerGroup;
   }
 
-  // -------------------------------------------------------------------------
-  // 2. OBJECT MOVE / ROTATE MARKER (Origin Ghost -> Arrow, HTML tag handles label)
-  // -------------------------------------------------------------------------
   if (kind === 'move' && record.objectTransform) {
     const tf = record.objectTransform;
     const markerGroup = new THREE.Group();
@@ -416,9 +410,6 @@ export function buildAnnotationMarker3D(
     return markerGroup;
   }
 
-  // -------------------------------------------------------------------------
-  // 3. STANDARD POINT PIN MARKER (Subtle surface contact dot + ring; HTML tag renders #id)
-  // -------------------------------------------------------------------------
   const markerGroup = new THREE.Group();
   markerGroup.name = `annotationMarker.${record.id}`;
   markerGroup.userData.annotationId = record.id;

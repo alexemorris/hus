@@ -21,7 +21,7 @@ import { populateWallOpenings } from '../wall-openings.ts';
 const testMat = new THREE.MeshStandardMaterial({ color: 0xeae5dc, roughness: 0.7 });
 const floorMat = new THREE.MeshStandardMaterial({ color: 0x8b6a47, roughness: 0.6 });
 
-describe('Stage 4.11a — Wall-Relative Mounting, Room-Trim/Panelling Engine & Unified Wall Openings', () => {
+describe('Wall-Relative Mounting, Room-Trim/Panelling Engine & Unified Wall Openings', () => {
   describe('1. Wall-Relative Mounting (placeOnWall & BuiltWallSegment.mount)', () => {
     it('orients +Z into the room across all 4 cardinal walls and skewed 45° walls with +0.5 mm anti-z-fight standoff and cutaway inheritance', () => {
       const walls = createWallNetwork({

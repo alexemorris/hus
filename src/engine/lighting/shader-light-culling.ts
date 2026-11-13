@@ -87,7 +87,7 @@ function makeNonCloningVec<T extends { clone: () => T }>(value: T): T {
 }
 
 /**
- * Shared 3D oblique cloud-gobo parameters (`platform37`-style world-space cloud shadow projection):
+ * Shared 3D oblique cloud-gobo parameters (world-space cloud shadow projection):
  * - `x`: effective cloud cover (`0..1`)
  * - `y`: night factor (`0..1`, attenuates gobo contrast after sunset)
  * - `z`: wind offset X (`m`)

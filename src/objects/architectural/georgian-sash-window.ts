@@ -228,10 +228,6 @@ function getDefaultSashCordMaterial(): THREE.MeshStandardMaterial {
   return defaultSashCordMat;
 }
 
-function clamp01(v: number): number {
-  return v < 0 ? 0 : v > 1 ? 1 : v;
-}
-
 function easeInOutCubic(t: number): number {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
@@ -551,7 +547,7 @@ export class VerticalSlidingSashController implements AnimatedInteractable {
     this.clearOpeningWidthM = Math.max(0.1, options.clearOpeningWidthM ?? 0.9);
     this.durationSeconds = Math.max(0.05, options.durationSeconds ?? 0.65);
 
-    const initRatio = clamp01(options.initialOpenRatio ?? 0);
+    const initRatio = THREE.MathUtils.clamp(options.initialOpenRatio ?? 0, 0, 1);
     this.progress01 = initRatio;
     this.target01 = initRatio > 0.5 ? 1 : 0;
 
@@ -568,7 +564,7 @@ export class VerticalSlidingSashController implements AnimatedInteractable {
   }
 
   public getOpenness01(): number {
-    return clamp01(easeInOutCubic(this.progress01));
+    return THREE.MathUtils.clamp(easeInOutCubic(this.progress01), 0, 1);
   }
 
   public isOpen(): boolean {
@@ -576,7 +572,7 @@ export class VerticalSlidingSashController implements AnimatedInteractable {
   }
 
   public setOpenRatio(ratio01: number): void {
-    const r = clamp01(ratio01);
+    const r = THREE.MathUtils.clamp(ratio01, 0, 1);
     this.progress01 = r;
     this.target01 = r > 0.5 ? 1 : 0;
     this.applyKinematics();
@@ -639,7 +635,7 @@ export class VerticalSlidingSashController implements AnimatedInteractable {
 
     if (this.fitchLeverPivot) {
       // Brass Fitch fastener unlatches 90 deg during the first 18% of travel (and latches in the final 18% when closing)
-      const latchPhase = clamp01(this.progress01 / 0.18);
+      const latchPhase = THREE.MathUtils.clamp(this.progress01 / 0.18, 0, 1);
       this.fitchLeverPivot.rotation.y = easeInOutCubic(latchPhase) * (Math.PI * 0.5);
       this.fitchLeverPivot.updateMatrix();
     }
@@ -727,7 +723,7 @@ export function createGeorgianSashWindow(
   const panesBottomRows = Math.max(1, Math.round(options.panesBottomRows ?? 2));
   const astragalWidthM = Math.max(0.01, Math.min(0.036, options.astragalWidthM ?? 0.018));
   const glazingProportion = Math.max(0.25, Math.min(0.75, options.glazingProportion ?? 0.5));
-  const initialOpenRatio = clamp01(options.initialOpenRatio ?? 0);
+  const initialOpenRatio = THREE.MathUtils.clamp(options.initialOpenRatio ?? 0, 0, 1);
   const lintelStyle: GeorgianLintelStyle = options.lintel ?? 'gauged-brick-jack-arch';
   const sillStyle: GeorgianSillStyle = options.sill ?? 'yorkstone';
   const includeInteriorArchitrave = options.includeInteriorArchitrave ?? true;
@@ -1177,7 +1173,7 @@ export function createGeorgianSashWindow(
     const easedInit = easeInOutCubic(initialOpenRatio);
     lowerSashGroup.position.y = lowerSashClosedY + easedInit * maxOpenTravelM;
     fitchLeverPivot.rotation.y =
-      easeInOutCubic(clamp01(initialOpenRatio / 0.18)) * (Math.PI * 0.5);
+      easeInOutCubic(THREE.MathUtils.clamp(initialOpenRatio / 0.18, 0, 1)) * (Math.PI * 0.5);
   }
 
   ensureNamedAddedChildren(group, 0, baseName);

@@ -6,11 +6,9 @@ import {
   createUkNumberPlateTexture,
   type Defender110Materials,
   getPlanWrapShiftX,
-  lerp,
   sampleDefenderHalfProfile,
   sampleFrontNoseSurfaceXAtYZ,
   sampleLateralSurfaceZAtXY,
-  smoothstep,
 } from './defender-materials-and-monocoque.ts';
 import { tagHighLodDetail } from '../../shared/scene-helpers.ts';
 
@@ -36,14 +34,14 @@ function createSingleSideConformalDefenderPatchGeometry(
 
   for (let ix = 0; ix <= segX; ix++) {
     const tx = ix / segX;
-    const x = lerp(xStart, xEnd, tx);
+    const x = THREE.MathUtils.lerp(xStart, xEnd, tx);
     const halfPts = sampleDefenderHalfProfile(x, nv);
     const v0 = vStartFunc(x);
     const v1 = vEndFunc(x);
 
     for (let iv = 0; iv <= segV; iv++) {
       const tv = iv / segV;
-      const absV = Math.abs(lerp(v0, v1, tv));
+      const absV = Math.abs(THREE.MathUtils.lerp(v0, v1, tv));
       const fIdx = Math.min(nv - 1e-4, Math.max(0, absV * nv));
       const j0 = Math.floor(fIdx);
       const j1 = Math.min(nv, j0 + 1);
@@ -51,8 +49,8 @@ function createSingleSideConformalDefenderPatchGeometry(
 
       const p0 = halfPts[j0]!;
       const p1 = halfPts[j1]!;
-      const py = lerp(p0[0], p1[0], frac) + outwardOffsetY;
-      const pz = sideZ * (lerp(p0[1], p1[1], frac) + outwardOffsetZ);
+      const py = THREE.MathUtils.lerp(p0[0], p1[0], frac) + outwardOffsetY;
+      const pz = sideZ * (THREE.MathUtils.lerp(p0[1], p1[1], frac) + outwardOffsetZ);
       const vx = x + getPlanWrapShiftX(x, pz);
 
       positions.push(vx, py, pz);
@@ -117,7 +115,7 @@ function createConformalFrontSkidPanGeometry(): THREE.BufferGeometry {
         const subU = (ts - 0.5) / 0.5;
         const baseChinX = -2.38 + getPlanWrapShiftX(-2.38, pz) + xOut;
         const underRearX = -2.02 + getPlanWrapShiftX(-2.02, pz) * 0.25;
-        vx = lerp(baseChinX, underRearX, subU);
+        vx = THREE.MathUtils.lerp(baseChinX, underRearX, subU);
       }
       positions.push(vx, py, pz);
       uvs.push(tz, ts);
@@ -158,7 +156,7 @@ export function buildDefender110SignatureExteriorAccessories(
   mats: Defender110Materials,
   namePrefix = 'landRoverDefender'
 ): void {
-  // A. Iconic L663 C-Pillar "Signature Graphic" Floating Square Panel (`landRoverDefender.signatureGraphicPanel`)
+  // Iconic L663 C-Pillar "Signature Graphic" Floating Square Panel (`landRoverDefender.signatureGraphicPanel`)
   //    on both left and right sides (`x = +0.82m..+1.26m, y = 1.24m..1.85m`) floating across the privacy glass
   //    over the rear wheel arch, with the recessed black square accessory port in its center.
   const signatureGraphicGroup = new THREE.Group();
@@ -236,7 +234,7 @@ export function buildDefender110SignatureExteriorAccessories(
     signatureGraphicGroup.add(bossCap);
   }
 
-  // B. Iconic L663 Defender Alpine Light Roof-Edge Windows (`landRoverDefender.alpineLight.left` / `.right`)
+  // Iconic L663 Defender Alpine Light Roof-Edge Windows (`landRoverDefender.alpineLight.left` / `.right`)
   //    curved into the chamfered left and right upper roof cantrails (`x = +0.95m..+2.08m`),
   //    plus longitudinal black roof rails and panoramic sliding glass sunroof (`x = -0.32m..+1.35m, y = 1.965m`).
   const alpineLightGroup = new THREE.Group();
@@ -350,7 +348,7 @@ export function buildDefender110SignatureExteriorAccessories(
   clearSightFin.position.set(1.96, 1.978, 0);
   alpineLightGroup.add(clearSightFin);
 
-  // C. Exterior Side-Mounted Gear Carrier Box (`landRoverDefender.sideGearCarrier`)
+  // Exterior Side-Mounted Gear Carrier Box (`landRoverDefender.sideGearCarrier`)
   //    on the right rear quarter glass behind the C-pillar Signature Graphic (`x = +1.36m..+1.92m, y = 1.34m..1.74m`)
   //    in aerodynamic gloss Santorini Black with Land Rover oval badge & latch.
   const gearCarrierGroup = new THREE.Group();
@@ -492,7 +490,7 @@ export function buildDefender110FrontFasciaAndHeadlights(
   mats: Defender110Materials,
   namePrefix = 'landRoverDefender'
 ): void {
-  // A. Multi-Slot Narvik Black Front Grille (`landRoverDefender.frontGrille`)
+  // Multi-Slot Narvik Black Front Grille (`landRoverDefender.frontGrille`)
   const frontGrilleGroup = new THREE.Group();
   frontGrilleGroup.name = `${namePrefix}.frontGrille`;
   defenderGroup.add(frontGrilleGroup);
@@ -581,7 +579,7 @@ export function buildDefender110FrontFasciaAndHeadlights(
   tagHighLodDetail(bonnetLetteringPlane, 18);
   frontGrilleGroup.add(bonnetLetteringPlane);
 
-  // B. Recessed L663 Matrix LED Headlight Pockets (`landRoverDefender.headlight`)
+  // Recessed L663 Matrix LED Headlight Pockets (`landRoverDefender.headlight`)
   //    Sitting flush inside recessed Narvik Black rectangular fascia pockets (`y ≈ 0.85m..1.04m, z = ±0.50m..±0.84m`)
   //    with glowing warm-white semicircular lower LED Halo ring + twin horizontal outer LED signature pips
   //    and conformal flush polycarbonate outer lens.
@@ -682,14 +680,14 @@ export function buildDefender110FrontFasciaAndHeadlights(
     hlGroup.add(outerClearLens);
   }
 
-  // C. Signature L663 H-Frame Front Bumper Fascia & Shadow Atlas A-Frame Skid Pan (`landRoverDefender.frontBumper`)
+  // Signature L663 H-Frame Front Bumper Fascia & Shadow Atlas A-Frame Skid Pan (`landRoverDefender.frontBumper`)
   //    100% conformal and physically connected to the monocoque body shell from `x = -2.38m` seamlessly back into
   //    the front wheel-arch leading edges (`x = -1.96m`) with zero gap.
   const frontBumperGroup = new THREE.Group();
   frontBumperGroup.name = `${namePrefix}.frontBumper`;
   defenderGroup.add(frontBumperGroup);
 
-  // 1. Conformal Central Lower Bumper Fascia across the nose (`x = -2.38m..-2.356m, v = -0.58..+0.58`)
+  // Conformal Central Lower Bumper Fascia across the nose (`x = -2.38m..-2.356m, v = -0.58..+0.58`)
   const noseBumperFasciaGeo = createConformalDefenderPatchGeometry(
     -2.38,
     -2.356,
@@ -707,12 +705,12 @@ export function buildDefender110FrontFasciaAndHeadlights(
   noseBumperFasciaMesh.receiveShadow = true;
   frontBumperGroup.add(noseBumperFasciaMesh);
 
-  // 2. Conformal Wraparound Side Bumper Wings (`v = 0.58..0.96` across the nose `x = -2.38m..-1.96m`)
+  // Conformal Wraparound Side Bumper Wings (`v = 0.58..0.96` across the nose `x = -2.38m..-1.96m`)
   //    connecting seamlessly into the leading edges of the front wheel arches with zero gap
   const wrapBumperWingGeo = createConformalDefenderPatchGeometry(
     -2.38,
     -1.96,
-    (x) => lerp(0.56, 0.68, smoothstep(-2.34, -1.96, x)),
+    (x) => THREE.MathUtils.lerp(0.56, 0.68, THREE.MathUtils.smoothstep(x, -2.34, -1.96)),
     () => 0.96,
     24,
     12,
@@ -745,7 +743,7 @@ export function buildDefender110FrontFasciaAndHeadlights(
   wrapBumperLowerMouldingMesh.name = `${namePrefix}.frontBumper.lowerMoulding`;
   frontBumperGroup.add(wrapBumperLowerMouldingMesh);
 
-  // 3. Signature L663 H-Frame Crossbar & Twin Vertical Uprights (`mats.satinAnthraciteMat`)
+  // Signature L663 H-Frame Crossbar & Twin Vertical Uprights (`mats.satinAnthraciteMat`)
   const hFrameCrossbarGeo = createConformalDefenderPatchGeometry(
     -2.370,
     -2.358,
@@ -776,7 +774,7 @@ export function buildDefender110FrontFasciaAndHeadlights(
     frontBumperGroup.add(hFrameUpright);
   }
 
-  // 4. Recessed Central Lower Air Dam Intake with Horizontal Vanes (`y = 0.46m..0.58m, z = -0.44m..+0.44m`)
+  // Recessed Central Lower Air Dam Intake with Horizontal Vanes (`y = 0.46m..0.58m, z = -0.44m..+0.44m`)
   const lowerAirDamGeo = createConformalDefenderPatchGeometry(
     -2.374,
     -2.364,
@@ -808,7 +806,7 @@ export function buildDefender110FrontFasciaAndHeadlights(
     frontBumperGroup.add(vaneMesh);
   }
 
-  // 5. Flush Shadow Atlas Lower A-Frame Skid Pan (`landRoverDefender.frontBumper.skidPan`)
+  // Flush Shadow Atlas Lower A-Frame Skid Pan (`landRoverDefender.frontBumper.skidPan`)
   //    Curving smoothly underneath from `x = -2.38m + getPlanWrapShiftX(-2.38, z)` back to `x = -2.02m`
   const frontSkidPanGeo = createConformalFrontSkidPanGeometry();
   const frontSkidPan = new THREE.Mesh(frontSkidPanGeo, mats.satinAnthraciteMat);
@@ -831,7 +829,7 @@ export function buildDefender110FrontFasciaAndHeadlights(
     frontBumperGroup.add(bashSlot);
   }
 
-  // 6. Flush Front Bumper Attachments (Fog Lamps, Tow Eyes, Radar Module, UK Front Registration Plate)
+  // Flush Front Bumper Attachments (Fog Lamps, Tow Eyes, Radar Module, UK Front Registration Plate)
   for (const sideZ of [-1, 1] as const) {
     const fz = sideZ * 0.70;
     const fy = 0.56;
@@ -984,7 +982,7 @@ export function buildDefender110TailgateTaillightsAndExhaust(
   tagHighLodDetail(v8BadgeFace, 18);
   rearTailgateGroup.add(v8BadgeFace);
 
-  // C. Signature L663 Recessed Smoked Quad-Square LED Taillights (`landRoverDefender.taillight`)
+  // Signature L663 Recessed Smoked Quad-Square LED Taillights (`landRoverDefender.taillight`)
   //    (`x = +2.35m, y = 0.88m..1.20m, z = ±0.83m`): stacked twin glowing crimson-red square LED ring cubes
   //    (`emissive: 0xff161c, emissiveIntensity: 2.4`) + outer vertical indicator pips per side.
   for (const sideZ of [-1, 1] as const) {

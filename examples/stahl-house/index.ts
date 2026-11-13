@@ -30,8 +30,8 @@ import {
 } from './terrain.ts';
 
 /**
- * Stage 4.5 — Flagship Showcase `examples/stahl-house`
- * **Case Study House #22 (Stahl House)** — Pierre Koenig, FAIA (1959–1960), HABS CA-2702.
+ * `examples/stahl-house`
+ * **Case Study House #22 (Stahl House)**, Pierre Koenig, FAIA (1959–1960), HABS CA-2702.
  * 1635 Woods Drive, Hollywood Hills, Los Angeles (`34.100437° N, 118.370152° W`, `240.2 m` ASL).
  */
 
@@ -126,7 +126,7 @@ const STAHL_MODULE: SceneZoneModule = {
 
 export const stahlHouse: HouseDefinition = defineHouse({
   id: 'stahl-house',
-  name: 'Case Study House #22 — Stahl House (Pierre Koenig, 1960)',
+  name: 'Case Study House #22 (Stahl House)',
   location: {
     lat: 34.100437,
     lon: -118.370152,

@@ -239,9 +239,7 @@ function buildArmstrongHandshowerWand5687(
   return wand;
 }
 
-// ---------------------------------------------------------------------------
-// 1. 3681 Wall-Mounted 2-Hole Single-Lever Basin Mixer
-// ---------------------------------------------------------------------------
+// 3681 Wall-Mounted 2-Hole Single-Lever Basin Mixer
 
 export function buildArmstrongWallBasinMixer(
   opts: ArmstrongWallBasinMixerOptions
@@ -254,7 +252,7 @@ export function buildArmstrongWallBasinMixer(
   const group = new THREE.Group();
   group.name = p;
 
-  // --- Spout Assembly at (0, 0, 0) ---
+  // Spout Assembly at (0, 0, 0)
   const spoutGroup = new THREE.Group();
   spoutGroup.name = `${p}.spoutTap`;
   group.add(spoutGroup);
@@ -322,7 +320,7 @@ export function buildArmstrongWallBasinMixer(
   aerator.position.set(0, -0.045, spoutReachM);
   spoutGroup.add(aerator);
 
-  // --- Single-Lever Mixer Valve Assembly at (leverOffsetXM, 0, 0) ---
+  // Single-Lever Mixer Valve Assembly at (leverOffsetXM, 0, 0)
   const valveGroup = new THREE.Group();
   valveGroup.name = `${p}.mixerValve`;
   valveGroup.position.set(leverOffsetXM, 0, 0);
@@ -426,9 +424,7 @@ export function buildArmstrongWallBasinMixer(
   });
 }
 
-// ---------------------------------------------------------------------------
-// 2. 5664 + 5684 + 5605 + 5640 + 5687 + 5646 Concealed Thermostatic Shower Set
-// ---------------------------------------------------------------------------
+// 5664 + 5684 + 5605 + 5640 + 5687 + 5646 Concealed Thermostatic Shower Set
 
 export function buildArmstrongConcealedShowerSet(
   opts: ArmstrongConcealedShowerSetOptions
@@ -450,7 +446,7 @@ export function buildArmstrongConcealedShowerSet(
   const group = new THREE.Group();
   group.name = p;
 
-  // --- A. 5664 Concealed Thermostatic 2-Way Valve Plate (W90 × H200 × D8mm) ---
+  // 5664 Concealed Thermostatic 2-Way Valve Plate (W90 × H200 × D8mm)
   const valvePlateGroup = new THREE.Group();
   valvePlateGroup.name = `${p}.thermostaticValve5664`;
   valvePlateGroup.position.set(0, valveCenterYM, 0);
@@ -572,7 +568,7 @@ export function buildArmstrongConcealedShowerSet(
   tempLever.position.set(0.042, 0, 0.042);
   tempGroup.add(tempLever);
 
-  // --- B. 5684 400mm Wall Shower Arm + 5605 8" (198mm) Overhead Rainfall Rose ---
+  // 5684 400mm Wall Shower Arm + 5605 8" (198mm) Overhead Rainfall Rose
   const overheadGroup = new THREE.Group();
   overheadGroup.name = `${p}.overheadShower`;
   group.add(overheadGroup);
@@ -665,7 +661,7 @@ export function buildArmstrongConcealedShowerSet(
   roseSprayPlate.position.set(0, roseBaseY + 0.001, overheadArmReachM);
   overheadGroup.add(roseSprayPlate);
 
-  // --- C. 5640 639mm Slide Rail + 5687 Handshower + 5646 Outlet Elbow + 1.5m Hose ---
+  // 5640 639mm Slide Rail + 5687 Handshower + 5646 Outlet Elbow + 1.5m Hose
   const railKitGroup = new THREE.Group();
   railKitGroup.name = `${p}.slideRailKit`;
   group.add(railKitGroup);
@@ -832,9 +828,7 @@ export function buildArmstrongConcealedShowerSet(
   });
 }
 
-// ---------------------------------------------------------------------------
-// 3. 3660 Freestanding Bath-Shower Mixer (with Floor Shroud & 5687 Handshower)
-// ---------------------------------------------------------------------------
+// 3660 Freestanding Bath-Shower Mixer (with Floor Shroud & 5687 Handshower)
 
 export function buildArmstrongFreestandingBathMixer(
   opts: ArmstrongFreestandingBathMixerOptions
@@ -1286,9 +1280,7 @@ export function buildArmstrongFreestandingBathMixer(
   });
 }
 
-// ---------------------------------------------------------------------------
-// 4. 6221 Robe Hook (W53 × H46 × D46mm)
-// ---------------------------------------------------------------------------
+// 6221 Robe Hook (W53 × H46 × D46mm)
 
 export function buildArmstrongRobeHook(opts: ArmstrongRobeHookOptions): THREE.Group {
   const p = opts.namePrefix;
@@ -1410,9 +1402,7 @@ export function buildArmstrongRobeHook(opts: ArmstrongRobeHookOptions): THREE.Gr
   return finalizeSanitaryGroup(group, 'sanitary');
 }
 
-// ---------------------------------------------------------------------------
-// 5. 6258 Paper Holder (W147 × H98 × D46mm bracket + optional ivory roll)
-// ---------------------------------------------------------------------------
+// 6258 Paper Holder (W147 × H98 × D46mm bracket + optional ivory roll)
 
 export function buildArmstrongPaperHolder(
   opts: ArmstrongPaperHolderOptions
@@ -1604,9 +1594,7 @@ export function buildArmstrongPaperHolder(
   return finalizeSanitaryGroup(group, 'sanitary');
 }
 
-// ---------------------------------------------------------------------------
-// 6. 3606 Deck-Mounted 3-Hole Basin Mixer w/ Pop-Up Waste Rod
-// ---------------------------------------------------------------------------
+// 3606 Deck-Mounted 3-Hole Basin Mixer w/ Pop-Up Waste Rod
 
 export function buildArmstrongDeck3HoleBasinMixer(
   opts: ArmstrongDeck3HoleBasinMixerOptions
@@ -1625,7 +1613,7 @@ export function buildArmstrongDeck3HoleBasinMixer(
   const group = new THREE.Group();
   group.name = p;
 
-  // --- Centre High-Arc Swan-Neck Spout + Pop-Up Waste Lift Rod at (0, 0, 0) ---
+  // Centre High-Arc Swan-Neck Spout + Pop-Up Waste Lift Rod at (0, 0, 0)
   const spoutGroup = new THREE.Group();
   spoutGroup.name = `${p}.centreSpout`;
   group.add(spoutGroup);
@@ -1724,7 +1712,7 @@ export function buildArmstrongDeck3HoleBasinMixer(
   liftKnob.position.set(0, 0.091, rodZ);
   spoutGroup.add(liftKnob);
 
-  // --- Left Hot (-halfSpread) & Right Cold (+halfSpread) Deck Valves ---
+  // Left Hot (-halfSpread) & Right Cold (+halfSpread) Deck Valves
   for (const [tag, signX] of [
     ['hotValve', -1],
     ['coldValve', 1],
@@ -1847,10 +1835,7 @@ export function buildArmstrongDeck3HoleBasinMixer(
   });
 }
 
-
-// ---------------------------------------------------------------------------
-// 7. 6235 Wall-Mounted Towel Ring (Ø180mm ring + stepped rose & pivot collar)
-// ---------------------------------------------------------------------------
+// 6235 Wall-Mounted Towel Ring (Ø180mm ring + stepped rose & pivot collar)
 
 export function buildPerrinRoweTowelRing(
   opts: PerrinRoweTowelRingOptions
@@ -1911,9 +1896,7 @@ export function buildPerrinRoweTowelRing(
   return finalizeSanitaryGroup(group, 'sanitary');
 }
 
-// ---------------------------------------------------------------------------
-// 8. 6772 / 6797 Extended Concealed Cistern Wall Flush Lever
-// ---------------------------------------------------------------------------
+// 6772 / 6797 Extended Concealed Cistern Wall Flush Lever
 
 export function buildPerrinRoweConcealedCisternLever(
   opts: PerrinRoweConcealedCisternLeverOptions

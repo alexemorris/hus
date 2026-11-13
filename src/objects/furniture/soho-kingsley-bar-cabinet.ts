@@ -58,10 +58,6 @@ function hash2D(ix: number, iy: number, seed: number): number {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
 
-function smoothstep(t: number): number {
-  return t * t * (3 - 2 * t);
-}
-
 function periodicNoise2D(
   u: number,
   v: number,
@@ -75,8 +71,8 @@ function periodicNoise2D(
   const y = vf * freqV;
   const x0 = Math.floor(x);
   const y0 = Math.floor(y);
-  const tx = smoothstep(x - x0);
-  const ty = smoothstep(y - y0);
+  const tx = THREE.MathUtils.smoothstep(x - x0, 0, 1);
+  const ty = THREE.MathUtils.smoothstep(y - y0, 0, 1);
 
   const ix0 = x0 >= freqU ? 0 : x0;
   const ix1 = ix0 + 1 === freqU ? 0 : ix0 + 1;
@@ -751,10 +747,8 @@ export function buildSohoKingsleyBarCabinet(
   cabinetGroup.position.set(position[0], position[1], position[2]);
   cabinetGroup.rotation.y = rotationY;
 
-  // =========================================================================
-  // 1. ANTIQUE-BRASS PLINTH FEET (`Y = 0.000..0.060m`, `60mm` floor clearance)
+  // ANTIQUE-BRASS PLINTH FEET (`Y = 0.000..0.060m`, `60mm` floor clearance)
   //    Curved quarter-round front corner plinths (`R = 115mm`) + rear blocks
-  // =========================================================================
   const plinthH = 0.06;
   for (const sideSign of [-1, 1] as const) {
     const sideLabel = sideSign < 0 ? 'left' : 'right';
@@ -798,11 +792,9 @@ export function buildSohoKingsleyBarCabinet(
     cabinetGroup.add(rearFoot);
   }
 
-  // =========================================================================
-  // 2. GREY EMPERADOR MARBLE TOP SERVING SLAB (`Y = 1.068..1.100m`, `32mm` thick)
+  // GREY EMPERADOR MARBLE TOP SERVING SLAB (`Y = 1.068..1.100m`, `32mm` thick)
   //    Exact `0.950m W × 0.510m D` (`x = -0.475..+0.475, z = -0.255..+0.255`)
   //    Double-stepped bullnose edge profile + `R = 115mm` rounded front corners
-  // =========================================================================
   const marbleLowerTier = new THREE.Mesh(
     buildRoundedFrontSlabGeometry(0.474, -0.255, 0.254, 0.115, 0.015, 0.003, 0.003),
     mats.greyEmperadorMarble
@@ -832,10 +824,8 @@ export function buildSohoKingsleyBarCabinet(
   marbleUpperTier.receiveShadow = true;
   cabinetGroup.add(marbleUpperTier);
 
-  // =========================================================================
-  // 3. REAR EUROPEAN OAK CARCASS (`Y = 0.060..1.068m`, `z = -0.255..+0.085m`)
+  // REAR EUROPEAN OAK CARCASS (`Y = 0.060..1.068m`, `z = -0.255..+0.085m`)
   //    With 27 horizontally reeded half-round oak ribs on both side cheeks
-  // =========================================================================
   const bodyBotY = 0.06;
   const bodyTopY = 1.068;
   const bodyH = bodyTopY - bodyBotY; // 1.008m
@@ -908,11 +898,9 @@ export function buildSohoKingsleyBarCabinet(
     }
   }
 
-  // =========================================================================
-  // 4. RICH STOCKED INTERIOR (`Y = 0.084..1.050m`)
-  // =========================================================================
+  // RICH STOCKED INTERIOR (`Y = 0.084..1.050m`)
 
-  // 4A. 16-Cubby Solid Oak Horizontal Wine Grid (`Y = 0.084..0.322m`, 2 rows × 8 cols = 16 bottles)
+  // 16-Cubby Solid Oak Horizontal Wine Grid (`Y = 0.084..0.322m`, 2 rows × 8 cols = 16 bottles)
   const wineGridGroup = new THREE.Group();
   wineGridGroup.name = `${namePrefix}.oakWineGrid`;
   const gridBotY = bodyBotY + 0.024; // 0.084m
@@ -984,7 +972,7 @@ export function buildSohoKingsleyBarCabinet(
   }
   cabinetGroup.add(wineGridGroup);
 
-  // 4B. Full-Width Silvered Mirror Back Panel (`Y = 0.340..0.958m`)
+  // Full-Width Silvered Mirror Back Panel (`Y = 0.340..0.958m`)
   const mirrorPanel = new THREE.Mesh(
     new THREE.BoxGeometry(innerHalfW * 2 - 0.006, 0.618, 0.008),
     mats.mirrorGlass
@@ -1007,7 +995,7 @@ export function buildSohoKingsleyBarCabinet(
     return root;
   };
 
-  // 4C. Stocked Stemware on Solid Oak Bar Deck (`Y = 0.340m`)
+  // Stocked Stemware on Solid Oak Bar Deck (`Y = 0.340m`)
   const deckTopY = gridTopY + 0.018; // 0.340m
   for (const [gIdx, gx] of ([-0.36, -0.25, -0.14, 0.14] as const).entries()) {
     const bordeaux = applySparklingCrystal(buildCrystalBordeauxGlass(`${namePrefix}.barDeck.bordeauxGlass.${gIdx + 1}`));
@@ -1020,7 +1008,7 @@ export function buildSohoKingsleyBarCabinet(
     cabinetGroup.add(flute);
   }
 
-  // 4D. Middle Full-Depth Toughened Glass Shelf (`Y = 0.576m, W = 0.870m × D = 0.305m`)
+  // Middle Full-Depth Toughened Glass Shelf (`Y = 0.576m, W = 0.870m × D = 0.305m`)
   const midGlassY = 0.576;
   const midGlassShelf = new THREE.Mesh(
     new THREE.BoxGeometry(0.87, 0.008, 0.305),
@@ -1124,7 +1112,7 @@ export function buildSohoKingsleyBarCabinet(
     cabinetGroup.add(reserveBottle);
   }
 
-  // 4E. Top Half-Depth Toughened Glass Shelf (`Y = 0.778m, W = 0.870m × D = 0.160m`)
+  // Top Half-Depth Toughened Glass Shelf (`Y = 0.778m, W = 0.870m × D = 0.160m`)
   const topGlassY = 0.778;
   const topGlassShelf = new THREE.Mesh(
     new THREE.BoxGeometry(0.87, 0.008, 0.16),
@@ -1161,7 +1149,7 @@ export function buildSohoKingsleyBarCabinet(
     cabinetGroup.add(coupe);
   }
 
-  // 4F. Warm `2700K` Integrated Bar LED Diffuser Strip (`Y = 0.958m`) & Drawer Divider Shelf (`Y = 0.960m`)
+  // Warm `2700K` Integrated Bar LED Diffuser Strip (`Y = 0.958m`) & Drawer Divider Shelf (`Y = 0.960m`)
   const drawerDivider = new THREE.Mesh(
     new THREE.BoxGeometry(innerHalfW * 2, 0.012, carcassD - 0.024),
     mats.oakBody
@@ -1196,7 +1184,7 @@ export function buildSohoKingsleyBarCabinet(
   cabinetGroup.add(ledDiffuser);
   ctx.interactions.registerLightFixture(ledDiffuser, 'walkInCupboardLeds');
 
-  // 4G. Top Internal Sliding Oak Drawer (`Y = 0.966..1.044m, W = 0.870m`)
+  // Top Internal Sliding Oak Drawer (`Y = 0.966..1.044m, W = 0.870m`)
   const drawerGroup = new THREE.Group();
   drawerGroup.name = `${namePrefix}.slidingOakDrawer`;
   drawerGroup.position.set(0, 1.005, -0.072); // Front face at -0.072 + 0.145 = +0.073m (inside carcass +0.085m)
@@ -1270,11 +1258,9 @@ export function buildSohoKingsleyBarCabinet(
   cabinetGroup.add(drawerGroup);
   ctx.interactions.registerSlidingDrawer(drawerGroup, new THREE.Vector3(0, 0, 0.22));
 
-  // =========================================================================
-  // 5. WRAP-AROUND BOX DOORS (`165mm` deep, `R = 115mm` curved reeded stiles,
+  // WRAP-AROUND BOX DOORS (`165mm` deep, `R = 115mm` curved reeded stiles,
   //    two stacked concentric diamond-reeded marquetry panels per leaf,
   //    cast 4-way pyramid brass handles & 3 oak + brass inside-of-door bar racks)
-  // =========================================================================
   const buildBoxDoorLeaf = (sideSign: -1 | 1, doorBottleStartIndex: number): THREE.Group => {
     const sideLabel = sideSign < 0 ? 'left' : 'right';
     const doorGroup = new THREE.Group();
@@ -1297,7 +1283,7 @@ export function buildSohoKingsleyBarCabinet(
     const xLatch = inward * leafW;
     const xFlatCenter = (xCurveEnd + xLatch) * 0.5;
 
-    // 5A. Curved quarter-cylinder oak corner shell (`R = 115mm`) + straight 35mm return + flat front leaf + latch stile + top/bottom caps
+    // Curved quarter-cylinder oak corner shell (`R = 115mm`) + straight 35mm return + flat front leaf + latch stile + top/bottom caps
     const arcCenterX = inward * cornerR;
     const arcCenterZ = boxD - cornerR; // 0.035m
     const thetaStart = sideSign > 0 ? 0 : Math.PI * 1.5;
@@ -1376,7 +1362,7 @@ export function buildSohoKingsleyBarCabinet(
       doorGroup.add(cap);
     }
 
-    // 5B. Merged 3D Reeded Oak Work: 27 horizontal curved corner flutes + 2 stacked concentric diamond-reeded marquetry panels
+    // Merged 3D Reeded Oak Work: 27 horizontal curved corner flutes + 2 stacked concentric diamond-reeded marquetry panels
     const doorReedGeos: THREE.BufferGeometry[] = [];
     for (let i = 0; i < numReeds; i++) {
       const ry = -doorH * 0.5 + 0.005 + (i + 0.5) * reedPitchY;
@@ -1432,12 +1418,12 @@ export function buildSohoKingsleyBarCabinet(
     doorReedsMesh.receiveShadow = true;
     doorGroup.add(doorReedsMesh);
 
-    // 5C. Cast Antique-Brass 4-Way Pyramid/Diamond Relief Handle at `Y = 0.615m` (`y_rel = 0.051m`), protruding to `z_rel = 0.168m` (`localZ = 0.255m`)
+    // Cast Antique-Brass 4-Way Pyramid/Diamond Relief Handle at `Y = 0.615m` (`y_rel = 0.051m`), protruding to `z_rel = 0.168m` (`localZ = 0.255m`)
     const handle = buildKingsleyBrassHandle(`${doorGroup.name}.pyramidBrassHandle`, sideSign, mats);
     handle.position.set(xLatch - inward * 0.025, 0.051, boxD);
     doorGroup.add(handle);
 
-    // 5D. Inside-of-Door Bar & Wine Racks (`3` oak shelves + `3` Ø8mm antique-brass guard rails per door!)
+    // Inside-of-Door Bar & Wine Racks (`3` oak shelves + `3` Ø8mm antique-brass guard rails per door!)
     const rackW = leafW - 0.068; // ~0.40m clear inside pocket
     const rackCenterX = inward * (leafW * 0.5 + 0.012);
     const rackDepth = 0.104;
@@ -1553,10 +1539,8 @@ export function buildSohoKingsleyBarCabinet(
 
   ctx.scene.add(cabinetGroup);
 
-  // =========================================================================
-  // 6. TASTEFULLY STYLED MARBLE-TOP SERVING TRAY (`Y = 1.100m`, sibling group
+  // TASTEFULLY STYLED MARBLE-TOP SERVING TRAY (`Y = 1.100m`, sibling group
   //    so `familyRoom.kingsleyBarCabinet` preserves exact `1.10 × 0.95 × 0.51m` bounds!)
-  // =========================================================================
   let topTrayGroup: THREE.Group | null = null;
   if (includeTopServingTray) {
     topTrayGroup = new THREE.Group();

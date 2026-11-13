@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 // @ts-expect-error .mjs module imported directly under Vitest
 import { ALLOWED, PUBLIC_HUSJS_ENTRYPOINTS, checkBoundaries, checkSourceImports } from './check-boundaries.mjs';
 
-describe('tools/check-boundaries.mjs strict Stage 3 lock', () => {
+describe('tools/check-boundaries.mjs layer boundary rules', () => {
   it('locks ALLOWED.homes = ["husjs"] & ALLOWED.app = ["husjs", "homes"] and rejects deep or private husjs imports', () => {
     expect(ALLOWED.homes).toEqual(['husjs']);
     expect(ALLOWED.examples).toEqual(['husjs']);

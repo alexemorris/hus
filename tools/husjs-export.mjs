@@ -27,6 +27,7 @@ import {
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { parseCliFlags } from './cli-args.mjs';
 
 const LOG_PREFIX = '[husjs export]';
 const EXPORT_FORMATS = ['glb', 'blend', 'both'];
@@ -57,70 +58,47 @@ const CHROME_ARGS = [
   '--mute-audio',
 ];
 
-// ---------------------------------------------------------------------------
-// CLI arguments & output paths
-// ---------------------------------------------------------------------------
-
-const VALUE_FLAGS = new Set(['house', 'url', 'out', 'format', 'blender-bin', 'chrome-bin', 'timeout']);
+const EXPORT_CLI_OPTIONS = {
+  house: { type: 'string' },
+  url: { type: 'string' },
+  out: { type: 'string' },
+  format: { type: 'string' },
+  'blender-bin': { type: 'string' },
+  'chrome-bin': { type: 'string' },
+  timeout: { type: 'string' },
+};
 
 export function parseExportCliArgs(argv) {
-  /** @type {Record<string, string>} */
-  const flags = {};
-  let help = false;
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === '--help' || arg === '-h') {
-      help = true;
-      continue;
-    }
-    if (!arg.startsWith('--')) {
-      throw new Error(`Unexpected positional argument '${arg}'`);
-    }
-    const eqIdx = arg.indexOf('=');
-    const key = eqIdx >= 0 ? arg.slice(2, eqIdx) : arg.slice(2);
-    if (!VALUE_FLAGS.has(key)) {
-      throw new Error(`Unknown flag '--${key}'`);
-    }
-    if (eqIdx >= 0) {
-      flags[key] = arg.slice(eqIdx + 1);
-    } else {
-      const next = argv[i + 1];
-      if (next === undefined || next.startsWith('--')) {
-        throw new Error(`Missing value for flag '--${key}'`);
-      }
-      flags[key] = next;
-      i++;
-    }
-  }
-  if (help) {
+  const { values } = parseCliFlags(argv, EXPORT_CLI_OPTIONS);
+  if (values.help) {
     return { help: true };
   }
 
-  const format = flags.format ?? 'glb';
+  const format = values.format ?? 'glb';
   if (!EXPORT_FORMATS.includes(format)) {
     throw new Error(`Invalid --format '${format}' (expected one of: ${EXPORT_FORMATS.join(', ')})`);
   }
-  const timeoutMs = flags.timeout !== undefined ? Number(flags.timeout) : DEFAULT_TIMEOUT_MS;
+  const timeoutMs = values.timeout !== undefined ? Number(values.timeout) : DEFAULT_TIMEOUT_MS;
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
-    throw new Error(`--timeout must be a positive number of milliseconds (got '${flags.timeout}')`);
+    throw new Error(`--timeout must be a positive number of milliseconds (got '${values.timeout}')`);
   }
   for (const key of ['house', 'url', 'out', 'blender-bin', 'chrome-bin']) {
-    if (flags[key] === '') {
+    if (values[key] === '') {
       throw new Error(`Flag '--${key}' needs a non-empty value`);
     }
   }
-  if (flags.url !== undefined && !isHttpUrl(flags.url)) {
-    throw new Error(`--url must start with http:// or https:// (got '${flags.url}')`);
+  if (values.url !== undefined && !isHttpUrl(values.url)) {
+    throw new Error(`--url must start with http:// or https:// (got '${values.url}')`);
   }
 
   return {
     help: false,
-    house: flags.house ?? DEFAULT_HOUSE,
-    url: flags.url,
-    out: flags.out ?? './export',
+    house: values.house ?? DEFAULT_HOUSE,
+    url: values.url,
+    out: values.out ?? './export',
     format,
-    blenderBin: flags['blender-bin'],
-    chromeBin: flags['chrome-bin'],
+    blenderBin: values['blender-bin'],
+    chromeBin: values['chrome-bin'],
     timeoutMs,
   };
 }
@@ -183,10 +161,6 @@ export function resolveOutputPaths({ out, houseSlug, cwd = process.cwd() }) {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Executable discovery
-// ---------------------------------------------------------------------------
-
 function isExecutableFile(path) {
   try {
     if (!statSync(path).isFile()) return false;
@@ -229,10 +203,6 @@ export function findChromeExecutable(explicitBin, env = process.env) {
   if (requested) return resolveExecutable(requested, env);
   return CHROME_CANDIDATES.find(isExecutableFile) ?? null;
 }
-
-// ---------------------------------------------------------------------------
-// Target URL & temporary Vite server
-// ---------------------------------------------------------------------------
 
 function withExportQueryParams(rawUrl, extraParams = {}) {
   const url = new URL(rawUrl);
@@ -317,10 +287,6 @@ export async function resolveHouseExportTarget(parsed, options = {}) {
     throw err;
   }
 }
-
-// ---------------------------------------------------------------------------
-// Headless browser drivers (Playwright when installed, else Chrome DevTools pipe)
-// ---------------------------------------------------------------------------
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
@@ -560,10 +526,6 @@ async function launchPlaywrightDriver(chromeBin) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// In-page export & chunked transfer
-// ---------------------------------------------------------------------------
-
 const PAGE_READY_EXPRESSION = `(() => {
   const viewer = window.__HUSJS_MOUNTED__?.scene || (window.__HUSJS_MOUNTED__?.scene ?? window.husTwin?.scene);
   if (!viewer) return false;
@@ -733,10 +695,6 @@ export async function exportGlbViaBrowser(options) {
     });
   }
 }
-
-// ---------------------------------------------------------------------------
-// Headless Blender `.glb` -> `.blend`
-// ---------------------------------------------------------------------------
 
 /** Blender Python script run as `blender --background --factory-startup --python <script> -- ...`. */
 export function buildBlenderConversionScript() {
@@ -921,10 +879,6 @@ export async function convertGlbToBlend({ glbPath, blendPath, blenderBin, camera
     rmSync(workDir, { recursive: true, force: true });
   }
 }
-
-// ---------------------------------------------------------------------------
-// CLI entrypoint
-// ---------------------------------------------------------------------------
 
 /**
  * Runs `husjs export`. Rejects on invalid flags or export failures (callers map that to exit 1).

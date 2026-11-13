@@ -594,6 +594,6 @@ export function buildSimpleHouseGroundInteriors(
     })
   );
 
-  // 2–3. West Drawing Room, Garden Boot Lobby & Guests' Powder Room
+  // West Drawing Room, Garden Boot Lobby & Guests' Powder Room
   buildSimpleHouseGroundWestAndCloakroom(ctx, shell, root, groundCeilingGroup);
 }

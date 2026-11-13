@@ -91,10 +91,6 @@ export {
   type DiscoveredExteriorGlazedPortal,
 };
 
-// ---------------------------------------------------------------------------
-// Baker & Runtime Accumulator
-// ---------------------------------------------------------------------------
-
 export class BakedLightVolumeController {
   private readonly circuitBakes: SparseCircuitBake[] = [];
   private daylightVoxelCount = 0;

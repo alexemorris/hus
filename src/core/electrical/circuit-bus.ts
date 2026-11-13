@@ -95,7 +95,7 @@ export interface ElectricalWallPlateState {
 export interface OneWayWiringTopology {
   readonly kind: 'one-way';
   readonly switchId: string;
-  /** Pose that closes the circuit. Defaults to `'down'` (UK/Corston convention: `'up'` = OFF, `'down'` = ON). */
+  /** Pose that closes the circuit. Defaults to `'down'` (UK toggle convention: `'up'` = OFF, `'down'` = ON). */
   readonly onPose?: SwitchGangPose;
 }
 
@@ -295,10 +295,6 @@ export function defaultPlateGangSwitchId(plateId: string, gang: number): string 
   return `${plateId}:g${gang}`;
 }
 
-// ---------------------------------------------------------------------------
-// Wiring topology builders
-// ---------------------------------------------------------------------------
-
 export function wireOneWay(
   switchId: string,
   options?: { readonly onPose?: SwitchGangPose }
@@ -396,10 +392,6 @@ export function wireDimmer(
   };
 }
 
-// ---------------------------------------------------------------------------
-// CircuitBus / ElectricalSystem
-// ---------------------------------------------------------------------------
-
 export class CircuitBus {
   private readonly switches = new Map<string, SwitchRecord>();
   private readonly wallPlates = new Map<string, WallPlateRecord>();
@@ -433,10 +425,6 @@ export class CircuitBus {
       this.listeners.delete(listener);
     };
   }
-
-  // -------------------------------------------------------------------------
-  // Switches & multi-gang wall plates
-  // -------------------------------------------------------------------------
 
   public registerSwitch(spec: ElectricalSwitchSpec): ElectricalSwitchState {
     const existing = this.switches.get(spec.id);
@@ -638,10 +626,6 @@ export class CircuitBus {
     return this.flipSwitch(switchId, pose, options);
   }
 
-  // -------------------------------------------------------------------------
-  // Rotary / trailing-edge dimmers
-  // -------------------------------------------------------------------------
-
   public registerDimmer(spec: ElectricalDimmerSpec): ElectricalDimmerState {
     const minLevel = clamp01(spec.minLevel ?? 0);
     const rawInitial = spec.initialLevel !== undefined ? clamp01(spec.initialLevel) : 1;
@@ -742,10 +726,6 @@ export class CircuitBus {
     const nextEnabled = !(dimmer.enabled && dimmer.level > 0);
     return this.setDimmerEnabled(dimmerId, nextEnabled, options);
   }
-
-  // -------------------------------------------------------------------------
-  // Circuits
-  // -------------------------------------------------------------------------
 
   public registerCircuit(spec: ElectricalCircuitSpec): void {
     this.ensureTopologyDevices(spec);
@@ -998,10 +978,6 @@ export class CircuitBus {
     return this.setCircuitBrightness(circuitId, 1, options);
   }
 
-  // -------------------------------------------------------------------------
-  // Room / Zone helpers & scenes
-  // -------------------------------------------------------------------------
-
   public registerZone(spec: ElectricalZoneSpec): ElectricalZoneDescriptor {
     const existing = this.zones.get(spec.id);
     const record: ZoneRecord = {
@@ -1154,10 +1130,6 @@ export class CircuitBus {
     return true;
   }
 
-  // -------------------------------------------------------------------------
-  // Trailing-edge dimmer ramp stepping
-  // -------------------------------------------------------------------------
-
   public hasPendingRamps(): boolean {
     for (const c of this.circuits.values()) {
       if (Math.abs(c.targetBrightness - c.liveBrightness) > 1e-6) {
@@ -1214,10 +1186,6 @@ export class CircuitBus {
 
     return false;
   }
-
-  // -------------------------------------------------------------------------
-  // Internal continuity evaluation
-  // -------------------------------------------------------------------------
 
   private plateGangKey(plateId: string, gang: number): string {
     return `${plateId}::${gang}`;

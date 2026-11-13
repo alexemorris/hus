@@ -64,10 +64,6 @@ import type {
 /** Function returned by every subscription; call it to stop listening. */
 export type Unsubscribe = () => void;
 
-// -----------------------------------------------------------------------------
-// Camera
-// -----------------------------------------------------------------------------
-
 /** Camera + floor state (plain data, safe to keep). */
 export interface TwinViewState {
   readonly cameraPosition: Vec3Tuple;
@@ -111,10 +107,6 @@ export interface TwinScreenPoint {
   readonly visible: boolean;
 }
 
-// -----------------------------------------------------------------------------
-// Floors & cutaways
-// -----------------------------------------------------------------------------
-
 /** One storey of the property, as offered by the floor switcher. */
 export interface TwinFloorInfo {
   readonly id: FloorViewMode;
@@ -135,10 +127,6 @@ export interface TwinFloorsApi {
   setCeilingCutaway(cutaway: boolean): void;
   toggleCeilingCutaway(): boolean;
 }
-
-// -----------------------------------------------------------------------------
-// Rooms
-// -----------------------------------------------------------------------------
 
 /** Lightweight room hit-test result (focus model). */
 export interface TwinRoomHit {
@@ -174,10 +162,6 @@ export interface TwinRoomsApi {
   /** Room containing a world point (optionally constrained to a floor). */
   findAt(point: Vec3Tuple, floorId?: FloorId): TwinRoomHit | null;
 }
-
-// -----------------------------------------------------------------------------
-// Lighting (KNX-backed)
-// -----------------------------------------------------------------------------
 
 export interface TwinRoomMotionSensor {
   readonly id: RoomMotionSensorId;
@@ -292,10 +276,6 @@ export interface TwinLightingApi {
   getTransport(): { readonly mode: KNXTransportMode; readonly status: KNXTransportStatus };
 }
 
-// -----------------------------------------------------------------------------
-// Devices
-// -----------------------------------------------------------------------------
-
 export interface TwinUfhZone {
   readonly id: string;
   readonly name: string;
@@ -341,10 +321,6 @@ export interface TwinDevicesApi {
   toggleUfhLayer(): boolean;
 }
 
-// -----------------------------------------------------------------------------
-// Graphics
-// -----------------------------------------------------------------------------
-
 export interface TwinGraphicsStats {
   readonly fps: number;
   readonly p95Ms: number;
@@ -368,10 +344,6 @@ export interface TwinGraphicsApi {
   setMotionBlurEnabled(enabled: boolean): void;
 }
 
-// -----------------------------------------------------------------------------
-// Trade views
-// -----------------------------------------------------------------------------
-
 export interface TwinTradesApi {
   getView(): TradeView;
   setView(view: TradeView): void;
@@ -379,10 +351,6 @@ export interface TwinTradesApi {
   /** CSV schedule of service points for a trade (defaults to the current view). */
   exportServiceSchedule(view?: TradeView): string;
 }
-
-// -----------------------------------------------------------------------------
-// Walkthrough
-// -----------------------------------------------------------------------------
 
 export interface TwinWalkthroughSpawn {
   readonly id: string;
@@ -408,7 +376,7 @@ export interface TwinWalkthroughApi {
   /** Uses the object under the crosshair (same as the F key). */
   interact(): boolean;
   toggleCrouch(): boolean;
-  /** Trigger a jump or stair/ledge climb in 1PV walkthrough mode. */
+  /** Trigger a jump or stair/ledge climb in first-person walkthrough mode. */
   jump(): void;
   /** Sets the virtual left thumbstick movement vector (-1..1 strafe & forward) for touch walkthrough. */
   setTouchMove(strafe: number, forward: number, sprint?: boolean): void;
@@ -428,10 +396,6 @@ export interface TwinWalkthroughApi {
    */
   onFootPositionChanged(listener: (pos: Vec3Tuple, zoneId: RoomZoneId | null) => void): Unsubscribe;
 }
-
-// -----------------------------------------------------------------------------
-// Notes (annotation tools + record store)
-// -----------------------------------------------------------------------------
 
 export interface TwinMovableTarget {
   readonly uuid: string;
@@ -509,10 +473,6 @@ export interface TwinNotesApi {
   formatForAgent(): string;
 }
 
-// -----------------------------------------------------------------------------
-// Audio & Soundscape
-// -----------------------------------------------------------------------------
-
 export interface TwinAudioApi {
   isMuted(): boolean;
   setMuted(muted: boolean): void;
@@ -526,10 +486,6 @@ export interface TwinAudioApi {
   onChanged(listener: () => void): Unsubscribe;
 }
 
-// -----------------------------------------------------------------------------
-// Dev (diagnostics only — dev tools needing engine objects get them from bootstrap)
-// -----------------------------------------------------------------------------
-
 export interface TwinDevApi {
   getLodDiagnostics(): RoomLodDiagnostics;
   getLodPolicyMode(): LodPolicyMode;
@@ -538,10 +494,6 @@ export interface TwinDevApi {
   isMotionBlurEnabled(): boolean;
   toggleMotionBlur(): boolean;
 }
-
-// -----------------------------------------------------------------------------
-// Sky, Solar/Lunar Ephemeris & Composable Atmospheric Weather
-// -----------------------------------------------------------------------------
 
 export interface TwinSkyWeatherApi {
   getSnapshot(): SkyWeatherSnapshot;
@@ -560,10 +512,6 @@ export interface TwinSkyWeatherApi {
   endInteractiveScrub?(): void;
   isInteractiveScrubbing?(): boolean;
 }
-
-// -----------------------------------------------------------------------------
-// Interactive Terrain Sculpt Brush
-// -----------------------------------------------------------------------------
 
 export interface TwinTerrainSculptApi {
   isAvailable(): boolean;
@@ -586,10 +534,6 @@ export interface TwinTerrainSculptApi {
   formatModifierJson(idOverride?: string): string;
   formatModifierTs(idOverride?: string): string;
 }
-
-// -----------------------------------------------------------------------------
-// Root
-// -----------------------------------------------------------------------------
 
 export interface TwinApi {
   readonly camera: TwinCameraApi;

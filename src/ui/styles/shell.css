@@ -1,8 +1,6 @@
-/* ============================================================================
-   Hus — App Shell
+/* Hus App Shell
    Fixed layout: top bar · room navigator (left) · room panel (right) · tool dock.
-   Calm light-on-dark glass panels; no floating or draggable windows.
-   ============================================================================ */
+   Calm light-on-dark glass panels; no floating or draggable windows. */
 
 :root {
   --shell-topbar-h: 52px;
@@ -62,9 +60,7 @@
   display: block;
 }
 
-/* ---------------------------------------------------------------------------
-   Buttons & primitives
-   --------------------------------------------------------------------------- */
+/* Buttons & primitives */
 
 .shell-btn,
 .shell-icon-btn,
@@ -380,9 +376,7 @@ button:disabled {
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
 }
 
-/* ---------------------------------------------------------------------------
-   Top bar
-   --------------------------------------------------------------------------- */
+/* Top bar */
 
 .shell-topbar {
   position: fixed;
@@ -450,9 +444,7 @@ button:disabled {
   height: 30px;
 }
 
-/* ---------------------------------------------------------------------------
-   Side panels (navigator + room panel)
-   --------------------------------------------------------------------------- */
+/* Side panels (navigator + room panel) */
 
 .shell-nav,
 .shell-panel,
@@ -912,9 +904,7 @@ button:disabled {
   background: var(--shell-hover);
 }
 
-/* ---------------------------------------------------------------------------
-   Tool dock
-   --------------------------------------------------------------------------- */
+/* Tool dock */
 
 .shell-dock-wrap {
   position: fixed;
@@ -981,9 +971,7 @@ button:disabled {
   background: var(--shell-line-strong);
 }
 
-/* ---------------------------------------------------------------------------
-   Note / measure inspector (annotator DOM, docked above the tool dock)
-   --------------------------------------------------------------------------- */
+/* Note / measure inspector (annotator DOM, docked above the tool dock) */
 
 .shell-inspector {
   position: fixed;
@@ -1058,9 +1046,7 @@ body:not(.is-dev-mode) .shell-inspector .annotator-move-box {
   display: none;
 }
 
-/* ---------------------------------------------------------------------------
-   Developer drawer (hosts legacy KNX HUD DOM)
-   --------------------------------------------------------------------------- */
+/* Developer drawer (hosts legacy KNX HUD DOM) */
 
 #dev-legacy-host[hidden] {
   display: none;
@@ -1135,9 +1121,7 @@ body:not(.is-dev-mode) .shell-inspector .annotator-move-box {
   cursor: default;
 }
 
-/* ---------------------------------------------------------------------------
-   Modals: settings & help
-   --------------------------------------------------------------------------- */
+/* Modals: settings & help */
 
 .shell-modal-backdrop {
   position: fixed;
@@ -1362,9 +1346,7 @@ kbd {
   gap: 8px;
 }
 
-/* ---------------------------------------------------------------------------
-   Toast, scrim, loading screen
-   --------------------------------------------------------------------------- */
+/* Toast, scrim, loading screen */
 
 .shell-toast {
   position: fixed;
@@ -1579,9 +1561,7 @@ body.is-annotating .shell-toast {
   }
 }
 
-/* ---------------------------------------------------------------------------
-   Bottom sheet grabber & touch walkthrough controls
-   --------------------------------------------------------------------------- */
+/* Bottom sheet grabber & touch walkthrough controls */
 
 .shell-sheet-grabber {
   display: flex;
@@ -1758,9 +1738,7 @@ body.is-annotating .shell-toast {
   background: rgba(245, 184, 81, 0.16);
 }
 
-/* ---------------------------------------------------------------------------
-   Responsive: tablets, Google Pixel Fold (folded & unfolded), and phones
-   --------------------------------------------------------------------------- */
+/* Responsive: tablets, foldables, and phones */
 
 @media (max-width: 1240px) {
   .shell-viewas-label,
@@ -1805,7 +1783,7 @@ body.is-annotating .shell-toast {
   }
 }
 
-/* Tablet & Pixel Fold Unfolded (~641px .. 1040px): single overlay drawer at a time */
+/* Tablet & unfolded foldable (~641px .. 1040px): single overlay drawer at a time */
 @media (max-width: 1040px) {
   .shell-btn-label,
   .shell-brand .shell-badge {
@@ -1891,7 +1869,7 @@ body.is-annotating .shell-toast {
   }
 }
 
-/* Compact Phone & Pixel Fold Cover Display (<= 640px): RoomPanel becomes a multi-snap bottom sheet */
+/* Compact phone & folded cover display (<= 640px): RoomPanel becomes a multi-snap bottom sheet */
 @media (max-width: 640px) {
   .shell-brand-name {
     max-width: 138px;
@@ -1979,9 +1957,7 @@ body.is-annotating .shell-toast {
   }
 }
 
-/* ---------------------------------------------------------------------------
-   Room lighting zone (layers, zone scenes, Full / Night / Off)
-   --------------------------------------------------------------------------- */
+/* Room lighting zone (layers, zone scenes, Full / Night / Off) */
 
 .shell-lighting {
   gap: 12px;
@@ -2104,9 +2080,7 @@ body.is-annotating .shell-toast {
   box-shadow: 0 0 6px rgba(94, 224, 143, 0.8);
 }
 
-/* ---------------------------------------------------------------------------
-   First-person walkthrough overlay
-   --------------------------------------------------------------------------- */
+/* First-person walkthrough overlay */
 
 .shell-walk {
   position: fixed;
@@ -2341,9 +2315,7 @@ body.is-annotating .shell-toast {
   touch-action: pan-y;
 }
 
-/* ---------------------------------------------------------------------------
-   Sky, True-Compass, Solar/Lunar Ephemeris & Live Atmospheric Weather HUD
-   --------------------------------------------------------------------------- */
+/* Sky, compass, sun/moon & live weather HUD */
 
 .skyhud-anchor {
   position: fixed;

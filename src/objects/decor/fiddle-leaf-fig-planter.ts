@@ -199,7 +199,7 @@ export function buildFiddleLeafFigPlanter(
     metalness: 0.02,
   });
 
-  // 1. Turned Artisan Ribbed Stoneware Ceramic Planter (`${namePrefix}.pot`)
+  // Turned Artisan Ribbed Stoneware Ceramic Planter (`${namePrefix}.pot`)
   // Built with LatheGeometry: height 0.42m, top radius 0.215m, curved belly, tapered base,
   // rolled lip rim, and 18 horizontal turned ribs
   const lathePoints: THREE.Vector2[] = [];
@@ -310,7 +310,7 @@ export function buildFiddleLeafFigPlanter(
     nwPlantGroup.add(surfaceDetail);
   }
 
-  // 2. 4 Organically Curved Woody Trunks & Secondary Branches (y = 0.37m..1.28m)
+  // 4 Organically Curved Woody Trunks & Secondary Branches (y = 0.37m..1.28m)
   const trunkDefinitions: ReadonlyArray<{
     readonly points: ReadonlyArray<readonly [number, number, number]>;
     readonly radiusBottom: number;
@@ -430,7 +430,7 @@ export function buildFiddleLeafFigPlanter(
     }
   }
 
-  // 3. 25 High-LOD Sculpted Fiddle-Leaf Fig Leaves (`${namePrefix}.leaf`)
+  // 25 High-LOD Sculpted Fiddle-Leaf Fig Leaves (`${namePrefix}.leaf`)
   // Arranged in a lush, multi-tiered radial botanical canopy from y = 0.55m to y = 1.52m
   const leafTemplates = [
     // Large mature lower/mid leaves

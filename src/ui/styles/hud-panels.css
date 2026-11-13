@@ -1,6 +1,4 @@
-/* ============================================================================
-   Legacy HUD sections (rendered inside the developer drawer)
-   ============================================================================ */
+/* Legacy HUD sections (rendered inside the developer drawer) */
 
 .hud-body [hidden] {
   display: none !important;
@@ -83,9 +81,7 @@
 }
 
 
-/* ============================================================================
-   AI Voice & Text Assistant (PA 1.1.2)
-   ============================================================================ */
+/* AI voice & text assistant (PA 1.1.2) */
 
 .hud-ai-bar {
   display: flex;
@@ -289,9 +285,7 @@
 }
 
 
-/* ============================================================================
-   Collapsible KNX Bus & EEPROM Drawer
-   ============================================================================ */
+/* Collapsible KNX bus & EEPROM drawer */
 
 .hud-disclosure-btn {
   display: flex;
@@ -447,9 +441,7 @@
   color: #79a6c4;
 }
 
-/* ============================================================================
-   Bottom Single-Line Status Bar
-   ============================================================================ */
+/* Bottom single-line status bar */
 
 .hud-statusbar {
   display: flex;
@@ -477,9 +469,7 @@
 }
 
 
-/* ============================================================================
-   Reactive Preact + @preact/signals Status Badges & Pills
-   ============================================================================ */
+/* Reactive Preact + @preact/signals status badges & pills */
 
 .twin-status-badge {
   display: flex;

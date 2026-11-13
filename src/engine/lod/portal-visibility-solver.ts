@@ -120,7 +120,7 @@ const ROOFLIGHT_HORIZON_DOT = -0.45;
  * Exact Conservative Cell-and-Portal + Exterior-Window Occlusion Solver (`0.00 px` visual diff, `< 0.03 ms` CPU).
  *
  * Pre-allocates all working buffers at construction time so `solveVisibleInteriorRooms()` performs
- * zero heap allocations per frame during orbit and 1PV walkthrough.
+ * zero heap allocations per frame during orbit and first-person walkthrough.
  */
 export class PortalVisibilitySolver {
   private readonly rooms: readonly InternalRoomRecord[];
@@ -365,9 +365,7 @@ export class PortalVisibilitySolver {
     const roofCutawayOpen = Boolean(options?.roofCutawayOpen);
 
     if (seedCount === 0) {
-      // =======================================================================
       // CASE A: Camera is OUTSIDE all interior rooms (exterior orbit / courtyard)
-      // =======================================================================
       for (let i = 0; i < nRooms; i++) {
         if (this.inFrustumFlags[i] === 0) continue;
         const room = this.rooms[i]!;
@@ -424,9 +422,7 @@ export class PortalVisibilitySolver {
       // (iii) 1-3 hop interior sightline propagation through active InteriorRoomPortals
       this.propagateInteriorPortals(3);
     } else {
-      // =======================================================================
-      // CASE B: Camera is INSIDE room(s) R_0 (1PV walkthrough or interior orbit)
-      // =======================================================================
+      // CASE B: Camera is INSIDE room(s) R_0 (first-person walkthrough or interior orbit)
       // Doorway threshold guard: any room within 0.45m connected via active portal to a seed room gets full rect
       for (let p = 0; p < nInt; p++) {
         if (this.interiorPortalActive[p] === 0) continue;

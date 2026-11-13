@@ -593,7 +593,7 @@ function addSurfaceMountedMetalDouble13ASocket(group: THREE.Group, offsetX = 0):
   const plateD = 0.005;
   const faceZ = 0.053;
 
-  // 1. Pressed-steel surface mounting backbox (pattress)
+  // Pressed-steel surface mounting backbox (pattress)
   const backbox = new THREE.Mesh(
     sharedBoxGeometry(boxW, boxH, boxD),
     metalcladBackboxMat
@@ -628,7 +628,7 @@ function addSurfaceMountedMetalDouble13ASocket(group: THREE.Group, offsetX = 0):
   gasketCollar.position.set(offsetX, 0, 0.043);
   group.add(gasketCollar);
 
-  // 2. Heavy-gauge bevelled brushed steel Metalclad frontplate
+  // Heavy-gauge bevelled brushed steel Metalclad frontplate
   const frontplate = new THREE.Mesh(
     sharedBoxGeometry(boxW - 0.002, boxH - 0.002, plateD),
     metalcladFaceplateMat
@@ -653,7 +653,7 @@ function addSurfaceMountedMetalDouble13ASocket(group: THREE.Group, offsetX = 0):
     group.add(screw);
   }
 
-  // 3. Twin BS 1363 13A shuttered outlet inserts at ±0.043m on the frontplate face
+  // Twin BS 1363 13A shuttered outlet inserts at ±0.043m on the frontplate face
   for (const [outletTag, outletX] of [
     ['outletLeft', offsetX - 0.043],
     ['outletRight', offsetX + 0.043],
@@ -689,7 +689,7 @@ function addSurfaceMountedMetalDouble13ASocket(group: THREE.Group, offsetX = 0):
     }
   }
 
-  // 4. Twin Metalclad rocker switches with black bezels and red ON indicators at ±0.0115m
+  // Twin Metalclad rocker switches with black bezels and red ON indicators at ±0.0115m
   for (const [switchTag, switchX] of [
     ['rockerLeft', offsetX - 0.0115],
     ['rockerRight', offsetX + 0.0115],

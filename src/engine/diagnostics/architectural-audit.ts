@@ -1,12 +1,12 @@
 /**
- * General, house-agnostic architectural & 1PV walkthrough audit suite.
+ * General, house-agnostic architectural & first-person walkthrough audit suite.
  *
  * Packages four deterministic verification passes for any Hus.js house scene:
  * 1. `zFighting`: world-space coplanar triangle overlap detection (`epsilonM = 0.00035`).
  * 2. `cutaway`: cutaway wall descriptor validity, freestanding interior furniture/sanitaryware
  *    mistakenly tagged with `cutawayWall`, and likely missing `tagCutaway` wall attachments.
  * 3. `doorSwings`: swept 3D OBB collision clearance for hinged doors and sliding drawers/panels.
- * 4. `walkthrough`: staircase vertical headroom (`>= 1.95 m`) and `20 cm` 1PV capsule (`5'10"`,
+ * 4. `walkthrough`: staircase vertical headroom (`>= 1.95 m`) and `20 cm` first-person capsule (`5'10"`,
  *    `r = 0.24 m`, `stepHeight = 0.24 m`) BFS reachability across habitable `roomZones`.
  */
 import * as THREE from 'three';
@@ -114,9 +114,9 @@ export interface WalkthroughAuditOptions {
   readonly minStairHeadroomM?: number;
   /** Horizontal BFS grid resolution in metres (default `0.20 m`). */
   readonly gridStepM?: number;
-  /** 1PV walker capsule radius in metres (default `0.24 m`). */
+  /** First-person walker capsule radius in metres (default `0.24 m`). */
   readonly capsuleRadiusM?: number;
-  /** 1PV walker standing height in metres (default `1.778 m` = `5'10"`). */
+  /** First-person walker standing height in metres (default `1.778 m` = `5'10"`). */
   readonly capsuleHeightM?: number;
   /** Maximum walkable step-up height between adjacent 20 cm cells (default `0.24 m`). */
   readonly stepHeightM?: number;
@@ -362,10 +362,6 @@ function worldBoxToContainerLocalBox(
   }
   return out;
 }
-
-// =============================================================================
-// Cutaway Integrity Audit
-// =============================================================================
 
 const CUTAWAY_EXEMPT_UNTAGGED_PATH_RE =
   /ceilingMeshGroup|groundFloorCeilingGroup|cutaway\.(southWest|west|north|east)|\.slab$|\.ceiling$|roof|cornice|coving|ceilingRose|girder|caisson|foundation|gradeBeam|retaining|columns|cliffCatwalk|poolTerrace|terrace|apron|plinth|terrain|paddock|driveway|lawn|hedge|tree|shrub|water|pool|staircase|balustrade|contactShadow|glowPool/i;
@@ -689,10 +685,6 @@ export function auditCutawayIntegrity(
 
   return findings;
 }
-
-// =============================================================================
-// Door-Swing & Drawer Clearance Audit
-// =============================================================================
 
 const DOOR_OBSTACLE_SKIP_NAME_RE =
   /ceilingMeshGroup|groundFloorCeilingGroup|cutaway\.(southWest|west|north|east)|\.slab$|\.ceiling$|roof|cornice|coving|ceilingRose|wall|partition|skirting|dado|pictureRail|architrave|frame|jamb|lintel|sill|header|threshold|mullion|window|sash|glassBay|curtain|blind|rug|carpet|runner|mat\b|glowPool|contactShadow|plinth|terrace|catwalk|foundation|gradeBeam|columns|pendant|chandelier|downlight|sconce/i;
@@ -1049,10 +1041,6 @@ export function auditDoorSwings(
   return findings;
 }
 
-// =============================================================================
-// 1PV Capsule Walkthrough Reachability & Stair Headroom Audit
-// =============================================================================
-
 function normalizeRoomZones(
   raw: WalkthroughAuditOptions['roomZones'],
   floors: readonly FloorDefinition[]
@@ -1211,9 +1199,6 @@ export function auditWalkthroughReachability(
   const zones = normalizeRoomZones(options?.roomZones, sortedFloors);
   const stairs = collectRegisteredStaircases(scene);
 
-  // ---------------------------------------------------------------------------
-  // Part A: Staircase vertical headroom check (>= minStairHeadroomM)
-  // ---------------------------------------------------------------------------
   if (stairs.length > 0) {
     interface OverheadTri {
       readonly label: string;
@@ -1389,9 +1374,6 @@ export function auditWalkthroughReachability(
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Part B: 20 cm 1PV Capsule BFS Reachability across habitable roomZones
-  // ---------------------------------------------------------------------------
   const habitableZones = zones.filter((z) => z.isInterior);
   if (habitableZones.length <= 1 && !options?.entryPosition) {
     return findings;
@@ -1486,7 +1468,7 @@ export function auditWalkthroughReachability(
       });
     }
 
-    // Swung hinged door leaves auto-barge out of the walker's path in 1PV mode; exclude hinged
+    // Swung hinged door leaves auto-barge out of the walker's path in first-person mode; exclude hinged
     // door leaves (without linearSlideOffset) so an inward-swinging bathroom door leaf doesn't
     // artificially pinch a narrow room, while closed/opened sliding glass panels participate!
     const hingedLeafSubtrees = new Set<THREE.Object3D>();
@@ -1789,7 +1771,7 @@ export function auditWalkthroughReachability(
         check: 'walkthrough',
         severity: 'error',
         code: 'NO_WALKABLE_ENTRY_CELL',
-        message: `Entry room zone '${z0.id}' (${z0.label}) has zero clear 1PV capsule cells (r=${capsuleRadiusM} m, h=${capsuleHeightM} m).`,
+        message: `Entry room zone '${z0.id}' (${z0.label}) has zero clear first-person capsule cells (r=${capsuleRadiusM} m, h=${capsuleHeightM} m).`,
         objectName: z0.id,
       });
       return findings;
@@ -1917,8 +1899,8 @@ export function auditWalkthroughReachability(
           code: 'UNREACHABLE_ROOM_ZONE',
           message:
             ids.length === 0
-              ? `Habitable room zone '${z.id}' (${z.label}) has 0 unobstructed 1PV capsule cells (r=${capsuleRadiusM} m, h=${capsuleHeightM} m).`
-              : `Habitable room zone '${z.id}' (${z.label}, floor '${z.floorId}') is unreachable by a 1PV walker (r=${capsuleRadiusM} m, step=${stepHeightM} m) from '${ r3(startNode.wx)}, ${r3(startNode.footY)}, ${r3(startNode.wz)}' (${ids.length} interior walkable cell(s) isolated).`,
+              ? `Habitable room zone '${z.id}' (${z.label}) has 0 unobstructed first-person capsule cells (r=${capsuleRadiusM} m, h=${capsuleHeightM} m).`
+              : `Habitable room zone '${z.id}' (${z.label}, floor '${z.floorId}') is unreachable by a first-person walker (r=${capsuleRadiusM} m, step=${stepHeightM} m) from '${ r3(startNode.wx)}, ${r3(startNode.footY)}, ${r3(startNode.wz)}' (${ids.length} interior walkable cell(s) isolated).`,
           objectName: z.id,
           position: [
             r3((z.bounds.minX + z.bounds.maxX) * 0.5),
@@ -1951,10 +1933,6 @@ export function auditWalkthroughReachability(
 
   return findings;
 }
-
-// =============================================================================
-// Unified Audit Runner & Assertion Helper
-// =============================================================================
 
 function summarizeCheck(
   check: AuditCheckName,
@@ -2069,7 +2047,7 @@ export function runArchitecturalAudit(
     allFindings.push(...doorFindings);
   }
 
-  // 1PV Capsule Walkthrough Reachability & Stair Headroom
+  // First-person capsule walkthrough reachability & stair headroom
   if (skipped.has('walkthrough')) {
     summaries.walkthrough = summarizeCheck('walkthrough', [], 0, true);
   } else {

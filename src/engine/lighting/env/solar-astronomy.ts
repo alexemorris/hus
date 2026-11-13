@@ -53,7 +53,7 @@ export interface SolarPosition extends SolarEphemerisSummary {
   readonly trueSunVector: THREE.Vector3;
   /** Elevation-clamped (`>= 6.3°`) 3D unit vector for the shadow-casting `DirectionalLight`. */
   readonly shadowLightVector: THREE.Vector3;
-  /** Full 3D cosine of solar incidence on the Main Street `-X` vertical frontage (`160.17°` SSE). */
+  /** Full 3D cosine of solar incidence on the `-X` vertical frontage (`160.17°` SSE). */
   readonly mainStreetIncidenceCos: number;
   /** Full 3D cosine of solar incidence on the Paddock `+X` vertical rear facade (`340.17°` NNW). */
   readonly paddockIncidenceCos: number;

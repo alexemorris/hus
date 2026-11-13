@@ -3,7 +3,7 @@ import type { FloorId, RoomZoneId } from './topology.ts';
 
 /**
  * Shared UX contracts for the parallel UX/usability overhaul.
- * Every workstream codes against these types so modules can be built concurrently.
+ * Shared contract types consumed across engine, UI, and integration modules.
  */
 
 /** User-facing graphics mode. `auto` lets the PerformanceGovernor pick and adapt the tier. */

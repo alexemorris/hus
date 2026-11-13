@@ -196,7 +196,7 @@ export function detectMobile(
 
 /**
  * True only in a real browser mobile/foldable session (never in Node/Vitest `process` workers),
- * used to guard build-time mobile material/geometry fast-paths so Vitest, `snapshot:check`, and
+ * used to guard build-time mobile material/geometry fast-paths so Vitest, headless recording, and
  * `lighting:check` stay bit-for-bit identical.
  */
 export function isRealBrowserMobile(): boolean {

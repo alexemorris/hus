@@ -60,10 +60,10 @@ await mountHouse(house, document);
 
 ## What's included
 
-- **Architecture & interiors** — helpers for walls, openings, roofs, stairs, joinery, paint colours, brick/stone textures, and a built-in furniture and fixture catalog (`husjs/objects`, `husjs/materials`, `husjs/catalog/*`).
-- **Viewer & walkthrough** — orbit, floor-plan, and first-person walking modes, automatic wall cutaways, and room annotations (`husjs/viewer`, `husjs/ui`).
-- **Environment & lighting** — sun/moon position by date and location, sky/weather presets, terrain heightmaps, and room switches/dimmers with optional KNX and UniFi adapters (`husjs/knx`, `husjs/unifi`).
-- **Checks & schedules** — `npx husjs audit` checks for coplanar z-fighting, blocked door swings, and stair headroom; `npx husjs schedule` exports placed fixtures to Markdown, CSV, or JSON; `npx husjs export` writes `.glb`.
+- **Architecture & interiors**: helpers for walls, openings, roofs, stairs, joinery, paint colours, brick/stone textures, and a built-in furniture and fixture catalog (`husjs/objects`, `husjs/materials`, `husjs/catalog/*`).
+- **Viewer & walkthrough**: orbit, floor-plan, and first-person walking modes, automatic wall cutaways, and room annotations (`husjs/viewer`, `husjs/ui`).
+- **Environment & lighting**: sun/moon position by date and location, sky/weather presets, terrain heightmaps, and room switches/dimmers with optional KNX and UniFi adapters (`husjs/knx`, `husjs/unifi`).
+- **Checks & schedules**: `npx husjs audit` checks for coplanar z-fighting, blocked door swings, and stair headroom; `npx husjs schedule` exports placed fixtures to Markdown, CSV, or JSON; `npx husjs export` writes `.glb`.
 
 ## Development
 

@@ -100,7 +100,7 @@ function buildBrushedStainlessMaps(): {
 
 /**
  * Radial spun-metal sheen map for BES875BSS push-button caps and rotary dial face
- * (gives the characteristic cross-star conical specular brush seen in studio photos).
+ * (gives the characteristic cross-star conical specular brush).
  */
 function buildSpunMetalTexture(): THREE.CanvasTexture {
   const size = 128;

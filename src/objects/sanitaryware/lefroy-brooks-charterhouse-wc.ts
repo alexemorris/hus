@@ -307,7 +307,7 @@ export function buildLefroyBrooksCharterhouseWc(
   const bowlCenterZ = panFrontZ - (isLaChapelle ? 0.232 : 0.240);
   const panHalfW = isLaChapelle ? 0.180 : 0.184; // LB 7707 = 360mm bowl width; LB 7207 = 368mm
 
-  // --- 1. Vitreous China Pan (`LB 7207` / `LB 7209` / `LB 7707` / `LB 7507`) with Hollow Bowl ---
+  // Vitreous China Pan (`LB 7207` / `LB 7209` / `LB 7707` / `LB 7507`) with Hollow Bowl
   const panGroup = new THREE.Group();
   panGroup.name = `${p}.toiletPan`;
   group.add(panGroup);
@@ -483,7 +483,7 @@ export function buildLefroyBrooksCharterhouseWc(
   }
   }
 
-  // --- 2. Stepped / Chamfered / Edwardian Cistern (`LB 7208` / `LB 7212` / `LB 7708` / `LB 7508`) ---
+  // Stepped / Chamfered / Edwardian Cistern (`LB 7208` / `LB 7212` / `LB 7708` / `LB 7508`)
   const cisternGroup = new THREE.Group();
   cisternGroup.name = `${p}.cistern`;
   group.add(cisternGroup);
@@ -582,7 +582,7 @@ export function buildLefroyBrooksCharterhouseWc(
   lidCrown.position.y = cisternTopY - 0.008;
   cisternGroup.add(lidCrown);
 
-  // --- 3. Signature `LB 1307` Ceramic-Paddle Cistern Lever (LB 7708: 220mm above cistern base) ---
+  // Signature `LB 1307` Ceramic-Paddle Cistern Lever (LB 7708: 220mm above cistern base)
   const leverY = isLaChapelle ? cisternBottomY + 0.220 : cisternTopY - 0.095;
   const leverX = isLaChapelle ? 0.158 : 0.148;
   const leverZ = tankBodyD + 0.003;
@@ -644,7 +644,7 @@ export function buildLefroyBrooksCharterhouseWc(
   paddleEndPip.position.set(0.079, -0.020, 0.020);
   leverGroup.add(paddleEndPip);
 
-  // --- 4. Contoured Seat & Pillar/Bar Hinge Assembly (`LB 7241`) ---
+  // Contoured Seat & Pillar/Bar Hinge Assembly (`LB 7241`)
   const seatGroup = new THREE.Group();
   seatGroup.name = `${p}.seatLB7241`;
   group.add(seatGroup);
@@ -687,7 +687,7 @@ export function buildLefroyBrooksCharterhouseWc(
   hingeBar.position.set(0, panRimY + 0.018, hingeZ);
   seatGroup.add(hingeBar);
 
-  // --- 5. Low-Level Flush Pipe & Wall Brackets (when `variant === 'lowLevel'`) + Cold Supply ---
+  // Low-Level Flush Pipe & Wall Brackets (when `variant === 'lowLevel'`) + Cold Supply
   const pipeGroup = new THREE.Group();
   pipeGroup.name = `${p}.pipework`;
   group.add(pipeGroup);

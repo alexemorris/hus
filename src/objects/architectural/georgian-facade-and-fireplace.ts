@@ -2611,7 +2611,7 @@ export function buildGeorgianAlcoveBookcase(
   const out = finalizeCatalogGroup(root, namePrefix, opts.position, opts.rotationY);
   return attachAssetMetadata(out, {
     name: 'Georgian Fluted-Pilaster Fitted Alcove Bookcase',
-    brand: 'Neptune Bespoke',
+    brand: 'Neptune',
     collection: 'Chichester Library Joinery',
     sku: 'NEP-LIB-ALC-1180',
     finish: 'Old Chalk Painted Timber & Character Oak',

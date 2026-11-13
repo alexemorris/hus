@@ -470,7 +470,7 @@ export function buildEamesLoungeAndOttoman(
   }
   g.add(chair);
 
-  // --- 671 Matching Ottoman (`+0.88 m` forward along local +Z) ---
+  // 671 Matching Ottoman (`+0.88 m` forward along local +Z)
   const ottoman = new THREE.Group();
   ottoman.name = `${name}.ottoman671`;
   ottoman.position.set(0, 0, 0.88);
@@ -865,7 +865,7 @@ export function buildSaarinenDiningSetAndNelsonPendant(
   });
   parent.add(g);
 
-  // --- George Nelson Saucer Bubble Pendant (`64 x 40` cocoon shade + `40`-seg brushed-steel rings) ---
+  // George Nelson Saucer Bubble Pendant (`64 x 40` cocoon shade + `40`-seg brushed-steel rings)
   const saucerGroup = new THREE.Group();
   saucerGroup.name = 'stahl.dining.nelsonSaucerPendant';
   saucerGroup.position.set(center[0], 0, center[1]);

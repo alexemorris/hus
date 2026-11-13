@@ -21,10 +21,8 @@ import type {
   ThomasCrapperLowLevelWcOptions,
 } from './bathroom-spec-types.ts';
 
-// ---------------------------------------------------------------------------
 // Procedural Heritage Embossed Plaque & Underglaze Cartouche DataTextures
 // (Pure Uint8Array — zero DOM dependencies, deterministic in Node/Vitest/WebGPU)
-// ---------------------------------------------------------------------------
 
 const GLYPH_5X7: Record<string, readonly number[]> = {
   T: [0b11111, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100],
@@ -227,9 +225,7 @@ function getCeramicMaterial(finish: ThomasCrapperCeramicFinish): THREE.MeshPhysi
   return finish === 'antiqueWhite' ? getAntiqueWhiteCeramicMaterial() : getVitreousChinaMaterial();
 }
 
-// ---------------------------------------------------------------------------
 // Rounded-Rectangle Contour & Scalloped Plaque Helpers
-// ---------------------------------------------------------------------------
 
 /**
  * Samples `segCount` perimeter points around a centered rounded rectangle (`halfW`, `halfD`, `radius`)
@@ -369,9 +365,7 @@ function createScallopedPlaqueGeometry(
   return prepGeo(geo);
 }
 
-// ---------------------------------------------------------------------------
-// 1. Thomas Crapper `Downham` Surface Basin (`TCDO400WH`, 425 × 330 × 180 mm)
-// ---------------------------------------------------------------------------
+// Thomas Crapper `Downham` Surface Basin (`TCDO400WH`, 425 × 330 × 180 mm)
 
 /**
  * Builds the official CAD-accurate 3D model of the **Thomas Crapper `Downham` Surface Basin**
@@ -577,9 +571,7 @@ export function buildThomasCrapperDownhamBasin(
   });
 }
 
-// ---------------------------------------------------------------------------
-// 2. Thomas Crapper Low-Level Ceramic Cistern WC Set (`TCWC3CERLL`)
-// ---------------------------------------------------------------------------
+// Thomas Crapper Low-Level Ceramic Cistern WC Set (`TCWC3CERLL`)
 
 /**
  * Builds the cast pierced `TC` monogram medium cistern bracket (`TC200MEDPB`, `190 mm` H × `158 mm` D).
@@ -883,7 +875,7 @@ function createOvalWoodSeatOrLidGeometry(isLid: boolean): THREE.BufferGeometry {
  * Builds the official CAD-accurate 3D model of the **Thomas Crapper Low-Level Ceramic Cistern WC Set**
  * (`TCVE101` Venerable Pan + `TCMB201LL` Embossed Low-Level Ceramic Cistern + `TC200MED` Pierced `TC`
  * Cast Brass Wall Brackets + `TCWPLLFP` `Ø38 mm` Flush Pipe + `TC100O` 1895 Oval Solid Wood Seat & Lid w/ Full Bar Hinge):
- * - Rear wall-to-pan setback: `180 mm` (`01_Dim-098` spec `170–290 mm`, natively clearing Room 7's `172 mm` low soil boxing),
+ * - Rear wall-to-pan setback: `180 mm` (`01_Dim-098` spec `170–290 mm`, clearing a `172 mm` low soil boxing),
  * - Installed cistern top height: `1,045 mm` (`970–1,120 mm` CAD range), cistern `480 × 240 × 320 mm` (`445 mm` body W, `533 mm` w/ lever),
  * - Pan rim height: `405 mm` (`458 mm` closed seat height), overall projection: `715 mm` (`710–720 mm` CAD suggested).
  */
@@ -901,7 +893,7 @@ export function buildThomasCrapperLowLevelWc(
   // Per `01_Dim-098` (`710-720 mm` suggested projection; `170-290 mm` low-level rear setback):
   // `246 mm` rear-to-spigot datum places the `462 mm` Venerable pan front rim at `708 mm`
   // (aligned cleanly under the `715 mm` 1895 Oval Wood Seat) and keeps the floor flange
-  // `156 mm` clear in front of Room 7's `172 mm` low soil pipe boxing!
+  // `156 mm` clear in front of a `172 mm` low soil pipe boxing
   const panRearZ = opts.panRearSetbackM ?? 0.246;
   const cisternTopY = opts.cisternTopYM ?? 1.045; // 1,045 mm FFL to lid top
   const cisternBodyBottomY = cisternTopY - 0.320; // 725 mm (320 mm total cistern height)
@@ -914,7 +906,7 @@ export function buildThomasCrapperLowLevelWc(
   const group = new THREE.Group();
   group.name = p;
 
-  // --- 1. Venerable Horizontal-Outlet WC Pan (`TCVE101WH`, W370 × D462 × H405 mm) ---
+  // Venerable Horizontal-Outlet WC Pan (`TCVE101WH`, W370 × D462 × H405 mm)
   const panGroup = new THREE.Group();
   panGroup.name = `${p}.venerablePan`;
   panGroup.position.set(0, 0, panRearZ);
@@ -959,7 +951,7 @@ export function buildThomasCrapperLowLevelWc(
   }
 
   // Seamless flared ceramic P-trap outlet boss & Straight Ceramic Pan Connector (`TC101526WH`)
-  // extending cleanly into Room 7's `156-172 mm` low soil pipe boxing (`min z >= 0.08 m` standalone)
+  // extending cleanly into a `156-172 mm` low soil pipe boxing (`min z >= 0.08 m` standalone)
   const connectorTailLen = Math.max(0.045, Math.min(0.105, panRearZ - 0.142));
   const soilSpigot = new THREE.Mesh(
     createSeamlessSoilOutletGeometry(connectorTailLen),
@@ -997,7 +989,7 @@ export function buildThomasCrapperLowLevelWc(
   flushHorn.position.set(0, flushInletY, 0);
   panGroup.add(flushHorn);
 
-  // --- 2. Embossed Low-Level Ceramic Cistern (`TCMB201LL`, W480/445 × D240/216 × H320 mm) ---
+  // Embossed Low-Level Ceramic Cistern (`TCMB201LL`, W480/445 × D240/216 × H320 mm)
   const cisternGroup = new THREE.Group();
   cisternGroup.name = `${p}.lowLevelCistern`;
   group.add(cisternGroup);
@@ -1067,7 +1059,7 @@ export function buildThomasCrapperLowLevelWc(
   cisternBadge.position.set(0, cisternMidY, cisternFrontZ + 0.003);
   cisternGroup.add(cisternBadge);
 
-  // --- 3. Cranked Polished Brass Pull Lever w/ Ceramic Handle (`108 mm` below top, `533 mm` overall W) ---
+  // Cranked Polished Brass Pull Lever w/ Ceramic Handle (`108 mm` below top, `533 mm` overall W)
   const leverY = cisternTopY - 0.108; // 108 mm below cistern top per 04_Low_Level_Ceramic_Cistern CAD
   const leverGroup = new THREE.Group();
   leverGroup.name = `${p}.cisternLever`;
@@ -1124,7 +1116,7 @@ export function buildThomasCrapperLowLevelWc(
   gripFinial.position.set(0.123, -0.016, 0.022);
   leverGroup.add(gripFinial);
 
-  // --- 4. Pair of Cast Polished Brass Pierced `TC` Medium Wall Brackets (`TC200MEDPB`, 190 × 158 mm) ---
+  // Pair of Cast Polished Brass Pierced `TC` Medium Wall Brackets (`TC200MEDPB`, 190 × 158 mm)
   const bracketGeo = createPiercedTcBracketGeometry();
   const medallionRingGeo = prepGeo(new THREE.TorusGeometry(0.023, 0.0034, 10, 24));
   medallionRingGeo.rotateY(Math.PI * 0.5);
@@ -1183,7 +1175,7 @@ export function buildThomasCrapperLowLevelWc(
     bGroup.add(tCross);
   }
 
-  // --- 5. Polished Brass `Ø38 mm` Exposed Low-Level Flush Pipe (`TCWPLLFPPB`) & Feed Pipe ---
+  // Polished Brass `Ø38 mm` Exposed Low-Level Flush Pipe (`TCWPLLFPPB`) & Feed Pipe
   const flushGroup = new THREE.Group();
   flushGroup.name = `${p}.flushPipework`;
   group.add(flushGroup);
@@ -1320,13 +1312,13 @@ export function buildThomasCrapperLowLevelWc(
   isoValve.position.set(feedX, 0.56, feedZ);
   flushGroup.add(isoValve);
 
-  // --- 6. 1895 Oval Solid Dark/Smoked Oak Seat & Lid w/ Full Polished Brass Bar Hinge (`TC100OOAPB`) ---
+  // 1895 Oval Solid Dark/Smoked Oak Seat & Lid w/ Full Polished Brass Bar Hinge (`TC100OOAPB`)
   const seatGroup = new THREE.Group();
   seatGroup.name = `${p}.ovalWoodSeat`;
   group.add(seatGroup);
 
   // Align `407 mm` Oval Seat Ring front to `panRearZ + 0.469` (`0.715 m` at default `0.246 m` setback,
-  // sitting `7 mm` proud of the `0.708 m` rolled ceramic pan rim per `01_Dim-098` & studio photos)
+  // sitting `7 mm` proud of the `0.708 m` rolled ceramic pan rim per `01_Dim-098`)
   const seatFrontZ = panRearZ + 0.469; // 0.715 m
   const ovalCenterZ = seatFrontZ - 0.407 * 0.5; // 0.5115 m (`z = 0.308 .. 0.715 m`)
   const hingeZ = ovalCenterZ - 0.407 * 0.5 - 0.003; // 0.305 m

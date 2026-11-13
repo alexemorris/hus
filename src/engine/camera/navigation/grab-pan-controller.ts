@@ -128,10 +128,6 @@ export class GrabPanController {
     return ray.at(fallbackDist, new THREE.Vector3());
   }
 
-  // ---------------------------------------------------------------------------
-  // Event handlers
-  // ---------------------------------------------------------------------------
-
   private readonly onPointerDown = (e: PointerEvent): void => {
     const controls = this.host.controls;
     if (!controls.enabled) return;
@@ -200,10 +196,6 @@ export class GrabPanController {
     // OrbitControls natively handles cursor-directed dolly (`controls.zoomToCursor = true`)
     // without needing a full-scene CPU raycast or mid-scroll target depth jump.
   };
-
-  // ---------------------------------------------------------------------------
-  // Internals
-  // ---------------------------------------------------------------------------
 
   private mouseAction(e: PointerEvent): 'pan' | 'rotate' | 'none' {
     const buttons = this.host.controls.mouseButtons;

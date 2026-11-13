@@ -270,8 +270,8 @@ function SkyDomeSection({ snap }: { readonly snap: SkyWeatherSnapshot }): JSX.El
   const R = 46;
   const sunPt = projectCelestialOnCompassRose(solar.azimuthFromNorthDeg, solar.altitudeDeg, initialBearing);
   const moonPt = projectCelestialOnCompassRose(lunar.azimuthFromNorthDeg, lunar.altitudeDeg, initialBearing);
-  const paddockRelRad = (((plusXTrueBearingDeg - initialBearing) % 360) * Math.PI) / 180;
-  const mainStRelRad = (((plusXTrueBearingDeg + 180 - initialBearing) % 360) * Math.PI) / 180;
+  const plusXRelRad = (((plusXTrueBearingDeg - initialBearing) % 360) * Math.PI) / 180;
+  const minusXRelRad = (((plusXTrueBearingDeg + 180 - initialBearing) % 360) * Math.PI) / 180;
   const sunCard = bearingToCardinal16(solar.azimuthFromNorthDeg);
   const initialIntDeg = ((Math.round(initialBearing) % 360) + 360) % 360;
 
@@ -282,12 +282,12 @@ function SkyDomeSection({ snap }: { readonly snap: SkyWeatherSnapshot }): JSX.El
         roseGroupRef.current.setAttribute('transform', `rotate(${(-b).toFixed(2)})`);
       }
       if (axisLineRef.current) {
-        const padRad = (((plusXTrueBearingDeg - b) % 360) * Math.PI) / 180;
-        const mainRad = (((plusXTrueBearingDeg + 180 - b) % 360) * Math.PI) / 180;
-        axisLineRef.current.setAttribute('x1', (Math.sin(mainRad) * (R - 3)).toFixed(1));
-        axisLineRef.current.setAttribute('y1', (-Math.cos(mainRad) * (R - 3)).toFixed(1));
-        axisLineRef.current.setAttribute('x2', (Math.sin(padRad) * (R - 3)).toFixed(1));
-        axisLineRef.current.setAttribute('y2', (-Math.cos(padRad) * (R - 3)).toFixed(1));
+        const plusXRad = (((plusXTrueBearingDeg - b) % 360) * Math.PI) / 180;
+        const minusXRad = (((plusXTrueBearingDeg + 180 - b) % 360) * Math.PI) / 180;
+        axisLineRef.current.setAttribute('x1', (Math.sin(minusXRad) * (R - 3)).toFixed(1));
+        axisLineRef.current.setAttribute('y1', (-Math.cos(minusXRad) * (R - 3)).toFixed(1));
+        axisLineRef.current.setAttribute('x2', (Math.sin(plusXRad) * (R - 3)).toFixed(1));
+        axisLineRef.current.setAttribute('y2', (-Math.cos(plusXRad) * (R - 3)).toFixed(1));
       }
       if (sunCircleRef.current) {
         const sPt = projectCelestialOnCompassRose(solar.azimuthFromNorthDeg, solar.altitudeDeg, b);
@@ -344,13 +344,13 @@ function SkyDomeSection({ snap }: { readonly snap: SkyWeatherSnapshot }): JSX.El
         <circle cx="0" cy="0" r={R * 0.66} fill="none" stroke="rgba(255,255,255,0.09)" stroke-dasharray="2 2" stroke-width="0.8" />
         <circle cx="0" cy="0" r={R * 0.33} fill="none" stroke="rgba(255,255,255,0.09)" stroke-dasharray="2 2" stroke-width="0.8" />
 
-        {/* Paddock (+X, NNW) & Main Street (-X, SSE) site axis line */}
+        {/* Scene +X / -X axis line */}
         <line
           ref={axisLineRef}
-          x1={(Math.sin(mainStRelRad) * (R - 3)).toFixed(1)}
-          y1={(-Math.cos(mainStRelRad) * (R - 3)).toFixed(1)}
-          x2={(Math.sin(paddockRelRad) * (R - 3)).toFixed(1)}
-          y2={(-Math.cos(paddockRelRad) * (R - 3)).toFixed(1)}
+          x1={(Math.sin(minusXRelRad) * (R - 3)).toFixed(1)}
+          y1={(-Math.cos(minusXRelRad) * (R - 3)).toFixed(1)}
+          x2={(Math.sin(plusXRelRad) * (R - 3)).toFixed(1)}
+          y2={(-Math.cos(plusXRelRad) * (R - 3)).toFixed(1)}
           stroke="rgba(242, 196, 109, 0.25)"
           stroke-width="1"
           stroke-dasharray="3 2"
@@ -570,8 +570,8 @@ export function SkyWeatherHud(): JSX.Element | null {
     isDryClearAir
   );
   const hudWeatherBadge = formatHudWeatherBadge(weather);
-  const latDeg = snap.latitudeDeg ?? 52.544462;
-  const lonDeg = snap.longitudeDeg ?? -0.947371;
+  const latDeg = snap.latitudeDeg ?? 51.84;
+  const lonDeg = snap.longitudeDeg ?? -1.79;
   const effectiveSeason: Season =
     snap.season ?? deriveSeasonFromDayOfYear(solar.dayOfYear, latDeg);
   const seasonSelection: SeasonSelection = snap.seasonSelection ?? 'auto';
@@ -665,7 +665,7 @@ export function SkyWeatherHud(): JSX.Element | null {
           data-testid="sky-hud-sun-btn"
           aria-expanded={openPopover === 'sun'}
           aria-label="Open solar, lunar and compass controls"
-          title={snap.locationLabel ? `True-North compass & ${snap.locationLabel} solar/lunar ephemeris` : 'True-North compass & solar/lunar ephemeris'}
+          title={snap.locationLabel ? `${snap.locationLabel} compass, sun & moon` : 'Compass, sun & moon'}
           onClick={() => togglePopover('sun')}
         >
           <MiniCompassReadout snap={snap} />
@@ -687,8 +687,8 @@ export function SkyWeatherHud(): JSX.Element | null {
           class={`skyhud-pill skyhud-pill-weather${openPopover === 'weather' ? ' is-open' : ''}`}
           data-testid="sky-hud-weather-btn"
           aria-expanded={openPopover === 'weather'}
-          aria-label={snap.locationLabel ? `Open ${snap.locationLabel} live weather and cloud/rain/mist layers` : 'Open live weather and cloud/rain/mist layers'}
-          title={snap.locationLabel ? `${snap.locationLabel} live weather & composable sky layers` : 'Live weather & composable sky layers'}
+          aria-label={snap.locationLabel ? `Open ${snap.locationLabel} weather controls` : 'Open weather controls'}
+          title={snap.locationLabel ? `${snap.locationLabel} weather & sky layers` : 'Weather & sky layers'}
           onClick={() => togglePopover('weather')}
         >
           <Icon name={weatherIcon} size={15} />
@@ -701,13 +701,13 @@ export function SkyWeatherHud(): JSX.Element | null {
       {openPopover === 'sun' && (
         <section
           class="skyhud-popover shell-glass"
-          aria-label="Solar and lunar ephemeris controls"
+          aria-label="Sun and moon controls"
           data-testid="sky-popover-sun"
         >
           <div class="skyhud-pop-head">
             <div>
               <div class="skyhud-eyebrow">{sunEyebrow}</div>
-              <div class="skyhud-pop-title">Solar &amp; Lunar Ephemeris</div>
+              <div class="skyhud-pop-title">Sun &amp; Moon</div>
             </div>
             <button
               type="button"
@@ -871,7 +871,7 @@ export function SkyWeatherHud(): JSX.Element | null {
                 <button
                   type="button"
                   class="skyhud-mini-chip"
-                  title="Refresh Open-Meteo live weather telemetry"
+                  title="Refresh live weather"
                   onClick={() => {
                     void ctl.refreshLiveWeather();
                   }}
@@ -1038,7 +1038,7 @@ export function SkyWeatherHud(): JSX.Element | null {
               <div class="skyhud-layer-head">
                 <span class="skyhud-layer-title">
                   <Icon name="mist" size={14} />
-                  <span>Valley Mist &amp; Haze</span>
+                  <span>Mist &amp; Haze</span>
                 </span>
                 <div class="skyhud-layer-right">
                   <span class="skyhud-layer-val">{weather.fogEnabled ? `${fogPct}%` : 'Off'}</span>
@@ -1047,7 +1047,7 @@ export function SkyWeatherHud(): JSX.Element | null {
                     class={`shell-switch${weather.fogEnabled ? ' is-on' : ''}`}
                     role="switch"
                     aria-checked={weather.fogEnabled}
-                    aria-label="Toggle valley mist and haze"
+                    aria-label="Toggle mist and haze"
                     onClick={() =>
                       ctl.setWeatherFogLayer(
                         !weather.fogEnabled,
@@ -1068,7 +1068,7 @@ export function SkyWeatherHud(): JSX.Element | null {
                   step="1"
                   value={fogPct}
                   style={{ '--fill': `${fogPct}%` } as Record<string, string>}
-                  aria-label="Valley mist density"
+                  aria-label="Mist density"
                   onPointerDown={handleSliderPointerDown}
                   onKeyUp={finishPointerScrub}
                   onInput={(e) => {

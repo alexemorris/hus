@@ -33,14 +33,6 @@ export interface KnxSwitchGangPressInput {
   readonly legacyKind?: 'kitchen' | 'courtyard' | 'utility';
 }
 
-const LEGACY_MASTER_OFF_ZONE_IDS: readonly RoomZoneId[] = [
-  'kitchen',
-  'sitting',
-  'utility',
-  'familyRoom',
-  'courtyard',
-];
-
 function pctTo01(pct: number | undefined): number {
   if (typeof pct !== 'number' || !Number.isFinite(pct)) return 0;
   return Math.max(0, Math.min(1, pct / 100));
@@ -123,10 +115,6 @@ export class KnxElectricalAdapter {
     this.unsubscribeBus();
   }
 
-  // -------------------------------------------------------------------------
-  // KNX Push-Buttons
-  // -------------------------------------------------------------------------
-
   public pressSwitchGang(input: KnxSwitchGangPressInput): void {
     const pb = this.pushButtonsByPa.get(input.switchPa);
     const gang = input.gang ?? pb?.gangs[0]?.gang ?? 1;
@@ -157,10 +145,6 @@ export class KnxElectricalAdapter {
     this.syncLevelsFromKnx('target');
     this.syncIndicatorsFromKnx();
   }
-
-  // -------------------------------------------------------------------------
-  // Scene Recalls & Zone Modes
-  // -------------------------------------------------------------------------
 
   public recallZoneScene(
     zoneId: RoomZoneId,
@@ -198,36 +182,20 @@ export class KnxElectricalAdapter {
   }
 
   public masterOff(sourcePa?: string, location?: string): void {
-    const zones = this.knx.getZones();
-    const hasLegacyZones = LEGACY_MASTER_OFF_ZONE_IDS.some(
-      (id) => this.knx.getZone(id) !== undefined
-    );
-    if (hasLegacyZones) {
-      this.knx.handleSwitchLongPressHoldDown(location, sourcePa);
-    } else {
-      for (const zone of zones) {
-        this.knx.enterZoneNight(zone.id, sourcePa, location);
-      }
+    for (const zone of this.knx.getZones()) {
+      this.knx.enterZoneNight(zone.id, sourcePa, location);
     }
     this.syncLevelsFromKnx('target');
     this.syncIndicatorsFromKnx();
   }
 
   public masterFull(sourcePa?: string, location?: string): void {
-    if (this.knx.getZone('kitchen')) {
-      this.knx.handleSwitchLongPressHoldUp(location, sourcePa);
-    } else {
-      for (const zone of this.knx.getZones()) {
-        this.knx.setZoneFull(zone.id, sourcePa, location);
-      }
+    for (const zone of this.knx.getZones()) {
+      this.knx.setZoneFull(zone.id, sourcePa, location);
     }
     this.syncLevelsFromKnx('target');
     this.syncIndicatorsFromKnx();
   }
-
-  // -------------------------------------------------------------------------
-  // PIR Occupancy & Room Motion
-  // -------------------------------------------------------------------------
 
   public setPresence(detectorPa: string, detected: boolean, simClockSec?: number): void {
     if (simClockSec !== undefined && Number.isFinite(simClockSec)) {
@@ -253,10 +221,6 @@ export class KnxElectricalAdapter {
     this.syncIndicatorsFromKnx();
   }
 
-  // -------------------------------------------------------------------------
-  // External Bus Frames & Step
-  // -------------------------------------------------------------------------
-
   public injectInboundFrame(frameOrHex: string | InboundKNXFrame): void {
     this.knx.ingestExternalFrame(frameOrHex);
     this.syncLevelsFromKnx('target');
@@ -276,10 +240,6 @@ export class KnxElectricalAdapter {
     }
     return knxChanged || busChanged;
   }
-
-  // -------------------------------------------------------------------------
-  // Internal synchronization
-  // -------------------------------------------------------------------------
 
   private populateTopology(): void {
     const circuits: readonly CircuitConfig[] =

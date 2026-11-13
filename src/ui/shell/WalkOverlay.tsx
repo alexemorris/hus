@@ -68,11 +68,11 @@ function WalkRoomChip({ showTouchControls }: { readonly showTouchControls: boole
             type="button"
             class="shell-walk-chip shell-walk-exit shell-glass"
             aria-label="Exit walkthrough back to 3D orbit view"
-            title="Exit Walk (3D View)"
+            title="Exit walk (3D view)"
             onClick={() => ctl.setViewMode('3d')}
           >
             <Icon name="cube" size={15} />
-            <span>Exit Walk</span>
+            <span>Exit walk</span>
           </button>
         )}
       </div>
@@ -109,7 +109,7 @@ interface FloatingJoystickState {
 }
 
 /**
- * Floating-origin virtual thumbstick for mobile, tablet, and Pixel Fold.
+ * Floating-origin virtual thumbstick for mobile and tablet touchscreens.
  * Used as a dual-stick pair:
  *  - `side="left"`  → Move / Strafe / Sprint (`ctl.api.walkthrough.setTouchMove`)
  *  - `side="right"` → Look / Turn / Pitch (`ctl.api.walkthrough.setTouchLook`)

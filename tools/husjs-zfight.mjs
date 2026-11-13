@@ -14,6 +14,7 @@
 import { existsSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { parseCliFlags } from './cli-args.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_HOUSE = 'simple-flat';
@@ -27,91 +28,51 @@ const BUILTIN_HOUSE_MODULES = {
   'stahl-house': 'examples/stahl-house/index.ts',
 };
 
-const VALUE_FLAGS = new Set(['house', 'epsilon-mm', 'min-area-cm2']);
-const BOOLEAN_FLAGS = new Set(['json', 'all-examples']);
+const ZFIGHT_CLI_OPTIONS = {
+  house: { type: 'string' },
+  'epsilon-mm': { type: 'string' },
+  'min-area-cm2': { type: 'string' },
+  json: { type: 'boolean' },
+  'all-examples': { type: 'boolean' },
+};
 
 export function parseZfightCliArgs(argv) {
-  /** @type {Record<string, string>} */
-  const flags = {};
-  let help = false;
-  let json = false;
-  let allExamples = false;
+  const { values } = parseCliFlags(argv, ZFIGHT_CLI_OPTIONS);
 
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === '--help' || arg === '-h') {
-      help = true;
-      continue;
-    }
-    if (!arg.startsWith('--')) {
-      throw new Error(`Unexpected positional argument '${arg}'`);
-    }
-    const eqIdx = arg.indexOf('=');
-    const key = eqIdx >= 0 ? arg.slice(2, eqIdx) : arg.slice(2);
-
-    if (BOOLEAN_FLAGS.has(key)) {
-      if (eqIdx >= 0) {
-        const val = arg.slice(eqIdx + 1).toLowerCase();
-        if (val !== 'true' && val !== 'false' && val !== '1' && val !== '0') {
-          throw new Error(`Invalid boolean value for '--${key}': '${val}'`);
-        }
-        const enabled = val === 'true' || val === '1';
-        if (key === 'json') json = enabled;
-        if (key === 'all-examples') allExamples = enabled;
-      } else {
-        if (key === 'json') json = true;
-        if (key === 'all-examples') allExamples = true;
-      }
-      continue;
-    }
-
-    if (!VALUE_FLAGS.has(key)) {
-      throw new Error(`Unknown flag '--${key}'`);
-    }
-
-    if (eqIdx >= 0) {
-      flags[key] = arg.slice(eqIdx + 1);
-    } else {
-      const next = argv[i + 1];
-      if (next === undefined || next.startsWith('--')) {
-        throw new Error(`Missing value for flag '--${key}'`);
-      }
-      flags[key] = next;
-      i++;
-    }
-  }
-
-  if (help) {
+  if (values.help) {
     return { help: true };
   }
 
-  if (allExamples && flags.house !== undefined) {
+  const json = values.json === true;
+  const allExamples = values['all-examples'] === true;
+
+  if (allExamples && values.house !== undefined) {
     throw new Error('Cannot combine --house with --all-examples');
   }
 
-  if (flags.house === '') {
+  if (values.house === '') {
     throw new Error("Flag '--house' needs a non-empty value");
   }
 
   const epsilonMm =
-    flags['epsilon-mm'] !== undefined ? Number(flags['epsilon-mm']) : DEFAULT_EPSILON_MM;
+    values['epsilon-mm'] !== undefined ? Number(values['epsilon-mm']) : DEFAULT_EPSILON_MM;
   if (!Number.isFinite(epsilonMm) || epsilonMm < 0) {
     throw new Error(
-      `--epsilon-mm must be a non-negative number in millimetres (got '${flags['epsilon-mm']}')`
+      `--epsilon-mm must be a non-negative number in millimetres (got '${values['epsilon-mm']}')`
     );
   }
 
   const minAreaCm2 =
-    flags['min-area-cm2'] !== undefined ? Number(flags['min-area-cm2']) : DEFAULT_MIN_AREA_CM2;
+    values['min-area-cm2'] !== undefined ? Number(values['min-area-cm2']) : DEFAULT_MIN_AREA_CM2;
   if (!Number.isFinite(minAreaCm2) || minAreaCm2 < 0) {
     throw new Error(
-      `--min-area-cm2 must be a non-negative number in cm² (got '${flags['min-area-cm2']}')`
+      `--min-area-cm2 must be a non-negative number in cm² (got '${values['min-area-cm2']}')`
     );
   }
 
   return {
     help: false,
-    house: flags.house ?? DEFAULT_HOUSE,
+    house: values.house ?? DEFAULT_HOUSE,
     allExamples,
     epsilonMm,
     epsilonM: epsilonMm / 1000,

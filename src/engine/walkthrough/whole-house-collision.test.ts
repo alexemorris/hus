@@ -9,7 +9,7 @@ import { STANDING_EYE_HEIGHT } from './parts/walkthrough-spawns.ts';
 
 type OptimizerDeps = ConstructorParameters<typeof SceneBatchOptimizer>[0];
 
-describe('Engine Post-Batch 1PV Collisions & Auto-Barge', () => {
+describe('Engine Post-Batch First-Person Collisions & Auto-Barge', () => {
   it('preserves raycast & furniture OBB colliders across SceneBatchOptimizer empty-group pruning while honouring explicit ancestor hides', () => {
     const layers = createPropertySceneLayers(new THREE.Scene());
     const { scene } = layers;

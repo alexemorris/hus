@@ -75,10 +75,6 @@ function detectCoarsePointer(): boolean {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Persisted preferences
-// ---------------------------------------------------------------------------
-
 const devModePref: Signal<boolean> = signal(readLocal(LS_DEV_MODE) === '1');
 export const guestMode: Signal<boolean> = signal(false);
 /** Developer mode is never available to read-only guests. */
@@ -101,10 +97,6 @@ export function hasSeenHelp(): boolean {
 export function markHelpSeen(): void {
   writeLocal(LS_HELP_SEEN, '1');
 }
-
-// ---------------------------------------------------------------------------
-// Layout / overlays
-// ---------------------------------------------------------------------------
 
 export const isMobile: Signal<boolean> = signal(isMobileViewport());
 export const isCompactPhone: Signal<boolean> = signal(isCompactPhoneViewport());
@@ -202,10 +194,6 @@ export function openHelp(step = 0): void {
   helpOpen.value = true;
 }
 
-// ---------------------------------------------------------------------------
-// Scene mirrors (written by shell bindings)
-// ---------------------------------------------------------------------------
-
 export const currentRoomId: Signal<RoomZoneId | null> = signal<RoomZoneId | null>(null);
 export const tradeView: Signal<TradeView> = signal<TradeView>('owner');
 export const floorMode: Signal<FloorViewMode> = signal<FloorViewMode>('ground');
@@ -226,10 +214,6 @@ export const liveLevels: Signal<Readonly<CircuitLevels> | null> = signal<Readonl
 /** Bumped whenever non-level KNX/scene state changes (gates, UFH, motion…). */
 export const deviceRevision: Signal<number> = signal(0);
 
-// ---------------------------------------------------------------------------
-// Toasts
-// ---------------------------------------------------------------------------
-
 export interface ToastMessage {
   readonly id: number;
   readonly text: string;
@@ -249,10 +233,8 @@ export function showToast(text: string, durationMs = 2600): void {
   }, durationMs);
 }
 
-// ---------------------------------------------------------------------------
 // Note sidecar metadata (trade tag + resolved flag), keyed by annotation id.
 // Stored separately so the engine annotation store types stay unchanged.
-// ---------------------------------------------------------------------------
 
 export interface NoteMeta {
   readonly trade?: NoteTrade;
@@ -309,10 +291,6 @@ export function pruneNoteMeta(liveIds: readonly number[]): void {
   noteMeta.value = next;
   writeLocal(LS_NOTE_META, JSON.stringify(next));
 }
-
-// ---------------------------------------------------------------------------
-// Progressive Web App (PWA) install & service worker state
-// ---------------------------------------------------------------------------
 
 interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;

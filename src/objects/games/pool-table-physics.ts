@@ -1,7 +1,9 @@
+import { MathUtils } from 'three';
+
 /**
- * Deterministic 2D pool-table physics for the barn pool table break animation.
+ * Deterministic 2D pool-table physics for the pool table break animation.
  *
- * Pure (no three.js / DOM): balls move on the table plane (`x` along the table length, `z` across
+ * Pure simulation (no DOM): balls move on the table plane (`x` along the table length, `z` across
  * it, both in metres in the table's local frame). The model is deliberately simple:
  * equal-mass ball–ball collisions with a restitution coefficient, cushion reflections, rolling
  * friction (constant deceleration plus a speed-proportional drag) and capture into pockets.
@@ -188,8 +190,8 @@ export function simulatePoolBreak(
   const contactSq = contact * contact;
 
   const bodies: Body[] = start.map((p) => ({
-    x: clamp(p.x, minX, maxX),
-    z: clamp(p.z, minZ, maxZ),
+    x: MathUtils.clamp(p.x, minX, maxX),
+    z: MathUtils.clamp(p.z, minZ, maxZ),
     vx: 0,
     vz: 0,
     onTable: true,
@@ -218,10 +220,10 @@ export function simulatePoolBreak(
   for (let step = 1; step <= totalSteps; step++) {
     const t = step * o.stepSec;
     const dt = o.stepSec;
-    const rampU = clamp((t - (o.maxDurationSec - RAMP_SEC)) / RAMP_SEC, 0, 1);
+    const rampU = MathUtils.clamp((t - (o.maxDurationSec - RAMP_SEC)) / RAMP_SEC, 0, 1);
     const drag = o.drag + RAMP_EXTRA_DRAG * rampU * rampU;
 
-    // 1. Integrate with rolling friction.
+    // Integrate with rolling friction.
     for (const b of bodies) {
       if (!b.onTable) continue;
       const speed = Math.hypot(b.vx, b.vz);
@@ -239,7 +241,7 @@ export function simulatePoolBreak(
       b.z += b.vz * dt;
     }
 
-    // 2. Pockets (checked before cushions so a ball heading into a mouth drops instead of bouncing).
+    // Pockets (checked before cushions so a ball heading into a mouth drops instead of bouncing).
     for (let i = 0; i < bodies.length; i++) {
       const b = bodies[i]!;
       if (!b.onTable) continue;
@@ -257,7 +259,7 @@ export function simulatePoolBreak(
       }
     }
 
-    // 3. Cushions.
+    // Cushions.
     for (const b of bodies) {
       if (!b.onTable) continue;
       if (b.x < minX) {
@@ -280,7 +282,7 @@ export function simulatePoolBreak(
       }
     }
 
-    // 4. Ball–ball collisions (equal masses).
+    // Ball–ball collisions (equal masses).
     for (let i = 0; i < bodies.length; i++) {
       const a = bodies[i]!;
       if (!a.onTable) continue;
@@ -313,8 +315,8 @@ export function simulatePoolBreak(
     // Separation can nudge a ball past a cushion line: clamp back onto the playing surface.
     for (const b of bodies) {
       if (!b.onTable) continue;
-      b.x = clamp(b.x, minX, maxX);
-      b.z = clamp(b.z, minZ, maxZ);
+      b.x = MathUtils.clamp(b.x, minX, maxX);
+      b.z = MathUtils.clamp(b.z, minZ, maxZ);
     }
 
     const moving = bodies.some((b) => b.onTable && Math.hypot(b.vx, b.vz) > o.restSpeed);
@@ -341,7 +343,7 @@ export function samplePoolBreak(result: PoolSimResult, timeSec: number, out: Poo
   const first = frames[0];
   if (!first) return out;
   const last = frames[frames.length - 1]!;
-  const t = clamp(timeSec, 0, last.timeSec);
+  const t = MathUtils.clamp(timeSec, 0, last.timeSec);
   // Frames are uniformly spaced except the final rest frame: binary search keeps this exact.
   let lo = 0;
   let hi = frames.length - 1;
@@ -353,7 +355,7 @@ export function samplePoolBreak(result: PoolSimResult, timeSec: number, out: Poo
   const a = frames[lo]!;
   const b = frames[hi]!;
   const span = b.timeSec - a.timeSec;
-  const u = span > 0 ? clamp((t - a.timeSec) / span, 0, 1) : 0;
+  const u = span > 0 ? MathUtils.clamp((t - a.timeSec) / span, 0, 1) : 0;
   out.length = a.positions.length;
   for (let i = 0; i < a.positions.length; i++) {
     const pa = a.positions[i]!;
@@ -363,6 +365,3 @@ export function samplePoolBreak(result: PoolSimResult, timeSec: number, out: Poo
   return out;
 }
 
-function clamp(v: number, lo: number, hi: number): number {
-  return v < lo ? lo : v > hi ? hi : v;
-}

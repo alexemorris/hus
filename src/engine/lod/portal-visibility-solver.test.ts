@@ -149,7 +149,7 @@ describe('PortalVisibilitySolver', () => {
     solver.solveVisibleInteriorRooms(angledExtCam, 'all');
     expect(solver.isRoomVisible('utility')).toBe(true);
 
-    // Interior Case B (1PV inside Kitchen looking east toward Utility door):
+    // Interior Case B (first-person inside Kitchen looking east toward Utility door):
     utilityDoorOpen = false;
     const walkCamEast = makeCamera([0, 1.6, 0], [4, 1.5, 0]);
     solver.solveVisibleInteriorRooms(walkCamEast, 'all');
@@ -157,7 +157,7 @@ describe('PortalVisibilitySolver', () => {
     expect(solver.isRoomVisible('utility')).toBe(false);
     expect(solver.isRoomVisible('familyRoom')).toBe(false);
 
-    // Opening Utility door immediately reveals Utility in 1PV
+    // Opening Utility door immediately reveals Utility in first-person
     utilityDoorOpen = true;
     solver.solveVisibleInteriorRooms(walkCamEast, 'all');
     expect(solver.isRoomVisible('utility')).toBe(true);

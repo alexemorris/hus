@@ -18,6 +18,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { inflateSync } from 'node:zlib';
+import { parseCliFlags } from './cli-args.mjs';
 
 const PNG_SIGNATURE = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
 const TERRARIUM_TILE_URL_TEMPLATE =
@@ -40,10 +41,6 @@ export const VALID_TERRAIN_SOURCES = /** @type {const} */ ([
   'defra',
   'terrarium',
 ]);
-
-// ---------------------------------------------------------------------------
-// 1. Pure Node.js PNG Decoder (`node:zlib` only, filters 0..4, RGB & RGBA)
-// ---------------------------------------------------------------------------
 
 export function paethPredictor(a, b, c) {
   const p = a + b - c;
@@ -227,10 +224,6 @@ export function decodePng(input) {
     data: out,
   };
 }
-
-// ---------------------------------------------------------------------------
-// 1b. Pure Node.js 32-Bit Float GeoTIFF Decoder (Little/Big Endian, Strips & Tiles)
-// ---------------------------------------------------------------------------
 
 const TIFF_TYPE_SIZES = {
   1: 1, // BYTE
@@ -442,10 +435,6 @@ export function decodeFloat32GeoTiff(input) {
     pixelSizeY,
   };
 }
-
-// ---------------------------------------------------------------------------
-// 2. Geodesy: AWS Terrarium, Web Mercator, Local ENU & OSGB36 (EPSG:27700)
-// ---------------------------------------------------------------------------
 
 /**
  * AWS Terrarium RGB -> elevation in metres ASL:
@@ -694,10 +683,6 @@ export function quantizeRelativeHeightGrid({
     base64Int16Mm,
   };
 }
-
-// ---------------------------------------------------------------------------
-// 3. DEM Builders (`usgs-3dep`, `defra`, `terrarium`, and unified `buildHusGrid`)
-// ---------------------------------------------------------------------------
 
 function validateCommonGridOptions(options, defaultInnerStepFn) {
   const { lat, lon } = options;
@@ -1284,43 +1269,30 @@ export async function buildHusGrid(options) {
   return buildHusGridFromTerrarium(options);
 }
 
-// ---------------------------------------------------------------------------
-// 4. CLI Argument Parser & Entrypoint
-// ---------------------------------------------------------------------------
+const TERRAIN_CLI_OPTIONS = {
+  lat: { type: 'string' },
+  lon: { type: 'string' },
+  source: { type: 'string' },
+  size: { type: 'string' },
+  extent: { type: 'string' },
+  step: { type: 'string' },
+  skirt: { type: 'string' },
+  'skirt-step': { type: 'string' },
+  zoom: { type: 'string' },
+  'north-offset': { type: 'string' },
+  out: { type: 'string' },
+};
 
 export function parseCliArgs(argv) {
-  /** @type {Record<string, string | boolean>} */
-  const flags = {};
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === '--help' || arg === '-h') {
-      flags.help = true;
-      continue;
-    }
-    if (!arg.startsWith('--')) {
-      throw new Error(`Unexpected positional argument '${arg}'`);
-    }
-    const eqIdx = arg.indexOf('=');
-    if (eqIdx >= 0) {
-      flags[arg.slice(2, eqIdx)] = arg.slice(eqIdx + 1);
-    } else {
-      const key = arg.slice(2);
-      const next = argv[i + 1];
-      if (next === undefined || (next.startsWith('--') && !/^--?\d/.test(next))) {
-        throw new Error(`Missing value for flag '--${key}'`);
-      }
-      flags[key] = next;
-      i++;
-    }
-  }
+  const { values } = parseCliFlags(argv, TERRAIN_CLI_OPTIONS);
 
-  if (flags.help) {
+  if (values.help) {
     return { help: true };
   }
-  if (flags.lat === undefined) {
+  if (values.lat === undefined) {
     throw new Error('Missing required flag --lat <number>');
   }
-  if (flags.lon === undefined) {
+  if (values.lon === undefined) {
     throw new Error('Missing required flag --lon <number>');
   }
 
@@ -1332,30 +1304,30 @@ export function parseCliArgs(argv) {
     return n;
   };
 
-  const sizeRaw = flags.size ?? flags.extent;
-  const sizeFlagName = flags.size !== undefined ? 'size' : 'extent';
+  const sizeRaw = values.size ?? values.extent;
+  const sizeFlagName = values.size !== undefined ? 'size' : 'extent';
   const sizeM = sizeRaw !== undefined ? parseNum(sizeFlagName, sizeRaw) : 500;
   if (sizeM <= 0) {
     throw new Error(`--${sizeFlagName} must be a positive number in metres (got ${sizeM})`);
   }
 
-  const skirtM = flags.skirt !== undefined ? parseNum('skirt', flags.skirt) : undefined;
+  const skirtM = values.skirt !== undefined ? parseNum('skirt', values.skirt) : undefined;
   if (skirtM !== undefined && skirtM <= 0) {
     throw new Error(`--skirt must be a positive number in metres (got ${skirtM})`);
   }
 
   const skirtStepM =
-    flags['skirt-step'] !== undefined ? parseNum('skirt-step', flags['skirt-step']) : undefined;
+    values['skirt-step'] !== undefined ? parseNum('skirt-step', values['skirt-step']) : undefined;
   if (skirtStepM !== undefined && skirtStepM <= 0) {
     throw new Error(`--skirt-step must be a positive number in metres (got ${skirtStepM})`);
   }
 
   let source;
-  if (flags.source !== undefined) {
-    const s = String(flags.source).trim().toLowerCase();
+  if (values.source !== undefined) {
+    const s = String(values.source).trim().toLowerCase();
     if (!VALID_TERRAIN_SOURCES.includes(/** @type {any} */ (s))) {
       throw new Error(
-        `Invalid --source '${flags.source}' (expected one of: ${VALID_TERRAIN_SOURCES.join('|')})`
+        `Invalid --source '${values.source}' (expected one of: ${VALID_TERRAIN_SOURCES.join('|')})`
       );
     }
     source = s;
@@ -1363,18 +1335,20 @@ export function parseCliArgs(argv) {
 
   const result = {
     help: false,
-    lat: parseNum('lat', flags.lat),
-    lon: parseNum('lon', flags.lon),
+    lat: parseNum('lat', values.lat),
+    lon: parseNum('lon', values.lon),
     sizeM,
-    stepM: flags.step !== undefined ? parseNum('step', flags.step) : undefined,
-    skirtM,
-    zoom: flags.zoom !== undefined ? parseNum('zoom', flags.zoom) : 15,
+    stepM: values.step !== undefined ? parseNum('step', values.step) : undefined,
+    zoom: values.zoom !== undefined ? parseNum('zoom', values.zoom) : 15,
     northOffsetDeg:
-      flags['north-offset'] !== undefined
-        ? parseNum('north-offset', flags['north-offset'])
+      values['north-offset'] !== undefined
+        ? parseNum('north-offset', values['north-offset'])
         : 90,
-    outPath: typeof flags.out === 'string' ? flags.out : './terrain.husgrid.json',
+    outPath: typeof values.out === 'string' ? values.out : './terrain.husgrid.json',
   };
+  if (skirtM !== undefined) {
+    result.skirtM = skirtM;
+  }
   if (skirtStepM !== undefined) {
     result.skirtStepM = skirtStepM;
   }

@@ -56,12 +56,12 @@ export function computeDoorwayTraversalSwingSign(
   const vu = moveDirX * geom.tangentX + moveDirZ * geom.tangentZ;
   const vn = moveDirX * geom.normalX + moveDirZ * geom.normalZ;
 
-  // 1. Must be moving substantially across the doorway plane (never open when running parallel past a door!)
+  // Must be moving substantially across the doorway plane (never open when running parallel past a door)
   if (Math.abs(vn) < 0.58) {
     return null;
   }
 
-  // 2. Must be on the approach side of the doorway (or right in the threshold) moving toward/across n = 0
+  // Must be on the approach side of the doorway (or right in the threshold) moving toward/across n = 0
   if (n * vn > 0.05) {
     return null;
   }

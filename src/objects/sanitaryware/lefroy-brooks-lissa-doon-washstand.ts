@@ -325,7 +325,7 @@ export function buildLefroyBrooksLissaDoonWashstand(
   const bowlHalfD = (bowlFrontZ - bowlRearZ) * 0.5;
   const bowlHalfW = Math.max(0.18, widthM * 0.5 - 0.085);
 
-  // --- Vitreous China Edwardian Console Basin (`LB 7503`) ---
+  // Vitreous China Edwardian Console Basin (`LB 7503`)
   const basinGroup = new THREE.Group();
   basinGroup.name = `${p}.ceramicBasin`;
   group.add(basinGroup);
@@ -447,7 +447,7 @@ export function buildLefroyBrooksLissaDoonWashstand(
   wastePlug.position.set(0, bowlFloorY + 0.0025, bowlCenterZ);
   basinGroup.add(wastePlug);
 
-  // --- 1b. Deck-Mounted Perrin & Rowe 3-Hole Basin Mixer (`3606`) or Composable Tap ---
+  // Deck-Mounted Perrin & Rowe 3-Hole Basin Mixer (`3606`) or Composable Tap
   const valveSpreadM = 0.200;
   registerTapMountAnchor(group, {
     deckPosition: [0, rimHeightM + 0.0005, deckTapZ],
@@ -511,7 +511,7 @@ export function buildLefroyBrooksLissaDoonWashstand(
     }
   }
 
-  // --- 2. Open Metal Support: Wall-Mounted Cast Brackets OR Open Tubular Console Stand (`opts.finish`) ---
+  // Open Metal Support: Wall-Mounted Cast Brackets OR Open Tubular Console Stand (`opts.finish`)
   const standGroup = new THREE.Group();
   standGroup.name = `${p}.consoleStand`;
   group.add(standGroup);
@@ -688,7 +688,7 @@ export function buildLefroyBrooksLissaDoonWashstand(
   standGroup.add(lowerCrossRail);
   }
 
-  // --- 3. Exposed `6303` Bottle Trap + Wall Waste Pipe + Hot/Cold Rigid Ø15mm Supply Pipes ---
+  // Exposed `6303` Bottle Trap + Wall Waste Pipe + Hot/Cold Rigid Ø15mm Supply Pipes
   const plumbingGroup = new THREE.Group();
   plumbingGroup.name = `${p}.exposedPlumbing6303`;
   group.add(plumbingGroup);

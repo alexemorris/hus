@@ -61,7 +61,7 @@ export interface HollowWardrobeInteriorOptions {
   readonly frontCoord: number;
   /** Carcass depth extending inward from `frontCoord` (`> 0`). */
   readonly depth: number;
-  /** Room finished floor Y in `parent` local space (used for the 1PV collision guard). */
+  /** Room finished floor Y in `parent` local space (used for the first-person collision guard). */
   readonly roomFloorY: number;
   /** Bottom Y of the outer carcass (typically `roomFloorY`). */
   readonly carcassBaseY: number;
@@ -97,9 +97,9 @@ export interface ShakerWardrobeDoorOptions {
   readonly handleCenterY?: number;
   /** Local U offset override for pull/knob hardware (defaults to latch stile center). */
   readonly handleLocalU?: number;
-  /** Hardware style: unified aged-brass collared bar pull (160mm main doors, 128mm Master U3+U4). */
+  /** Hardware style: unified aged-brass collared bar pull (160mm standard doors, 128mm compact doors). */
   readonly pullStyle?: 'bar';
-  /** Explicit collared bar pull length in meters (defaults to `0.160` -> `160 mm`; Master U3+U4 uses `0.128`). */
+  /** Explicit collared bar pull length in meters (defaults to `0.160` -> `160 mm`; compact doors use `0.128`). */
   readonly barLength?: number;
   /** Keep exact handleCenterY without clamping away from top/bottom rails (for top-box knobs). */
   readonly exactHandleY?: boolean;
@@ -434,7 +434,7 @@ export function addInteractiveShakerWardrobeDoor(
   const hHinge = hingeSign < 0 ? hL : hR;
   const hLatch = hingeSign < 0 ? hR : hL;
 
-  // Skeiling-safe bespoke joinery split: whenever a raked leaf is hinged on its short eaves stile,
+  // Skeiling-safe joinery split: whenever a raked leaf is hinged on its short eaves stile,
   // place a coplanar fixed in-frame Shaker raked spandrel above `ySplitOffset` and swing the
   // rectangular Shaker door leaf below `ySplitOffset` so 0.0mm ever pierces a pitched skeiling.
   const needsFixedRakedSpandrel =
@@ -513,7 +513,7 @@ export function addInteractiveShakerWardrobeDoor(
     doorGroup.add(astragal);
   }
 
-  // Unified Aged-Brass Collared Bar Pull Family (`160 mm` main doors, `128 mm` Master U3+U4; 0 knobs!)
+  // Unified aged-brass collared bar pull family (`160 mm` standard doors, `128 mm` compact doors)
   const handleU =
     options.handleLocalU !== undefined
       ? options.handleLocalU
@@ -1019,7 +1019,7 @@ function buildRakedOrFlatShakerLeafGeometry(params: {
 /**
  * Builds a hollow 5-panel raked/flat wardrobe carcass (`18mm` panel thickness, `0.0mm` exterior
  * visual change when doors are closed, quarter-sawn European oak interior cavity & bay dividers,
- * 1PV front-plane collision guard, recessed `2700K` warm LED pelmet diffuser strips, and bespoke
+ * first-person front-plane collision guard, recessed `2700K` warm LED pelmet diffuser strips, and fitted
  * interior hanging rails, garments, drawers, woven baskets, and shoe racks).
  */
 export function buildHollowWardrobeInterior(
@@ -1088,9 +1088,7 @@ export function buildHollowWardrobeInterior(
     return mesh;
   };
 
-  // ---------------------------------------------------------------------------
-  // 1. 1PV Front-Plane Collision Guard (prevents walking through open doors)
-  // ---------------------------------------------------------------------------
+  // First-person front-plane collision guard (prevents walking through open doors)
   {
     const guardH = 1.8; // Y = roomFloorY + 0.15m .. roomFloorY + 1.95m
     const guardY = roomFloorY + 0.15 + guardH * 0.5;
@@ -1115,9 +1113,7 @@ export function buildHollowWardrobeInterior(
     root.add(guardMesh);
   }
 
-  // ---------------------------------------------------------------------------
-  // 2. Hollow 5-Panel Carcass (18mm cheeks, rear back, roof & painted face-frame)
-  // ---------------------------------------------------------------------------
+  // Hollow 5-Panel Carcass (18mm cheeks, rear back, roof & painted face-frame)
   const safeTopY = (u: number, depthFrac: number): number =>
     Math.max(carcassBaseY + 0.25, getCarcassTopY(u, depthFrac));
 
@@ -1482,9 +1478,7 @@ export function buildHollowWardrobeInterior(
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // 3. Bespoke Bay Interiors, Warm 2700K LED Pelmets & Interactive Oak Drawers
-  // ---------------------------------------------------------------------------
+  // Fitted Bay Interiors, Warm 2700K LED Pelmets & Interactive Oak Drawers
   const frontClearInset = panelT + 0.008;
   const innerDepth = Math.max(0.28, depth - frontClearInset - panelT);
   const vInnerFront = frontCoord - openSign * frontClearInset;

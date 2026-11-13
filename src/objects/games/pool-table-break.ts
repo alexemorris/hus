@@ -13,7 +13,7 @@ import {
   type PoolTableSpec,
 } from './pool-table-physics.ts';
 
-/** Fixed interactable id of the barn pool-table break. */
+/** Fixed interactable id of the pool-table break animation. */
 export const POOL_TABLE_BREAK_ID = 'pool-table-break';
 
 export interface PoolTableBreakConfig {
@@ -58,18 +58,9 @@ function easeInOutCubic(t: number): number {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
 
-function clamp01(v: number): number {
-  return v < 0 ? 0 : v > 1 ? 1 : v;
-}
-
-function smoothstep(edge0: number, edge1: number, x: number): number {
-  const u = clamp01((x - edge0) / Math.max(1e-5, edge1 - edge0));
-  return u * u * (3 - 2 * u);
-}
-
 /**
- * First-person and 3D click-to-break animation for the 7ft Barn pool table:
- * - When triggered in `racked` state, transitions the 1PV camera into a low shooter bridge stance
+ * First-person and 3D click-to-break animation for a 7ft pool table:
+ * - When triggered in `racked` state, transitions the first-person camera into a low shooter bridge stance
  *   over the polished oak head rail sighting down the tapered ash cue at the white cue ball and
  *   15-ball red/yellow triangle rack, feathers & draws the cue back, delivers an explosive break
  *   stroke with an impact FOV punch, and rises to watch the balls scatter and drop into the
@@ -256,8 +247,8 @@ export class PoolTableBreakController implements AnimatedInteractable {
       const aimLookZ = cueBallRack.z + dirZ * 0.62;
 
       if (t <= CUE_ADDRESS_END) {
-        // Stage 1 (0.00s -> 0.60s): Step into shooter stance behind head rail & lean down onto bridge hand
-        const u = easeInOutCubic(clamp01(t / CUE_ADDRESS_END));
+        // Address phase (0.00s -> 0.60s): Step into shooter stance behind head rail & lean down onto bridge hand
+        const u = easeInOutCubic(THREE.MathUtils.clamp(t / CUE_ADDRESS_END, 0, 1));
         footLocalX = THREE.MathUtils.lerp(standFootX - dirX * 0.14, bridgeFootX, u);
         footLocalZ = THREE.MathUtils.lerp(standFootZ - perpZ * 0.12, bridgeFootZ, u);
         eyeLocalX = THREE.MathUtils.lerp(standFootX, bridgeEyeX, u);
@@ -269,8 +260,8 @@ export class PoolTableBreakController implements AnimatedInteractable {
         rollRad = 0.016 * u;
         fovBoostDeg = -1.2 * u;
       } else if (t <= CUE_DRAW_END) {
-        // Stage 2 (0.60s -> 1.00s): Smooth cue draw-back & razor-sharp aim down the shaft
-        const u = easeInOutCubic(clamp01((t - CUE_ADDRESS_END) / (CUE_DRAW_END - CUE_ADDRESS_END)));
+        // Draw phase (0.60s -> 1.00s): Smooth cue draw-back & aim down the shaft
+        const u = easeInOutCubic(THREE.MathUtils.clamp((t - CUE_ADDRESS_END) / (CUE_DRAW_END - CUE_ADDRESS_END), 0, 1));
         footLocalX = bridgeFootX;
         footLocalZ = bridgeFootZ;
         eyeLocalX = bridgeEyeX - dirX * (0.012 * u);
@@ -282,10 +273,10 @@ export class PoolTableBreakController implements AnimatedInteractable {
         rollRad = 0.016 + 0.004 * u;
         fovBoostDeg = -1.2 - 1.4 * u; // -2.6 deg focused aim zoom at full draw
       } else if (t <= CUE_FOLLOW_END) {
-        // Stage 3 (1.00s -> 1.20s): Explosive forward break stroke & cue-ball impact at 1.08s
-        const strokeU = clamp01((t - CUE_DRAW_END) / (CUE_FOLLOW_END - CUE_DRAW_END));
+        // Strike phase (1.00s -> 1.20s): Forward break stroke & cue-ball impact at 1.08s
+        const strokeU = THREE.MathUtils.clamp((t - CUE_DRAW_END) / (CUE_FOLLOW_END - CUE_DRAW_END), 0, 1);
         const impactPulse = t >= CUE_IMPACT
-          ? Math.sin(clamp01((t - CUE_IMPACT) / (CUE_FOLLOW_END - CUE_IMPACT)) * Math.PI * 0.5)
+          ? Math.sin(THREE.MathUtils.clamp((t - CUE_IMPACT) / (CUE_FOLLOW_END - CUE_IMPACT), 0, 1) * Math.PI * 0.5)
           : 0;
         footLocalX = bridgeFootX;
         footLocalZ = bridgeFootZ;
@@ -298,9 +289,10 @@ export class PoolTableBreakController implements AnimatedInteractable {
         rollRad = 0.020 * (1 - 0.35 * impactPulse);
         fovBoostDeg = THREE.MathUtils.lerp(-2.6, 3.8, strokeU);
       } else {
-        // Stage 4 (1.20s -> end): Rise smoothly from low bridge stance and watch the pack scatter across the baize
-        const riseU = easeInOutCubic(clamp01((t - CUE_FOLLOW_END) / 0.78));
-        const settleU = smoothstep(Math.max(CUE_FOLLOW_END + 0.8, totalDur - 0.65), totalDur, t);
+        // Follow-through phase (1.20s -> end): Rise smoothly from low bridge stance and watch the pack scatter across the baize
+        const riseU = easeInOutCubic(THREE.MathUtils.clamp((t - CUE_FOLLOW_END) / 0.78, 0, 1));
+        const settleStart = Math.max(CUE_FOLLOW_END + 0.8, totalDur - 0.65);
+        const settleU = THREE.MathUtils.smoothstep(t, settleStart, Math.max(settleStart + 1e-5, totalDur));
         footLocalX = THREE.MathUtils.lerp(bridgeFootX, standFootX, riseU);
         footLocalZ = THREE.MathUtils.lerp(bridgeFootZ, standFootZ * (1 - settleU), riseU);
 
@@ -311,7 +303,7 @@ export class PoolTableBreakController implements AnimatedInteractable {
         eyeLocalY = THREE.MathUtils.lerp(
           bridgeEyeY + 0.006,
           STANDING_EYE_HEIGHT,
-          easeInOutCubic(clamp01((t - CUE_FOLLOW_END) / 0.95))
+          easeInOutCubic(THREE.MathUtils.clamp((t - CUE_FOLLOW_END) / 0.95, 0, 1))
         );
 
         // Track the live center of action of the scattering balls on the table
@@ -340,7 +332,7 @@ export class PoolTableBreakController implements AnimatedInteractable {
       }
     } else {
       // Phase === 'racking' (0.00s -> 0.90s): Lean in to watch the 15-ball triangle re-rack, then step back to head of table
-      const u = clamp01(this.#elapsed / RACK_SEC);
+      const u = THREE.MathUtils.clamp(this.#elapsed / RACK_SEC, 0, 1);
       const sinU = Math.sin(u * Math.PI);
       const arch = sinU * sinU;
       const standX = cueBallRack.x - 1.02;
@@ -421,7 +413,7 @@ export class PoolTableBreakController implements AnimatedInteractable {
     return Math.max(CUE_RETURN_END, simRest);
   }
 
-  // --- Break -------------------------------------------------------------------------------
+  // Break
 
   #startBreak(): void {
     const cueBall = this.#rack[0]!;
@@ -481,7 +473,7 @@ export class PoolTableBreakController implements AnimatedInteractable {
       if (!p) continue;
       const drop = this.#drops[i];
       if (drop && simT >= drop.timeSec) {
-        const u = clamp01((simT - drop.timeSec) / POCKET_DROP_SEC);
+        const u = THREE.MathUtils.clamp((simT - drop.timeSec) / POCKET_DROP_SEC, 0, 1);
         if (u >= 1) {
           ball.visible = false;
         } else {
@@ -510,36 +502,36 @@ export class PoolTableBreakController implements AnimatedInteractable {
   #poseCue(t: number): void {
     const cue = this.#cue;
     if (t <= CUE_ADDRESS_END) {
-      const u = easeInOutCubic(clamp01(t / CUE_ADDRESS_END));
+      const u = easeInOutCubic(THREE.MathUtils.clamp(t / CUE_ADDRESS_END, 0, 1));
       cue.position.lerpVectors(this.#cueRestPos, this.#cueAddressPos, u);
       // Lift the cue off the rail in a small arc while it swings round to the shot line.
       cue.position.y += Math.sin(u * Math.PI) * 0.12;
       cue.quaternion.slerpQuaternions(this.#cueRestQuat, this.#cueAddressQuat, u);
     } else if (t <= CUE_DRAW_END) {
-      const u = easeInOutCubic(clamp01((t - CUE_ADDRESS_END) / (CUE_DRAW_END - CUE_ADDRESS_END)));
+      const u = easeInOutCubic(THREE.MathUtils.clamp((t - CUE_ADDRESS_END) / (CUE_DRAW_END - CUE_ADDRESS_END), 0, 1));
       cue.quaternion.copy(this.#cueAddressQuat);
       cue.position.copy(this.#cueAddressPos).addScaledVector(this.#cueAxis, -CUE_DRAW_BACK * u);
     } else if (t <= CUE_IMPACT) {
-      const u = clamp01((t - CUE_DRAW_END) / (CUE_IMPACT - CUE_DRAW_END));
+      const u = THREE.MathUtils.clamp((t - CUE_DRAW_END) / (CUE_IMPACT - CUE_DRAW_END), 0, 1);
       const travel = CUE_DRAW_BACK + CUE_TIP_GAP;
       cue.quaternion.copy(this.#cueAddressQuat);
       cue.position.copy(this.#cueAddressPos).addScaledVector(this.#cueAxis, -CUE_DRAW_BACK + travel * u * u);
     } else if (t <= CUE_FOLLOW_END) {
-      const u = clamp01((t - CUE_IMPACT) / (CUE_FOLLOW_END - CUE_IMPACT));
+      const u = THREE.MathUtils.clamp((t - CUE_IMPACT) / (CUE_FOLLOW_END - CUE_IMPACT), 0, 1);
       cue.quaternion.copy(this.#cueAddressQuat);
       cue.position
         .copy(this.#cueAddressPos)
         .addScaledVector(this.#cueAxis, CUE_TIP_GAP + CUE_FOLLOW_THROUGH * (1 - (1 - u) * (1 - u)));
     } else if (t <= CUE_RETURN_START) {
       // Hold the follow-through, lifted slightly clear of the moving balls.
-      const u = clamp01((t - CUE_FOLLOW_END) / 0.3);
+      const u = THREE.MathUtils.clamp((t - CUE_FOLLOW_END) / 0.3, 0, 1);
       cue.quaternion.copy(this.#cueAddressQuat);
       cue.position
         .copy(this.#cueAddressPos)
         .addScaledVector(this.#cueAxis, CUE_TIP_GAP + CUE_FOLLOW_THROUGH - 0.25 * easeInOutCubic(u));
       cue.position.y += 0.05 * easeInOutCubic(u);
     } else {
-      const u = easeInOutCubic(clamp01((t - CUE_RETURN_START) / (CUE_RETURN_END - CUE_RETURN_START)));
+      const u = easeInOutCubic(THREE.MathUtils.clamp((t - CUE_RETURN_START) / (CUE_RETURN_END - CUE_RETURN_START), 0, 1));
       const from = this.#tmp
         .copy(this.#cueAddressPos)
         .addScaledVector(this.#cueAxis, CUE_TIP_GAP + CUE_FOLLOW_THROUGH - 0.25);
@@ -551,7 +543,7 @@ export class PoolTableBreakController implements AnimatedInteractable {
     cue.updateMatrixWorld(true);
   }
 
-  // --- Re-rack -----------------------------------------------------------------------------
+  // Re-rack
 
   #startRack(): void {
     for (let i = 0; i < this.#balls.length; i++) {
@@ -581,7 +573,7 @@ export class PoolTableBreakController implements AnimatedInteractable {
       const to = this.#rack[i]!;
       // Stagger the balls slightly so the rack assembles rather than snapping at once.
       const delay = (i / Math.max(1, n - 1)) * 0.25;
-      const raw = clamp01((t - delay) / (RACK_SEC - 0.25));
+      const raw = THREE.MathUtils.clamp((t - delay) / (RACK_SEC - 0.25), 0, 1);
       if (raw < 1) done = false;
       const u = easeInOutCubic(raw);
       ball.position.set(
@@ -603,7 +595,7 @@ export class PoolTableBreakController implements AnimatedInteractable {
     }
   }
 
-  // --- Encapsulated 3D Pool Table Audio ----------------------------------------------------
+  // Encapsulated 3D Pool Table Audio
 
   #getTableWorldPoint(localX: number, localZ: number, out: THREE.Vector3): THREE.Vector3 {
     const tableGroup = this.#cue.parent ?? this.#balls[0]?.parent ?? null;

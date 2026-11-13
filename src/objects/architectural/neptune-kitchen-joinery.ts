@@ -99,7 +99,6 @@ export interface NeptuneCabinetBaySpec {
   readonly hingeSide?: 'left' | 'right';
 }
 
-
 function applyNeptuneHardwareFinish(
   group: THREE.Group,
   hardwareFinish?: BrasswareFinishCode
@@ -2766,10 +2765,7 @@ export function buildNeptuneKitchenIsland(
   });
 }
 
-
-// =============================================================================
 // Reusable Heritage Kitchen Architecture, Prep Island, Woven Stools & PBR Maps
-// =============================================================================
 
 function getFullStavePaleEuropeanOakMaps(): PbrDataMapBundle {
   return getOrCreateCachedTexture('catalog:timber:full-stave-pale-oak-1024:v1', () => {
@@ -3748,7 +3744,7 @@ export function buildNeptuneOakPrepIslandTable(
     }
   }
 
-  // Solid-oak perimeter apron rails (front/rear `115 mm` deep, end modesty aprons `220 mm` deep matching inspo photo!)
+  // Solid-oak perimeter apron rails (front/rear `115 mm` deep, end modesty aprons `220 mm` deep)
   const longRailW = legCx * 2 - legTopW - 0.004;
   const longRailH = 0.115;
   const railT = 0.026;
@@ -3790,7 +3786,7 @@ export function buildNeptuneOakPrepIslandTable(
     endMesh.receiveShadow = true;
     root.add(endMesh);
   }
-  // Inner recessed oak backer panel visible under the stool-side knee space (gives warm oak shadow depth like inspo photo)
+  // Inner recessed oak backer panel visible under the stool-side knee space for warm oak shadow depth
   addNamedBox(
     root,
     `${namePrefix}.oakUnderTopSpine`,
@@ -4013,7 +4009,7 @@ export function buildWovenCordOakCounterStool(
     sideRung.rotation.x = Math.PI * 0.5;
   }
 
-  // Woven 3-panel checkered Danish paper-cord backrest (`y = seatH + 0.11 .. backTopY - 0.018`, matching inspo photo!)
+  // Woven 3-panel checkered Danish paper-cord backrest (`y = seatH + 0.11 .. backTopY - 0.018`)
   const backBandH = 0.145;
   const backBandCy = backTopY - 0.02 - backBandH * 0.5;
   const backZ = -halfD - 0.012;

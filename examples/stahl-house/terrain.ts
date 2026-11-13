@@ -1,9 +1,9 @@
+import * as THREE from 'three';
 import {
   carveBasin,
   createTerrainSampler,
   gradePad,
   sampleHusGridLayers,
-  smoothstep,
   splinePath,
   type HusGridDocument,
   type TerrainConfig,
@@ -70,14 +70,14 @@ export function sampleStahlPromontoryBaseY(wx: number, wz: number): number {
   // South of `Z = 0.25 m` (under the Dining & Living East glass bays and catwalk), the rocky
   // bluff drops immediately from the `X = 3.30 m` caisson crest line at ~50°–60°.
   const noseBulgeEast =
-    (1 - smoothstep(-0.75, 0.55, wz)) * smoothstep(-8.8, -6.3, wz) * 5.65;
+    (1 - THREE.MathUtils.smoothstep(wz, -0.75, 0.55)) * THREE.MathUtils.smoothstep(wz, -8.8, -6.3) * 5.65;
   const eastCrestX = 3.30 + noseBulgeEast;
   const dxEast = wx - eastCrestX;
 
   // South escarpment:
   // Under the pool terrace (`X < -0.15`), the engineered concrete pool-terrace retaining wall sits
   // along `Z = 9.48`, while under the cantilevered Living wing (`X >= 0`), the bluff drops from `Z = 9.26`.
-  const poolTerraceBulgeSouth = (1 - smoothstep(-0.6, 0.4, wx)) * 0.36;
+  const poolTerraceBulgeSouth = (1 - THREE.MathUtils.smoothstep(wx, -0.6, 0.4)) * 0.36;
   const southCrestZ = 9.26 + poolTerraceBulgeSouth;
   const dzSouth = wz - southCrestZ;
 
@@ -88,15 +88,15 @@ export function sampleStahlPromontoryBaseY(wx: number, wz: number): number {
     const outDist = Math.hypot(posE, posS);
 
     // Mask out West canyon flank (`X < -15.5`) and North ridge (`Z < -12`) so real 1m LiDAR governs
-    const eastActive = smoothstep(-16.5, -12.5, wx) * smoothstep(-16.0, -9.0, wz);
+    const eastActive = THREE.MathUtils.smoothstep(wx, -16.5, -12.5) * THREE.MathUtils.smoothstep(wz, -16.0, -9.0);
     if (outDist > 0 && eastActive > 0) {
       const steepNear = 1.26 * Math.min(outDist, 9.5);
       const midSlope = 0.76 * Math.max(0, Math.min(outDist - 9.5, 24.0));
       const basinRunout = 0.34 * Math.max(0, Math.min(outDist - 33.5, 75.0));
       // Keep crest line clean (0 undulation within 1.4 m of retaining/grade-beam crest)
-      const gullyNoise = ridgeUndulation * smoothstep(1.4, 4.5, outDist);
+      const gullyNoise = ridgeUndulation * THREE.MathUtils.smoothstep(outDist, 1.4, 4.5);
       const targetCliffY = -0.92 - steepNear - midSlope - basinRunout + gullyNoise;
-      const w = smoothstep(0.0, 1.25, outDist) * eastActive;
+      const w = THREE.MathUtils.smoothstep(outDist, 0.0, 1.25) * eastActive;
       cliffDropY = Math.min(demY, demY * (1 - w) + targetCliffY * w);
     }
   }

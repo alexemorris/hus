@@ -10,14 +10,14 @@ import { tagHighLodDetail } from '../../shared/scene-helpers.ts';
 /**
  * Builds the flush compound-curved glazing (windshield, fastback rear window, and iconic
  * 911 parabolic spear side windows with B-pillar & rear-quarter glass division) and the
- * high-detail 992.2 interior cabin (visible through the glass in the reference photo).
+ * high-detail 992.2 interior cabin.
  */
 export function buildPorsche992GlazingAndInteriorCabin(
   carGroup: THREE.Group,
   mats: Porsche992Materials,
   namePrefix = 'porsche992TurboS'
 ): void {
-  // 2. Flush Compound-Curved Glazing (`porsche992TurboS.glazing`)
+  // Flush Compound-Curved Glazing (`porsche992TurboS.glazing`)
   const glazingGroup = new THREE.Group();
   glazingGroup.name = `${namePrefix}.glazing`;
   carGroup.add(glazingGroup);
@@ -91,7 +91,7 @@ export function buildPorsche992GlazingAndInteriorCabin(
   sideWindowGlassMesh.name = `${namePrefix}.glazing`;
   glazingGroup.add(sideWindowGlassMesh);
 
-  // Gloss-black vertical B-pillar divider bar (`x = +0.26m`) between door window and rear quarter spear window (visible in photo!)
+  // Gloss-black vertical B-pillar divider bar (`x = +0.26m`) between door window and rear quarter spear window
   for (const sideZ of [-1, 1] as const) {
     const bPillarBar = new THREE.Mesh(
       sharedBoxGeometry(0.032, 0.30, 0.012),
@@ -104,7 +104,7 @@ export function buildPorsche992GlazingAndInteriorCabin(
     glazingGroup.add(bPillarBar);
   }
 
-  // 3. Detailed 992.2 Interior Cabin (`porsche992TurboS.interior`)
+  // Detailed 992.2 Interior Cabin (`porsche992TurboS.interior`)
   const interiorGroup = new THREE.Group();
   interiorGroup.name = `${namePrefix}.interior`;
   tagHighLodDetail(interiorGroup, 18);
@@ -151,7 +151,7 @@ export function buildPorsche992GlazingAndInteriorCabin(
   tagHighLodDetail(steeringWheel, 18);
   interiorGroup.add(steeringWheel);
 
-  // Two 18-Way Adaptive Sport Seats Plus with integrated sculpted headrests (clearly visible through the glass in the photo!)
+  // Two 18-Way Adaptive Sport Seats Plus with integrated sculpted headrests
   for (const seatZ of [-0.34, 0.34] as const) {
     const seatBase = new THREE.Mesh(
       sharedBoxGeometry(0.46, 0.11, 0.44),
@@ -203,7 +203,7 @@ export function buildPorsche992GlazingAndInteriorCabin(
  * Builds a single high-LOD 20"/21" Porsche 992.2 Turbo S Exclusive Design 10-Twin-Spoke (20-blade Y-spoke)
  * Forged Center-Lock Wheel in Dark Turbonite with Diamond-Turned Machined Front Faces,
  * Michelin Pilot Sport 4S tire, 420mm/390mm PCCB cross-drilled carbon-ceramic rotor with rotor bell & bobbins,
- * and curved 10-piston / 4-piston Porsche Speed Yellow monobloc brake caliper matching the reference photo!
+ * and curved 10-piston / 4-piston Porsche Speed Yellow monobloc brake caliper.
  */
 export function buildPorscheTurboSWheelCorner(
   parent: THREE.Group,
@@ -232,7 +232,7 @@ export function buildPorscheTurboSWheelCorner(
   cornerGroup.position.set(x, y, z);
   parent.add(cornerGroup);
 
-  // 1. Michelin Pilot Sport 4S Tire Assembly (`openEnded = true` so wheel spokes & PCCB brakes are 100% unobstructed)
+  // Michelin Pilot Sport 4S Tire Assembly (`openEnded = true` so wheel spokes & PCCB brakes are 100% unobstructed)
   const treadW = tireWidth * 0.84;
   const treadCyl = new THREE.Mesh(
     sharedCylinderGeometry(tireRadius, tireRadius, treadW, 40, 1, true),
@@ -257,7 +257,7 @@ export function buildPorscheTurboSWheelCorner(
     cornerGroup.add(shoulderTorus);
   }
 
-  // 2. Dark Turbonite Inner Alloy Wheel Barrel, Recessed Back-Plate & Outer Diamond-Turned Lip Flange
+  // Dark Turbonite Inner Alloy Wheel Barrel, Recessed Back-Plate & Outer Diamond-Turned Lip Flange
   const barrel = new THREE.Mesh(
     sharedCylinderGeometry(rimRadius, rimRadius * 0.96, tireWidth * 0.82, 36, 1, true),
     materials.turboniteBarrelMat
@@ -285,8 +285,8 @@ export function buildPorscheTurboSWheelCorner(
   rimLipRing.position.set(0, 0, outerFaceZ);
   cornerGroup.add(rimLipRing);
 
-  // 3. Authentic 992.2 Turbo S Exclusive Design 10-Twin-Spoke (20-Blade Y-Spoke) Forged Wheel Face
-  //    Matches the exact multi-spoke dark-titanium + machined-face wheel design in the reference photo!
+  // Authentic 992.2 Turbo S Exclusive Design 10-Twin-Spoke (20-Blade Y-Spoke) Forged Wheel Face
+  //    Multi-spoke dark-titanium + machined-face wheel design
   const hubRadius = 0.056;
   const spokeLen = rimRadius - hubRadius - 0.003;
   const spokeMidR = hubRadius + spokeLen * 0.5;
@@ -331,7 +331,7 @@ export function buildPorscheTurboSWheelCorner(
     }
   }
 
-  // 4. Forged Center-Lock Hub, RS-Style Center-Lock Nut & Colored Porsche Crest Cap
+  // Forged Center-Lock Hub, RS-Style Center-Lock Nut & Colored Porsche Crest Cap
   const hubCyl = new THREE.Mesh(
     sharedCylinderGeometry(hubRadius, hubRadius * 1.12, 0.046, 28),
     materials.turboniteBarrelMat
@@ -361,7 +361,7 @@ export function buildPorscheTurboSWheelCorner(
   tagHighLodDetail(crestCap, 18);
   cornerGroup.add(crestCap);
 
-  // 5. PCCB 420mm Front / 390mm Rear Cross-Drilled Carbon-Ceramic Brake Rotor, Aluminium Hat & Speed Yellow Caliper
+  // PCCB 420mm Front / 390mm Rear Cross-Drilled Carbon-Ceramic Brake Rotor, Aluminium Hat & Speed Yellow Caliper
   const rotorR = isFront ? 0.210 : 0.196;
   const rotorZ = outerFaceZ - signZ * 0.056;
   const rotorMesh = new THREE.Mesh(

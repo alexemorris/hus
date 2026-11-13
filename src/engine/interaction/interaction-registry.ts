@@ -191,10 +191,6 @@ export class InteractionRegistry {
     return id;
   }
 
-  // ---------------------------------------------------------------------------
-  // Ids
-  // ---------------------------------------------------------------------------
-
   /**
    * Installs the per-home door behaviour table (keyed by stable door ids), normally from
    * `PropertySceneProfile.doorPolicy`.
@@ -312,11 +308,6 @@ export class InteractionRegistry {
     }
     return undefined;
   }
-
-
-  // ---------------------------------------------------------------------------
-  // Zero-ctx Smart Asset Interactions & Audio Overrides
-  // ---------------------------------------------------------------------------
 
   public setInteractableAudioOverride(
     interactableId: string,
@@ -475,10 +466,6 @@ export class InteractionRegistry {
     return actions;
   }
 
-  // ---------------------------------------------------------------------------
-  // Registration
-  // ---------------------------------------------------------------------------
-
   /**
    * Marks an Object3D and all its descendant Meshes with the given InteractiveUserData
    * and registers them for raycasting.
@@ -574,7 +561,7 @@ export class InteractionRegistry {
 
   /**
    * Registers the track-mounted sliding Golf Simulator front stance mat and links it
-   * with the Callaway Tour Golf Bag (`bagGroup`).
+   * with the golf bag (`bagGroup`).
    */
   public registerFoldingGolfMat(
     parent: THREE.Object3D,
@@ -705,7 +692,7 @@ export class InteractionRegistry {
   }
 
   /**
-   * Registers the Barn TrackMan Golf Simulator active club swing, 3D ball launch,
+   * Registers the golf simulator active club swing, 3D ball launch,
    * screen fabric ripple, and live projected trajectory animation.
    */
   public registerGolfSimulatorShot(config: GolfSimulatorShotConfig): string {
@@ -729,10 +716,6 @@ export class InteractionRegistry {
     this.#animated.set(device.id, device);
     return device.id;
   }
-
-  // ---------------------------------------------------------------------------
-  // Car gates
-  // ---------------------------------------------------------------------------
 
   public setUnbatchSubtreeHandler(handler: ((root: THREE.Object3D) => void) | null): void {
     this.#unbatchSubtreeHandler = handler;
@@ -789,10 +772,6 @@ export class InteractionRegistry {
     return this.carGatePair?.progress ?? 0;
   }
 
-  // ---------------------------------------------------------------------------
-  // Golf simulator
-  // ---------------------------------------------------------------------------
-
   /**
    * Returns true when the Barn Golf Simulator folding hitting mat is stowed away
    * (or currently stowing away) so the golf bag is hidden and the simulator is put away.
@@ -806,7 +785,7 @@ export class InteractionRegistry {
   }
 
   /**
-   * Triggers a full TrackMan Golf Simulator shot sequence. Does not trigger when the golf
+   * Triggers a full golf simulator shot sequence. Does not trigger when the golf
    * simulator hitting mat is stowed away.
    */
   public triggerGolfSimulatorShot(): boolean {
@@ -834,10 +813,6 @@ export class InteractionRegistry {
   #cancelGolfShot(): void {
     if (this.golfSimulatorShot) cancelGolfSimulatorShot(this.golfSimulatorShot);
   }
-
-  // ---------------------------------------------------------------------------
-  // Clicks / toggles
-  // ---------------------------------------------------------------------------
 
   #closeConflictingDoors(openedId: string): void {
     const stable = this.#stableIdOf(openedId);
@@ -1049,10 +1024,6 @@ export class InteractionRegistry {
     return true;
   }
 
-  // ---------------------------------------------------------------------------
-  // Walkthrough door barge
-  // ---------------------------------------------------------------------------
-
   /**
    * Returns true if `interactableId` is a walk-through room, exterior, courtyard, or stable door
    * (rather than a cupboard, larder, or appliance door).
@@ -1130,10 +1101,6 @@ export class InteractionRegistry {
     return getEffectiveDoorOpenAngle(door, getDefaultDoorOpenAngle(door, override));
   }
 
-  // ---------------------------------------------------------------------------
-  // Prompts
-  // ---------------------------------------------------------------------------
-
   /**
    * Returns a concise action prompt label for a looked-at interactive mesh
    * (e.g. "Open Door", "Close Cupboard", "Open AGA Lid", "Toggle Light Switch").
@@ -1181,10 +1148,6 @@ export class InteractionRegistry {
       golfPrompt: () => this.getGolfSimulatorPromptLabel(),
     });
   }
-
-  // ---------------------------------------------------------------------------
-  // Dynamic objects & update loop
-  // ---------------------------------------------------------------------------
 
   /**
    * Collects all dynamic Object3Ds managed by the registry so static matrix

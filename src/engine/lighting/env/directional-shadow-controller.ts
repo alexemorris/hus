@@ -20,7 +20,7 @@ const SHADOW_HALF_EXTENT_FAR_M = 48.0;
 const SHADOW_CENTER_GRID_M = 12.0;
 /** Deadband (metres, >= 10m) beyond the current grid cell center before re-snapping the shadow anchor. */
 const SHADOW_CENTER_DEADBAND_M = 10.8;
-/** Larger 1PV walkthrough deadband (metres) so multi-room walking across the house triggers 0 mid-walk 4096^2 shadow passes. */
+/** Larger first-person walkthrough deadband (metres) so multi-room walking across the house triggers 0 mid-walk 4096^2 shadow passes. */
 const SHADOW_CENTER_WALKTHROUGH_DEADBAND_M = 22.0;
 
 export interface ShadowFrustumDiagnostics {
@@ -178,7 +178,7 @@ export class DirectionalShadowController {
       (this.shadowHalfExtentM === SHADOW_HALF_EXTENT_CLOSE_M ||
         this.shadowHalfExtentM === SHADOW_HALF_EXTENT_MID_M)
     ) {
-      // Hold close/mid shadow extent steady throughout 1PV walkthrough
+      // Hold close/mid shadow extent steady throughout first-person walkthrough
       nextHalfExtent = this.shadowHalfExtentM;
     } else if (this.shadowHalfExtentM === SHADOW_HALF_EXTENT_CLOSE_M) {
       if (dist > 40.0) nextHalfExtent = SHADOW_HALF_EXTENT_FAR_M;

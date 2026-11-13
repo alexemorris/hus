@@ -639,7 +639,7 @@ export function buildSimpleHouseGrounds(ctx: SceneBuilderContext): THREE.Group {
   addMetricBox(root, 'simpleHouse.grounds.rearYorkstoneTerrace', [15.1, terraceThick, 3.92], [0, REAR_TERRACE_TOP_Y - terraceThick * 0.5, (-8.55 - 4.63) * 0.5], yorkstoneMat, 1.0, true);
 
   // Yorkstone threshold steps (`walkable = true`) at ALL THREE rear garden doors:
-  // 1) Kitchen French doors (`X = +5.35`), 2) Drawing Room French doors (`X = -5.35`), 3) Boot Lobby door (`X = -0.95`)
+  // Kitchen French doors (`X = +5.35`), Drawing Room French doors (`X = -5.35`), and Boot Lobby door (`X = -0.95`)
   for (const stepSpec of [
     { prefix: 'frenchDoor', x: 5.35, lowerW: 1.76, upperW: 1.64 },
     { prefix: 'drawingFrenchDoor', x: -5.35, lowerW: 1.76, upperW: 1.64 },

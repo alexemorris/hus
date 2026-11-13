@@ -337,10 +337,6 @@ export interface RoomPaintScheme {
   readonly info: RoomPaintSchemeInfo;
 }
 
-// -----------------------------------------------------------------------------
-// Pure colour & LRV utilities
-// -----------------------------------------------------------------------------
-
 const colorScratch = new THREE.Color();
 const PURE_WHITE = new THREE.Color(0xffffff);
 
@@ -465,10 +461,6 @@ export function getPaintSheenDescriptor(sheen: PaintSheen): PaintSheenDescriptor
   }
   return descriptor;
 }
-
-// -----------------------------------------------------------------------------
-// Curated Swatch Registry (Farrow & Ball + Neptune + Extensible Registration)
-// -----------------------------------------------------------------------------
 
 const swatchesById = new Map<string, PaintSwatch>();
 const swatchesByLookupKey = new Map<string, PaintSwatch>();
@@ -760,10 +752,6 @@ export function resolvePaintColor(input: PaintColorInput): ResolvedPaintColor {
   };
 }
 
-// -----------------------------------------------------------------------------
-// Headless-safe Procedural Micro-Texture DataTextures (Node & WebGPU identical)
-// -----------------------------------------------------------------------------
-
 interface PaintMicroTextureSet {
   readonly roughnessMap: THREE.DataTexture;
   readonly valueModMap: THREE.DataTexture | null;
@@ -906,10 +894,6 @@ function getPaintMicroTextures(kind: PaintMicroTextureKind): PaintMicroTextureSe
   microTextureCache.set(kind, created);
   return created;
 }
-
-// -----------------------------------------------------------------------------
-// Deterministic Paint Material Factory & WeakMap Metadata Registry
-// -----------------------------------------------------------------------------
 
 const paintMaterialCache = new Map<string, THREE.MeshPhysicalMaterial>();
 const paintInfoRegistry = new WeakMap<THREE.Material, ResolvedPaintInfo>();
@@ -1091,10 +1075,6 @@ export function getPaintMaterialInfo(
   if (!material) return undefined;
   return paintInfoRegistry.get(material);
 }
-
-// -----------------------------------------------------------------------------
-// Complete Room Paint Scheme Factory
-// -----------------------------------------------------------------------------
 
 const WASHABLE_ROOM_KINDS = new Set<RoomPaintKind>([
   'bathroom',

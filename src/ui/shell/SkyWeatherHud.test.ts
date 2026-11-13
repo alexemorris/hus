@@ -96,8 +96,8 @@ const SAMPLE_SNAPSHOT: SkyWeatherSnapshot = {
 
 describe('solar-weather-format pure helpers', () => {
   it('computes True-North bearings & cardinal labels accurately for Cotswold House axes', () => {
-    expect(forwardXZToTrueBearingDeg(1, 0, 340.17)).toBeCloseTo(340.17, 2); // +X Paddock NNW
-    expect(forwardXZToTrueBearingDeg(-1, 0, 340.17)).toBeCloseTo(160.17, 2); // -X Main St SSE
+    expect(forwardXZToTrueBearingDeg(1, 0, 340.17)).toBeCloseTo(340.17, 2); // +X axis
+    expect(forwardXZToTrueBearingDeg(-1, 0, 340.17)).toBeCloseTo(160.17, 2); // -X axis
     expect(forwardXZToTrueBearingDeg(0, 1, 340.17)).toBeCloseTo(70.17, 2); // +Z Courtyard ENE
     expect(bearingToCardinal16(340.17)).toBe('NNW');
     expect(bearingToCardinal16(160.17)).toBe('SSE');

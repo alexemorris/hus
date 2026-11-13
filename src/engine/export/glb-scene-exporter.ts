@@ -15,10 +15,6 @@
 import * as THREE from 'three';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 
-// ---------------------------------------------------------------------------
-// Heightfield -> tangent-space normal map
-// ---------------------------------------------------------------------------
-
 export interface HeightfieldNormalOptions {
   /** Multiplier applied to the height derivatives (default `1`). */
   readonly strength?: number;
@@ -134,10 +130,6 @@ export function convertHeightfieldToNormalRgba(
   );
 }
 
-// ---------------------------------------------------------------------------
-// Export exclusion rules
-// ---------------------------------------------------------------------------
-
 const EXCLUDED_USER_DATA_FLAGS = [
   'excludeFromExport',
   'isShadowPassHook',
@@ -205,10 +197,6 @@ function hasNoExportableSurface(obj: THREE.Object3D): boolean {
 export function shouldExcludeObjectFromGlbExport(obj: THREE.Object3D): boolean {
   return isExcludedHelperSubtree(obj) || hasNoExportableSurface(obj);
 }
-
-// ---------------------------------------------------------------------------
-// Texture preparation
-// ---------------------------------------------------------------------------
 
 type ExportCanvas = HTMLCanvasElement | OffscreenCanvas;
 type ExportContext2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
@@ -492,10 +480,6 @@ export function convertBumpMapToNormalMap(
   return true;
 }
 
-// ---------------------------------------------------------------------------
-// Material preparation
-// ---------------------------------------------------------------------------
-
 type MaterialSource = THREE.Material &
   Partial<
     Omit<THREE.MeshPhysicalMaterial, keyof THREE.Material | 'isMeshPhysicalMaterial'> & {
@@ -593,10 +577,6 @@ export function prepareMaterialForGlbExport(
   return result;
 }
 
-// ---------------------------------------------------------------------------
-// Export scene assembly
-// ---------------------------------------------------------------------------
-
 export interface GlbExportSceneBuild {
   readonly exportScene: THREE.Scene;
   readonly meshCount: number;
@@ -672,7 +652,6 @@ function buildExportMesh(source: THREE.Mesh, state: SceneBuildState): THREE.Mesh
   state.meshCount++;
   return new THREE.Mesh(geometry, material);
 }
-
 
 function hasExportRoomMetadata(source: THREE.Object3D): boolean {
   const ud = source.userData as Record<string, unknown> | undefined;
@@ -758,10 +737,6 @@ export function buildGlbExportScene(
     convertedBumpMaps: session.convertedBumpMaps,
   };
 }
-
-// ---------------------------------------------------------------------------
-// Viewer-facing API
-// ---------------------------------------------------------------------------
 
 export interface ExportedCameraPreset {
   readonly id: string;

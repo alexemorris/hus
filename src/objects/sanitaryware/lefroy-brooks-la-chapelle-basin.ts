@@ -173,7 +173,7 @@ export function buildLefroyBrooksLaChapellePedestalBasin(
   const pedCapitalTopY = rimHeightM - 0.135; // 0.725m
   const pedCenterZ = Math.min(depthM * 0.44, 0.235);
 
-  // 1. Stepped 8-Faceted Octagonal Pedestal Foot, Column & Capital
+  // Stepped 8-Faceted Octagonal Pedestal Foot, Column & Capital
   const pedestalMesh = new THREE.Mesh(
     buildOctagonalPedestalGeometry(pedCapitalTopY + 0.008, pedCenterZ),
     chinaMat
@@ -181,7 +181,7 @@ export function buildLefroyBrooksLaChapellePedestalBasin(
   pedestalMesh.name = `${p}.octagonalPedestal`;
   group.add(pedestalMesh);
 
-  // 2. Stepped 45°-Chamfered Octagonal Ceramic Basin Apron, Multi-Stepped Rim & Sunken Bowl (0TH)
+  // Stepped 45°-Chamfered Octagonal Ceramic Basin Apron, Multi-Stepped Rim & Sunken Bowl (0TH)
   const apronBotY = rimHeightM - 0.135; // 0.725m
   const bowlFloorY = rimHeightM - 0.155; // 0.705m
   const bowlCenterZ = depthM * 0.52;
@@ -207,7 +207,7 @@ export function buildLefroyBrooksLaChapellePedestalBasin(
   basinMesh.name = `${p}.octagonalBasinBowl`;
   group.add(basinMesh);
 
-  // 3. Low Stepped Integral Rear Splashback Upstand (y = rimHeightM .. rimHeightM + 0.045m, 0.860..0.905m)
+  // Low Stepped Integral Rear Splashback Upstand (y = rimHeightM .. rimHeightM + 0.045m, 0.860..0.905m)
   const upstandBase = new THREE.Mesh(
     prepGeo(new THREE.BoxGeometry(widthM - 0.016, 0.028, 0.032)),
     chinaMat
@@ -224,7 +224,7 @@ export function buildLefroyBrooksLaChapellePedestalBasin(
   upstandCrown.position.set(0, rimHeightM + 0.037, 0.0135);
   group.add(upstandCrown);
 
-  // 4. Rear Overflow Slot Trim & 6800 Click-Clack Dome Waste
+  // Rear Overflow Slot Trim & 6800 Click-Clack Dome Waste
   const rearWallZ = bowlCenterZ - bowlHalfD;
   const ovBezel = new THREE.Mesh(
     prepGeo(new THREE.BoxGeometry(0.044, 0.012, 0.005)),

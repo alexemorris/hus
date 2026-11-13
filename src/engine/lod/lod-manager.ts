@@ -860,7 +860,7 @@ export class RoomLodController {
     if (this.policyMode === 'lod2') return 2;
 
     // In 'auto' mode:
-    // 1. Rooms on a hidden/non-active floor drop to LOD0 Shell. Rooms that declare
+    // Rooms on a hidden/non-active floor drop to LOD0 Shell. Rooms that declare
     //    `crossFloorVisibleOn` for the active floor (e.g. both ends of a double-height stair void)
     //    always keep LOD1 so the shadow-caster set does not depend on which room is focused.
     if (
@@ -871,7 +871,7 @@ export class RoomLodController {
       return room.crossFloorVisibleOn?.includes(floorViewMode) ? 1 : 0;
     }
 
-    // 2. The explicitly focused room (and any room sharing its open-plan volume) gets LOD2 Hero
+    // The explicitly focused room (and any room sharing its open-plan volume) gets LOD2 Hero
     const isFocusedPair =
       this.focusedZoneId !== null &&
       (room.zoneId === this.focusedZoneId ||

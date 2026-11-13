@@ -114,8 +114,6 @@ export class DeviceService<TSecurity extends SecurityOverlay3D = SecurityOverlay
     return handled;
   }
 
-  // Lighting / KNX mirrors ----------------------------------------------------
-
   public setTimeOfDay(mode: TimeOfDay): void {
     this.circuitLighting.setTimeOfDay(mode);
   }
@@ -135,8 +133,6 @@ export class DeviceService<TSecurity extends SecurityOverlay3D = SecurityOverlay
       this.host.invalidator.requestRender();
     }
   }
-
-  // Bifolds & gates -------------------------------------------------------------
 
   public isBifoldsOpen(): boolean {
     return this.bifolds.isOpen();
@@ -172,8 +168,6 @@ export class DeviceService<TSecurity extends SecurityOverlay3D = SecurityOverlay
   public getCarGatesProgress(): number {
     return this.interactions.getCarGatesProgress();
   }
-
-  // Security & UFH ---------------------------------------------------------------
 
   public syncSecurity(
     cameras: readonly CctvCameraEntityState[],
@@ -221,8 +215,6 @@ export class DeviceService<TSecurity extends SecurityOverlay3D = SecurityOverlay
     ufh.setAllZones(on);
     this.host.invalidator.requestRender();
   }
-
-  // Animation ----------------------------------------------------------------------
 
   /**
    * Steps bifold / door / gate animations and throttles shadow-map refreshes

@@ -37,7 +37,7 @@ export interface FirstPersonPoseSample {
 }
 
 /**
- * A self-contained animated prop (e.g. the barn pool-table break, gym treadmill run, or
+ * A self-contained animated prop (e.g. a pool-table break, gym treadmill run, or
  * gym squat-rack bench press) that owns its own state and kinematics. Built outside the
  * engine (objects/homes) and plugged into the `InteractionRegistry` via
  * `registerAnimatedInteractable`, which routes clicks / walkthrough `F`, prompts, the

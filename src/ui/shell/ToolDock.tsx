@@ -22,7 +22,7 @@ interface DockTool {
 
 const TOOLS: readonly DockTool[] = [
   { id: 'orbit', label: 'Orbit', icon: 'hand', key: 'Esc', hint: 'Drag to orbit · right-click or Alt+click to inspect asset' },
-  { id: 'inspect', label: 'Inspect', icon: 'inspect', key: 'I', hint: 'Click any fixture, sanitaryware, appliance, or joinery to inspect specs' },
+  { id: 'inspect', label: 'Inspect', icon: 'inspect', key: 'I', hint: 'Click any fixture, appliance, or furniture item to inspect specs' },
   { id: 'measure', label: 'Measure', icon: 'ruler', key: 'M', hint: 'Click two points to measure' },
   { id: 'note', label: 'Note', icon: 'pin', key: 'N', hint: 'Click any surface to pin a note' },
   { id: 'sculpt', label: 'Sculpt', icon: 'sculpt', key: 'T', hint: 'Drag across site ground to sculpt · right-drag to pan', requiresTerrain: true },

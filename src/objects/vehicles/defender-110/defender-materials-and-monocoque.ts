@@ -557,15 +557,6 @@ export function createDefender110Materials(): Defender110Materials {
   };
 }
 
-export function smoothstep(edge0: number, edge1: number, x: number): number {
-  const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
-  return t * t * (3 - 2 * t);
-}
-
-export function lerp(a: number, b: number, t: number): number {
-  return a + (b - a) * t;
-}
-
 /**
  * Evaluates a piecewise monotone-clamped cubic Hermite spline through sorted `(x, y)` control knots
  * so there is zero overshoot between stations.
@@ -597,26 +588,23 @@ export function evalSpline(x: number, knots: readonly (readonly [number, number]
   return last[1];
 }
 
-
 /**
  * Plan-view wrap-around shift `getPlanWrapShiftX(x, z)`:
  * Captures the L663 Defender's bevelled front fascia corners (`+x` wrap at outer `z`)
  * and curved plan-view rear quarter corners (`-x` wrap into the Kamm tail).
  */
 export function getPlanWrapShiftX(x: number, z: number): number {
-  const noseWrap = smoothstep(-1.95, -2.38, x);
-  const tailWrap = smoothstep(1.98, 2.36, x);
+  const noseWrap = 1 - THREE.MathUtils.smoothstep(x, -2.38, -1.95);
+  const tailWrap = THREE.MathUtils.smoothstep(x, 1.98, 2.36);
   const zNorm = Math.min(1.12, Math.abs(z) / 0.96);
   const zCurve = Math.pow(zNorm, 2.2);
   return noseWrap * zCurve * 0.115 - tailWrap * zCurve * 0.095;
 }
 
-// ============================================================================
 // AUTHENTIC LAND ROVER DEFENDER 110 (L663 V8 CARPATHIAN / BLACK PACK) CURVES
 // (`x = -2.38m` front bumper face to `x = +2.36m` rear tailgate face, `4.758m` body
 //  length, `+2.62m` over rear spare wheel; wheelbase `3.022m` with front axle at
 //  `x = -1.51m` and rear axle at `x = +1.51m`; roof crown at `y = 1.967m`)
-// ============================================================================
 
 /**
  * 1. Centerline elevation profile `CENTERLINE_Y_KNOTS`:
@@ -739,15 +727,15 @@ export function sampleDefenderHalfProfile(x: number, nv: number): [number, numbe
   const zMax = evalSpline(x, BODY_WIDTH_Z_KNOTS);
   const zCrown = Math.min(zMax * 0.84, evalSpline(x, CROWN_WIDTH_Z_KNOTS));
 
-  const frontApproach = smoothstep(-1.88, -2.38, x);
-  const rearDeparture = smoothstep(1.88, 2.36, x);
+  const frontApproach = 1 - THREE.MathUtils.smoothstep(x, -2.38, -1.88);
+  const rearDeparture = THREE.MathUtils.smoothstep(x, 1.88, 2.36);
   const yBaseSill = 0.25 + frontApproach * 0.08 + rearDeparture * 0.09;
   const yArchCut = sampleWheelArchCutoutY(x, yBaseSill);
 
   const bonnetWeight =
-    smoothstep(-2.28, -2.06, x) * (1 - smoothstep(-1.08, -0.92, x));
+    THREE.MathUtils.smoothstep(x, -2.28, -2.06) * (1 - THREE.MathUtils.smoothstep(x, -1.08, -0.92));
   const cabinWeight =
-    smoothstep(-1.02, -0.42, x) * (1 - smoothstep(2.24, 2.35, x));
+    THREE.MathUtils.smoothstep(x, -1.02, -0.42) * (1 - THREE.MathUtils.smoothstep(x, 2.24, 2.35));
 
   // Smooth monolithic rounded-chamfer fender blister weight around front (`x = -1.51m`) and rear (`x = +1.51m`) wheel arches
   const frontBlister = Math.exp(-Math.pow((x - -1.51) / 0.56, 2));
@@ -765,11 +753,11 @@ export function sampleDefenderHalfProfile(x: number, nv: number): [number, numbe
       const u = v / 0.30;
       z = u * zCrown;
       const roofCamber = cabinWeight * 0.014 * (1 - u * u);
-      const cantrailBevel = cabinWeight * 0.024 * smoothstep(0.78, 1.0, u);
+      const cantrailBevel = cabinWeight * 0.024 * THREE.MathUtils.smoothstep(u, 0.78, 1.0);
       // Central raised V8 bonnet dome (`u < 0.56`) stepping down into the bonnet valley channel (`u ≈ 0.60..0.86`)
-      const domeStep = 1 - smoothstep(0.46, 0.66, u);
+      const domeStep = 1 - THREE.MathUtils.smoothstep(u, 0.46, 0.66);
       const valleyDip =
-        smoothstep(0.54, 0.66, u) * (1 - smoothstep(0.74, 0.88, u));
+        THREE.MathUtils.smoothstep(u, 0.54, 0.66) * (1 - THREE.MathUtils.smoothstep(u, 0.74, 0.88));
       const bonnetSculpt = bonnetWeight * (domeStep * 0.026 - valleyDip * 0.012);
       y = yCenter + roofCamber - cantrailBevel + bonnetSculpt;
     } else if (v <= 0.56) {
@@ -779,36 +767,36 @@ export function sampleDefenderHalfProfile(x: number, nv: number): [number, numbe
       const uShelf = Math.max(0, (u - 0.73) / 0.27);
       const yRoofEdge = yCenter - cabinWeight * 0.024;
       const yGlassBase = yShoulder + 0.014;
-      const yGreenhouse = lerp(yRoofEdge, yGlassBase, uGlass) - uShelf * 0.014;
-      const yBonnetFender = lerp(yCenter, yShoulder, smoothstep(0, 1, u));
-      y = lerp(yBonnetFender, yGreenhouse, cabinWeight);
+      const yGreenhouse = THREE.MathUtils.lerp(yRoofEdge, yGlassBase, uGlass) - uShelf * 0.014;
+      const yBonnetFender = THREE.MathUtils.lerp(yCenter, yShoulder, THREE.MathUtils.smoothstep(u, 0, 1));
+      y = THREE.MathUtils.lerp(yBonnetFender, yGreenhouse, cabinWeight);
 
       // Greenhouse tumblehome widens from `zCrown` (`~0.70m`) to `zGlassBase` (`~0.86m`), then steps sharply outward across the horizontal shoulder shelf to `zShoulderOuter` (`~0.96m`)
       const zGlassBase = zMax * 0.888;
       const zShoulderOuter = zMax * 0.985;
       const zGreenhouse =
-        lerp(zCrown, zGlassBase, Math.pow(uGlass, 0.92)) +
-        smoothstep(0, 1, uShelf) * (zShoulderOuter - zGlassBase);
-      const zBonnetFender = lerp(zCrown, zShoulderOuter, Math.pow(u, 0.84));
-      z = lerp(zBonnetFender, zGreenhouse, cabinWeight);
+        THREE.MathUtils.lerp(zCrown, zGlassBase, Math.pow(uGlass, 0.92)) +
+        THREE.MathUtils.smoothstep(uShelf, 0, 1) * (zShoulderOuter - zGlassBase);
+      const zBonnetFender = THREE.MathUtils.lerp(zCrown, zShoulderOuter, Math.pow(u, 0.84));
+      z = THREE.MathUtils.lerp(zBonnetFender, zGreenhouse, cabinWeight);
     } else if (v <= 0.90) {
       // Region 3: Muscular Lower Body Side Flank & Smooth Monolithic Rounded-Chamfer Fender Blister
       const u = (v - 0.56) / 0.34;
-      const yFlankNominal = lerp(yShoulder, yBaseSill + 0.04, u);
+      const yFlankNominal = THREE.MathUtils.lerp(yShoulder, yBaseSill + 0.04, u);
       const yClampedMin = yArchCut + 0.024 + (1 - u) * 0.045;
-      y = Math.max(yFlankNominal, lerp(yShoulder, yClampedMin, u));
+      y = Math.max(yFlankNominal, THREE.MathUtils.lerp(yShoulder, yClampedMin, u));
 
       // Taut barrel side profile with smooth monolithic rounded-chamfer wheel-arch flare
       const barrelCurve = Math.sin(u * Math.PI * 0.85) * 0.016;
       const blisterOut = archBlister * Math.sin(u * Math.PI * 0.92) * 0.018;
-      z = lerp(zMax * 0.985, zMax * 0.975, u) + barrelCurve + blisterOut;
+      z = THREE.MathUtils.lerp(zMax * 0.985, zMax * 0.975, u) + barrelCurve + blisterOut;
     } else {
       // Region 4: Lower Rocker Sill & Wheel-Arch Lip Return Flange
       const u = (v - 0.90) / 0.10;
-      const yTop = Math.max(lerp(yShoulder, yBaseSill + 0.04, 1.0), yArchCut + 0.024);
-      y = lerp(yTop, yArchCut, u);
-      const isWheelArch = smoothstep(yBaseSill + 0.015, yBaseSill + 0.14, yArchCut);
-      const tuckIn = lerp(0.055, 0.018, isWheelArch);
+      const yTop = Math.max(THREE.MathUtils.lerp(yShoulder, yBaseSill + 0.04, 1.0), yArchCut + 0.024);
+      y = THREE.MathUtils.lerp(yTop, yArchCut, u);
+      const isWheelArch = THREE.MathUtils.smoothstep(yArchCut, yBaseSill + 0.015, yBaseSill + 0.14);
+      const tuckIn = THREE.MathUtils.lerp(0.055, 0.018, isWheelArch);
       z = zMax * 0.975 - u * tuckIn;
     }
 
@@ -832,7 +820,7 @@ export function sampleLateralSurfaceZAtXY(x: number, yTarget: number): number {
     const yMinSeg = Math.min(y0, y1);
     if (yTarget <= yMaxSeg && yTarget >= yMinSeg) {
       const t = Math.abs(y0 - y1) > 1e-5 ? (yTarget - y0) / (y1 - y0) : 0;
-      return lerp(z0, z1, t);
+      return THREE.MathUtils.lerp(z0, z1, t);
     }
     const diff = Math.abs(y0 - yTarget);
     if (diff < bestDiff) {
@@ -856,7 +844,7 @@ export function sampleFrontNoseSurfaceXAtYZ(yTarget: number, zTarget: number): n
   const clampedY = Math.max(0.33, Math.min(1.13, yTarget));
   for (let iter = 0; iter < 18; iter++) {
     const mid = 0.5 * (lo + hi);
-    const yMid = lerp(
+    const yMid = THREE.MathUtils.lerp(
       evalSpline(mid, CENTERLINE_Y_KNOTS),
       evalSpline(mid, SHOULDER_Y_KNOTS),
       zFrac
@@ -903,7 +891,7 @@ export function createUnifiedDefender110BodyGeometry(): THREE.BufferGeometry {
   for (let i = 0; i <= nx; i++) {
     const t = i / nx;
     const shapedT = 0.5 - 0.5 * Math.cos(t * Math.PI);
-    const x = lerp(xMin, xMax, lerp(t, shapedT, 0.28));
+    const x = THREE.MathUtils.lerp(xMin, xMax, THREE.MathUtils.lerp(t, shapedT, 0.28));
     const halfPts = sampleDefenderHalfProfile(x, nv);
 
     for (let k = -nv; k <= nv; k++) {
@@ -930,7 +918,7 @@ export function createUnifiedDefender110BodyGeometry(): THREE.BufferGeometry {
       const vFrac = j / nv;
       const [, pzOrig] = lastHalfPts[j]!;
       const pz = signZ * pzOrig * tuckScaleZ;
-      const py = lerp(targetCenterY, 0.29, Math.pow(vFrac, 0.75));
+      const py = THREE.MathUtils.lerp(targetCenterY, 0.29, Math.pow(vFrac, 0.75));
       const vx = extraX + getPlanWrapShiftX(extraX, pz);
 
       positions.push(vx, py, pz);
@@ -985,14 +973,14 @@ export function createConformalDefenderPatchGeometry(
     const baseVertex = positions.length / 3;
     for (let ix = 0; ix <= segX; ix++) {
       const tx = ix / segX;
-      const x = lerp(xStart, xEnd, tx);
+      const x = THREE.MathUtils.lerp(xStart, xEnd, tx);
       const halfPts = sampleDefenderHalfProfile(x, nv);
       const v0 = vStartFunc(x);
       const v1 = vEndFunc(x);
 
       for (let iv = 0; iv <= segV; iv++) {
         const tv = iv / segV;
-        const v = mirrorBothSides ? lerp(v0, v1, tv) : lerp(-v1, v1, tv);
+        const v = mirrorBothSides ? THREE.MathUtils.lerp(v0, v1, tv) : THREE.MathUtils.lerp(-v1, v1, tv);
         const absV = Math.abs(v);
         const sign = mirrorBothSides ? sideZ : v < 0 ? -1 : 1;
 
@@ -1003,8 +991,8 @@ export function createConformalDefenderPatchGeometry(
 
         const p0 = halfPts[j0]!;
         const p1 = halfPts[j1]!;
-        const py = lerp(p0[0], p1[0], frac) + outwardOffsetY;
-        const pz = sign * (lerp(p0[1], p1[1], frac) + outwardOffsetZ);
+        const py = THREE.MathUtils.lerp(p0[0], p1[0], frac) + outwardOffsetY;
+        const pz = sign * (THREE.MathUtils.lerp(p0[1], p1[1], frac) + outwardOffsetZ);
         const vx = x + getPlanWrapShiftX(x, pz);
 
         positions.push(vx, py, pz);
@@ -1058,13 +1046,13 @@ export function createConformalLateralWindowOrPanelGeometry(
     const baseVertex = positions.length / 3;
     for (let ix = 0; ix <= segX; ix++) {
       const tx = ix / segX;
-      const x = lerp(xStart, xEnd, tx);
+      const x = THREE.MathUtils.lerp(xStart, xEnd, tx);
       const yBot = yBotFunc(x);
       const yTop = Math.max(yBot + 0.005, yTopFunc(x));
 
       for (let iy = 0; iy <= segY; iy++) {
         const ty = iy / segY;
-        const py = lerp(yBot, yTop, ty);
+        const py = THREE.MathUtils.lerp(yBot, yTop, ty);
         const zSurf = sampleLateralSurfaceZAtXY(x, py);
         const pz = sideZ * (zSurf + outwardZOffset);
         const vx = x + getPlanWrapShiftX(x, pz);

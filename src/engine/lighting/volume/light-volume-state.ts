@@ -109,10 +109,6 @@ export interface DaylightPortalEmitter {
   readonly hostRoom: RoomBoundsBox;
 }
 
-// ---------------------------------------------------------------------------
-// Shared Uniform Singletons (bound by reference across renderGroup materials)
-// ---------------------------------------------------------------------------
-
 function makeNonCloning<T extends { clone: () => T }>(obj: T): T {
   obj.clone = () => obj;
   return obj;
@@ -320,10 +316,6 @@ export function setBakedLightTierDirectCutoff(tier: GraphicsTier): void {
   SHARED_VOLUME_PARAMS.z = aoStrengthByTier[tier];
   SHARED_VOLUME_PARAMS.w = cutoffByTier[tier];
 }
-
-// ---------------------------------------------------------------------------
-// OBB Room Bounds & Wall/Slab Occlusion Helpers
-// ---------------------------------------------------------------------------
 
 export function buildRoomBoundsBoxes(
   registrations: readonly BakedRoomVolumeBounds[],

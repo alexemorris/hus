@@ -275,8 +275,6 @@ export class TradeViewController {
     }
   }
 
-  // ---------------------------------------------------------------------------
-
   private applyCurrentView(): void {
     const profile = TRADE_VIEW_PROFILES[this.view];
     let changed = false;

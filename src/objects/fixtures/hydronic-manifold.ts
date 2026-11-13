@@ -181,7 +181,7 @@ export function buildHydronicManifoldAssembly(
     roughness: 0.2,
   });
 
-  // 1. Compact Surface-Mounted Sheet-Steel Manifold Cabinet (0.50m W x 0.48m H)
+  // Compact Surface-Mounted Sheet-Steel Manifold Cabinet (0.50m W x 0.48m H)
   const cabinetW = 0.52;
   const cabinetH = 0.48;
   const cabinetCenterY = 0.54;
@@ -251,7 +251,7 @@ export function buildHydronicManifoldAssembly(
     manifoldGroup.add(ledMesh);
   }
 
-  // 2. Flow & Return Stainless-Steel Header Bars
+  // Flow & Return Stainless-Steel Header Bars
   const flowHeaderY = 0.66;
   const returnHeaderY = 0.42;
   const flowHeaderZ = 0.064;
@@ -286,7 +286,7 @@ export function buildHydronicManifoldAssembly(
     manifoldGroup.add(bracket);
   }
 
-  // 3. Left-Side 28mm Insulated Primary Copper Feed Risers + Isolation Ball Valves +
+  // Left-Side 28mm Insulated Primary Copper Feed Risers + Isolation Ball Valves +
   //    Thermostatic Blending Valve + Grundfos UPM3 Circulation Pump
   const pumpAxisX = -0.175;
   const returnDropX = -0.22;
@@ -384,7 +384,7 @@ export function buildHydronicManifoldAssembly(
     manifoldGroup.add(dial);
   }
 
-  // 4. Hydronic Zone Ports (Flowmeters + KNX Electro-Thermal Actuators + PEX-AL-PEX Pipes)
+  // Hydronic Zone Ports (Flowmeters + KNX Electro-Thermal Actuators + PEX-AL-PEX Pipes)
   const firstPortX = -0.06;
   const portPitchX = 0.055;
 
@@ -466,7 +466,7 @@ export function buildHydronicManifoldAssembly(
     }
   }
 
-  // 5. Right-End Automatic Brass Air Vents (AAV) & Drain Valves
+  // Right-End Automatic Brass Air Vents (AAV) & Drain Valves
   const rightEndX = headerCenterX + headerWidth * 0.5 + 0.018;
   for (const [isRet, hY, hZ] of [
     [false, flowHeaderY, flowHeaderZ],

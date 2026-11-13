@@ -74,11 +74,6 @@ const tmpWorldScale = new THREE.Vector3();
 const tmpLocalPoint = new THREE.Vector3();
 const tmpSampleVec = new THREE.Vector3();
 
-function clamp(value: number, min: number, max: number): number {
-  if (!Number.isFinite(value)) return min;
-  return Math.max(min, Math.min(max, value));
-}
-
 function isFoleyPreset(preset: AudioEmitterPreset | undefined): preset is FoleyAudioPreset {
   return preset !== undefined && FOLEY_PRESETS.has(preset);
 }
@@ -506,9 +501,9 @@ function resolveSamplePoint(
   }
 
   tmpSampleVec.set(
-    clamp(tmpLocalPoint.x, -hw, hw),
-    clamp(tmpLocalPoint.y, -hh, hh),
-    clamp(tmpLocalPoint.z, -hd, hd)
+    THREE.MathUtils.clamp(tmpLocalPoint.x, -hw, hw),
+    THREE.MathUtils.clamp(tmpLocalPoint.y, -hh, hh),
+    THREE.MathUtils.clamp(tmpLocalPoint.z, -hd, hd)
   );
   tmpSampleVec.applyQuaternion(tmpWorldQuat).add(tmpWorldPos);
 
@@ -538,7 +533,8 @@ export function attachAudioEmitter(
     kind,
   });
 
-  let volume = clamp(options.volume ?? 1.0, 0, 2);
+  const initialVolume = options.volume ?? 1.0;
+  let volume = Number.isFinite(initialVolume) ? THREE.MathUtils.clamp(initialVolume, 0, 2) : 0;
   let active = kind === 'continuous' ? (options.autoplay ?? true) : (options.autoplay ?? false);
   let disposed = false;
   let graph: ContinuousWebAudioGraph | null = null;
@@ -564,7 +560,7 @@ export function attachAudioEmitter(
     } else {
       const inverse = refDistance / (refDistance + rolloffFactor * (distanceM - refDistance));
       const fadeZone = Math.max(1.0, maxDistance * 0.2);
-      const edgeFade = clamp((maxDistance - distanceM) / fadeZone, 0, 1);
+      const edgeFade = THREE.MathUtils.clamp((maxDistance - distanceM) / fadeZone, 0, 1);
       distGain = inverse * edgeFade;
     }
 
@@ -581,7 +577,8 @@ export function attachAudioEmitter(
     }
 
     const activeScale = kind === 'continuous' ? (active ? 1 : 0) : 1;
-    const effectiveGain = clamp(volume * activeScale * distGain * occlusionGain, 0, 2);
+    const rawEffectiveGain = volume * activeScale * distGain * occlusionGain;
+    const effectiveGain = Number.isFinite(rawEffectiveGain) ? THREE.MathUtils.clamp(rawEffectiveGain, 0, 2) : 0;
 
     return {
       samplePoint,
@@ -972,7 +969,7 @@ export function attachAudioEmitter(
   const isActive = (): boolean => active;
 
   const setVolume = (nextVolume: number): void => {
-    volume = clamp(nextVolume, 0, 2);
+    volume = Number.isFinite(nextVolume) ? THREE.MathUtils.clamp(nextVolume, 0, 2) : 0;
   };
 
   const getVolume = (): number => volume;
@@ -1022,7 +1019,8 @@ export function attachAudioEmitter(
           ? 0.45
           : 1.0;
 
-    const targetGain = clamp(volume * occlusionGain, 0, 2);
+    const rawTargetGain = volume * occlusionGain;
+    const targetGain = Number.isFinite(rawTargetGain) ? THREE.MathUtils.clamp(rawTargetGain, 0, 2) : 0;
     activeGraph.gain.gain.setTargetAtTime(targetGain, now, 0.12);
     activeGraph.lowpass.frequency.setTargetAtTime(
       Math.max(80, Math.min(activeGraph.ctx.sampleRate * 0.48, evalState.lowpassHz)),

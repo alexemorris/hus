@@ -165,15 +165,15 @@ describe('husjs-terrain: pure Node PNG decoder & AWS Terrarium math', () => {
     expect(merc.tileY).toBe(13078);
 
     // Standard ENU (northOffsetDeg = 90): +X = East (+lon), -Z = True North (+lat)
-    const east100 = localWorldToLatLon(100, 0, 52.544488, -0.947355, 90);
+    const east100 = localWorldToLatLon(100, 0, 51.84, -1.79, 90);
     expect(east100.dEastM).toBeCloseTo(100, 6);
     expect(east100.dNorthM).toBeCloseTo(0, 6);
-    expect(east100.lon).toBeGreaterThan(-0.947355);
-    expect(east100.lat).toBeCloseTo(52.544488, 6);
+    expect(east100.lon).toBeGreaterThan(-1.79);
+    expect(east100.lat).toBeCloseTo(51.84, 6);
 
-    const north100 = localWorldToLatLon(0, -100, 52.544488, -0.947355, 90);
+    const north100 = localWorldToLatLon(0, -100, 51.84, -1.79, 90);
     expect(north100.dNorthM).toBeCloseTo(100, 6);
-    expect(north100.lat).toBeGreaterThan(52.544488);
+    expect(north100.lat).toBeGreaterThan(51.84);
   });
 
   it('quantizes steep canyon relief (> 120 m) without Int16 overflow and round-trips into createTerrainSampler', async () => {
@@ -380,7 +380,7 @@ describe('husjs-terrain: pure Node PNG decoder & AWS Terrarium math', () => {
       }
       return encodeSyntheticPng(256, 256, 2, pixels, [0]);
     };
-    const common = { lat: 52.544488, lon: -0.947355, sizeM: 300, stepM: 20, fetchTilePng: flatTile };
+    const common = { lat: 51.84, lon: -1.79, sizeM: 300, stepM: 20, fetchTilePng: flatTile };
 
     const withoutSkirt = (await buildHusGridFromTerrarium(common)) as HusGridDocument;
     for (const skirtM of [300, 120]) {
@@ -544,14 +544,14 @@ describe("USGS 3DEP 1m & DEFRA 1m Float32 GeoTIFF pipeline", () => {
     }
 
     expect(resolveAutoTerrainSource(34.100437, -118.370152)).toBe("usgs-3dep");
-    expect(resolveAutoTerrainSource(52.544488, -0.947355)).toBe("defra");
+    expect(resolveAutoTerrainSource(51.84, -1.79)).toBe("defra");
     expect(resolveAutoTerrainSource(48.8566, 2.3522)).toBe("terrarium");
 
-    const osgb = wgs84ToOsgb36Grid(52.544488, -0.947355);
-    expect(osgb.eastingM).toBeGreaterThan(465000);
-    expect(osgb.eastingM).toBeLessThan(478000);
-    expect(osgb.northingM).toBeGreaterThan(285000);
-    expect(osgb.northingM).toBeLessThan(300000);
+    const osgb = wgs84ToOsgb36Grid(51.84, -1.79);
+    expect(osgb.eastingM).toBeGreaterThan(410000);
+    expect(osgb.eastingM).toBeLessThan(420000);
+    expect(osgb.northingM).toBeGreaterThan(210000);
+    expect(osgb.northingM).toBeLessThan(220000);
 
     const parsed = parseCliArgs([
       "--lat",
@@ -621,8 +621,8 @@ describe("USGS 3DEP 1m & DEFRA 1m Float32 GeoTIFF pipeline", () => {
     expect(sampler.sampleTerrainY(30, 0)).toBeLessThan(-4.5);
 
     const defraDoc = (await buildHusGridFromDefraWcs({
-      lat: 52.544488,
-      lon: -0.947355,
+      lat: 51.84,
+      lon: -1.79,
       sizeM: 40,
       stepM: 10,
       fetchGeoTiff: async (url: string) => {

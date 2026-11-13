@@ -15,59 +15,27 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { parseCliFlags } from './cli-args.mjs';
 import { resolveHouseModulePath } from './husjs-zfight.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_HOUSE = 'simple-house';
 const VALID_FORMATS = new Set(['markdown', 'md', 'table', 'csv', 'json']);
 
-const VALUE_FLAGS = new Set(['house', 'format', 'out', 'category', 'room']);
-const BOOLEAN_FLAGS = new Set(['json', 'by-zone']);
+const SCHEDULE_CLI_OPTIONS = {
+  house: { type: 'string' },
+  format: { type: 'string' },
+  out: { type: 'string' },
+  category: { type: 'string' },
+  room: { type: 'string' },
+  json: { type: 'boolean' },
+  'by-zone': { type: 'boolean' },
+};
 
 export function parseScheduleCliArgs(argv) {
-  /** @type {Record<string, string>} */
-  const flags = {};
-  let help = false;
-  let jsonFlag = false;
-  let groupByZone = false;
+  const { values } = parseCliFlags(argv, SCHEDULE_CLI_OPTIONS);
 
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === '--help' || arg === '-h') {
-      help = true;
-      continue;
-    }
-    if (!arg.startsWith('--')) {
-      throw new Error(`Unexpected positional argument '${arg}'`);
-    }
-    const eqIdx = arg.indexOf('=');
-    const key = eqIdx >= 0 ? arg.slice(2, eqIdx) : arg.slice(2);
-
-    if (BOOLEAN_FLAGS.has(key)) {
-      const enabled =
-        eqIdx >= 0 ? ['true', '1'].includes(arg.slice(eqIdx + 1).toLowerCase()) : true;
-      if (key === 'json') jsonFlag = enabled;
-      if (key === 'by-zone') groupByZone = enabled;
-      continue;
-    }
-
-    if (!VALUE_FLAGS.has(key)) {
-      throw new Error(`Unknown option '--${key}'`);
-    }
-
-    let val;
-    if (eqIdx >= 0) {
-      val = arg.slice(eqIdx + 1);
-    } else {
-      if (i + 1 >= argv.length) {
-        throw new Error(`Missing value for '--${key}'`);
-      }
-      val = argv[++i];
-    }
-    flags[key] = val;
-  }
-
-  if (help) {
+  if (values.help) {
     return {
       help: true,
       house: DEFAULT_HOUSE,
@@ -79,7 +47,10 @@ export function parseScheduleCliArgs(argv) {
     };
   }
 
-  let format = (flags.format ?? (jsonFlag ? 'json' : 'markdown')).toLowerCase();
+  const jsonFlag = values.json === true;
+  const groupByZone = values['by-zone'] === true;
+
+  let format = (values.format ?? (jsonFlag ? 'json' : 'markdown')).toLowerCase();
   if (!VALID_FORMATS.has(format)) {
     throw new Error(
       `Invalid --format '${format}'. Expected one of: markdown, table, csv, json`
@@ -89,12 +60,12 @@ export function parseScheduleCliArgs(argv) {
 
   return {
     help: false,
-    house: flags.house ?? DEFAULT_HOUSE,
+    house: values.house ?? DEFAULT_HOUSE,
     format,
     groupByZone,
-    out: flags.out,
-    category: flags.category,
-    room: flags.room,
+    out: values.out,
+    category: values.category,
+    room: values.room,
   };
 }
 

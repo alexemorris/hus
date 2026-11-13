@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * `husjs hdri` — Nano Banana Seamless 360° 8K Master-Anchor Ultra-HDR Environment Matrix Generator.
+ * `husjs hdri` — Gemini Image Generation Seamless 360° 8K Master-Anchor Ultra-HDR Environment Matrix Generator.
  *
  * Generates seamless 2:1 equirectangular environments across the 3D
  * `(Season × TimeSlot × WeatherRegime)` tensor for Hus.js architectural digital twins:
- *   - `*_8k.webp` (`8192×4096` default): Master-Anchor-locked native `4K` Nano Banana
+ *   - `*_8k.webp` (`8192×4096` default): Master-Anchor-locked native `4K` Gemini image generation
  *     (`gemini-3-pro-image-preview`) panorama suite with 4-azimuth `4K` (`4992×3328` per tile)
  *     horizon super-resolution on the Master Anchor and 1:1 pixel-registered `2:1` (`5760×2880`)
  *     relighting across all time/weather/season cells (`colShift = 0`, True-North compass layout),
@@ -25,9 +25,11 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, dirname, extname, join, resolve } from 'node:path';
+import { basename, delimiter, dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deflateSync } from 'node:zlib';
+import { MathUtils } from 'three';
+import { parseCliFlags } from './cli-args.mjs';
 import { decodePng } from './husjs-terrain.mjs';
 
 export const SEASONS = /** @type {const} */ (['spring', 'summer', 'autumn', 'winter']);
@@ -36,8 +38,6 @@ export const WEATHER_REGIMES = /** @type {const} */ (['clear', 'cloudy', 'overca
 
 export const GAINMAP_SHOULDER_K = 0.85;
 
-const CLI_4K_PATH = '/tmp/generate_image_4k_cli';
-const CLOUDTOP_CLI_PATH = '/google/bin/releases/gemini-agents-generate-image/generate_image_cli';
 const PRO_4K_MODEL = 'gemini-3-pro-image-preview';
 const DEFAULT_CLI_MODEL = 'gemini-3.1-flash-image';
 const FALLBACK_MODEL = 'gemini-2.5-flash-image';
@@ -59,12 +59,12 @@ Options:
   --res <2048|1536|1024|512> Physical Radiance .hdr width (height = width / 2, default: 1024)
   --detail-res <width>       Ultra-HDR visual detail .webp width (default: 8192 -> *_8k.webp; 4096 -> *_4k.webp; 0 disables)
   --preview-res <width>      Fast preview .hdr width (default: 512; 0 disables _512.hdr output)
-  --image-size <1K|2K|4K>    Nano Banana native generation size (default: 4K)
+  --image-size <1K|2K|4K>    Gemini image generation native size (default: 4K)
   --webp-quality <1..100>    WebP encoding quality for detail panoramas (default: 83)
   --no-multitile             Disable 4-azimuth horizon super-resolution tiling on Master Anchor
-  --backend <auto|rest|cli>  Nano Banana backend selection (default: auto)
-  --model <id>               Nano Banana model ID (default: gemini-3-pro-image-preview for 4K w/ fallbacks)
-  --gcp-project <id>         Cloud project for generate_image_cli (auto-detected if omitted)
+  --backend <auto|rest|cli>  Gemini image generation backend selection (default: auto; CLI uses $GEMINI_IMAGE_CLI_BIN or 'gemini-image')
+  --model <id>               Gemini image model ID (default: gemini-3-pro-image-preview for 4K w/ fallbacks)
+  --gcp-project <id>         Google Cloud project for CLI backend (default: $GOOGLE_CLOUD_PROJECT or gcloud config)
   --concurrency <n>          Parallel generation workers (default: 4)
   --skip-existing            Skip cells whose target .hdr, detail .webp, and preview already exist
   --manifest-out <file>      Optional JSON manifest path recording per-cell sun UV & horizonGround RGB
@@ -96,8 +96,6 @@ export const PRESET_BASE_PROMPTS = {
     'Wide 360-degree equirectangular countryside panorama in the Cotswolds, England: gently rolling pastoral meadows, crisp hawthorn hedgerows, mature oak and ash tree canopies at medium-far distance, and distant honey-stone cottage rooftops low on the far horizon',
   'hollywood-hills':
     'Wide 360-degree equirectangular panorama from a Hollywood Hills promontory ridge above Sunset Boulevard in Los Angeles (240m elevation): crisp coastal sage scrub and chaparral canyon ridges in the mid-distance, low chaparral scrub below the horizon line (no tall close foreground trees blocking the skyline), and the vast panoramic Los Angeles Basin stretching flat with razor-sharp urban grid detail to the distant Pacific Ocean horizon',
-  'english-countryside':
-    'Wide 360-degree equirectangular English pastoral countryside panorama with rolling green meadows, distant hedgerows, and mature broadleaf trees low along a level horizon',
 };
 
 const COMPASS_LAYOUT_PROMPTS = {
@@ -141,6 +139,32 @@ const WEATHER_DESCRIPTIONS = {
   snow: 'during Winter Snow with pale silver-grey overcast snow clouds, a clean blanket of fresh white snow covering the rolling fields, hedgerows, and distant rooftops, and crisp winter horizon detail',
 };
 
+const HDRI_CLI_OPTIONS = {
+  preset: { type: 'string' },
+  prompt: { type: 'string' },
+  refs: { type: 'string' },
+  anchor: { type: 'string' },
+  'no-anchor-lock': { type: 'boolean' },
+  seasons: { type: 'string' },
+  times: { type: 'string' },
+  weathers: { type: 'string' },
+  cells: { type: 'string' },
+  out: { type: 'string' },
+  res: { type: 'string' },
+  'detail-res': { type: 'string' },
+  'preview-res': { type: 'string' },
+  'image-size': { type: 'string' },
+  'webp-quality': { type: 'string' },
+  'no-multitile': { type: 'boolean' },
+  multitile: { type: 'boolean' },
+  backend: { type: 'string' },
+  model: { type: 'string' },
+  'gcp-project': { type: 'string' },
+  concurrency: { type: 'string' },
+  'skip-existing': { type: 'boolean' },
+  'manifest-out': { type: 'string' },
+};
+
 export function parseHdriCliArgs(argv) {
   const opts = {
     preset: 'english-countryside',
@@ -168,81 +192,45 @@ export function parseHdriCliArgs(argv) {
     help: false,
   };
 
-  let explicitNoAnchorLock = false;
-
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    const next = () => {
-      if (i + 1 >= argv.length) throw new Error(`Missing value after ${arg}`);
-      return argv[++i];
-    };
-    if (arg === '--help' || arg === '-h') {
-      opts.help = true;
-    } else if (arg === '--preset') {
-      opts.preset = next().trim();
-    } else if (arg === '--prompt') {
-      opts.prompt = next().trim();
-    } else if (arg === '--refs') {
-      opts.refs = next()
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
-    } else if (arg === '--anchor') {
-      opts.anchor = next().trim();
-    } else if (arg === '--no-anchor-lock') {
-      explicitNoAnchorLock = true;
-    } else if (arg === '--seasons') {
-      opts.seasons = next()
-        .split(',')
-        .map((s) => s.trim().toLowerCase())
-        .filter(Boolean);
-    } else if (arg === '--times') {
-      opts.times = next()
-        .split(',')
-        .map((s) => s.trim().toLowerCase())
-        .filter(Boolean);
-    } else if (arg === '--weathers') {
-      opts.weathers = next()
-        .split(',')
-        .map((s) => s.trim().toLowerCase())
-        .filter(Boolean);
-    } else if (arg === '--cells') {
-      opts.cells = next()
-        .split(',')
-        .map((s) => s.trim().toLowerCase())
-        .filter(Boolean);
-    } else if (arg === '--out') {
-      opts.outDir = next().trim();
-    } else if (arg === '--res') {
-      opts.res = Number(next());
-    } else if (arg === '--detail-res') {
-      opts.detailRes = Number(next());
-    } else if (arg === '--preview-res') {
-      opts.previewRes = Number(next());
-    } else if (arg === '--image-size') {
-      opts.imageSize = next().trim().toUpperCase();
-    } else if (arg === '--webp-quality') {
-      opts.webpQuality = Number(next());
-    } else if (arg === '--no-multitile') {
-      opts.multiTile = false;
-    } else if (arg === '--multitile') {
-      opts.multiTile = true;
-    } else if (arg === '--backend') {
-      opts.backend = next().trim().toLowerCase();
-    } else if (arg === '--model') {
-      opts.model = next().trim();
-    } else if (arg === '--gcp-project') {
-      opts.gcpProject = next().trim();
-    } else if (arg === '--concurrency') {
-      opts.concurrency = Math.max(1, Math.min(10, Number(next()) || 1));
-    } else if (arg === '--skip-existing') {
-      opts.skipExisting = true;
-    } else if (arg === '--manifest-out') {
-      opts.manifestOut = next().trim();
-    } else {
-      throw new Error(`Unknown option '${arg}'`);
-    }
+  const { values, tokens } = parseCliFlags(argv, HDRI_CLI_OPTIONS);
+  if (values.help) {
+    return { ...opts, help: true };
   }
+
+  const splitCsv = (raw, lower = false) =>
+    raw
+      .split(',')
+      .map((s) => (lower ? s.trim().toLowerCase() : s.trim()))
+      .filter(Boolean);
+
+  if (values.preset !== undefined) opts.preset = values.preset.trim();
+  if (values.prompt !== undefined) opts.prompt = values.prompt.trim();
+  if (values.refs !== undefined) opts.refs = splitCsv(values.refs, false);
+  if (values.anchor !== undefined) opts.anchor = values.anchor.trim();
+  const explicitNoAnchorLock = values['no-anchor-lock'] === true;
+  if (values.seasons !== undefined) opts.seasons = splitCsv(values.seasons, true);
+  if (values.times !== undefined) opts.times = splitCsv(values.times, true);
+  if (values.weathers !== undefined) opts.weathers = splitCsv(values.weathers, true);
+  if (values.cells !== undefined) opts.cells = splitCsv(values.cells, true);
+  if (values.out !== undefined) opts.outDir = values.out.trim();
+  if (values.res !== undefined) opts.res = Number(values.res);
+  if (values['detail-res'] !== undefined) opts.detailRes = Number(values['detail-res']);
+  if (values['preview-res'] !== undefined) opts.previewRes = Number(values['preview-res']);
+  if (values['image-size'] !== undefined) opts.imageSize = values['image-size'].trim().toUpperCase();
+  if (values['webp-quality'] !== undefined) opts.webpQuality = Number(values['webp-quality']);
+  for (const token of tokens) {
+    if (token.kind !== 'option') continue;
+    if (token.name === 'multitile') opts.multiTile = token.value !== false;
+    if (token.name === 'no-multitile') opts.multiTile = token.value === false;
+  }
+  if (values.backend !== undefined) opts.backend = values.backend.trim().toLowerCase();
+  if (values.model !== undefined) opts.model = values.model.trim();
+  if (values['gcp-project'] !== undefined) opts.gcpProject = values['gcp-project'].trim();
+  if (values.concurrency !== undefined) {
+    opts.concurrency = Math.max(1, Math.min(10, Number(values.concurrency) || 1));
+  }
+  if (values['skip-existing'] === true) opts.skipExisting = true;
+  if (values['manifest-out'] !== undefined) opts.manifestOut = values['manifest-out'].trim();
 
   if (!Number.isInteger(opts.res) || opts.res < 64 || opts.res % 2 !== 0) {
     throw new Error(`Invalid --res ${opts.res}: expected an even integer >= 64 (e.g. 2048, 1536, 1024)`);
@@ -827,11 +815,6 @@ export function writeRgbWebpFile(rgbBytes, width, height, outWebpPath, quality =
   }
 }
 
-function smoothstep(edge0, edge1, x) {
-  const t = Math.max(0, Math.min(1, (x - edge0) / Math.max(1e-6, edge1 - edge0)));
-  return t * t * (3 - 2 * t);
-}
-
 function catmullRomWeight(t) {
   const at = Math.abs(t);
   if (at <= 1) return 1.5 * at * at * at - 2.5 * at * at + 1.0;
@@ -994,7 +977,7 @@ export function buildDirect2to1EquirectGrid(
   const linSrc = new Float32Array(srcW * srcH * 3);
   for (let y = 0; y < srcH; y++) {
     const vSrc = y / Math.max(1, srcH - 1);
-    const skyWeight = 1 - smoothstep(0.45, 0.56, vSrc);
+    const skyWeight = 1 - MathUtils.smoothstep(vSrc, 0.45, 0.56);
     for (let x = 0; x < srcW; x++) {
       const si = (y * srcW + x) * ch;
       const di = (y * srcW + x) * 3;
@@ -1120,7 +1103,7 @@ export function buildDirect2to1EquirectGrid(
     const mg = 0.5 * (equirect[i0 + 1] + equirect[iN + 1]);
     const mb = 0.5 * (equirect[i0 + 2] + equirect[iN + 2]);
     for (let k = 0; k < microSpan; k++) {
-      const wMicro = 0.85 * (1 - smoothstep(0, 1, k / microSpan));
+      const wMicro = 0.85 * (1 - MathUtils.smoothstep(k / microSpan, 0, 1));
       const li = (rowBase + k) * 3;
       const ri = (rowBase + (W - 1 - k)) * 3;
       equirect[li] = equirect[li] * (1 - wMicro) + mr * wMicro;
@@ -1153,7 +1136,7 @@ export function buildDirect2to1EquirectGrid(
 
     for (let y = y0; y < y1; y++) {
       const v = y / Math.max(1, H - 1);
-      const vEnv = smoothstep(0.44, 0.465, v) * (1 - smoothstep(0.555, 0.58, v));
+      const vEnv = MathUtils.smoothstep(v, 0.44, 0.465) * (1 - MathUtils.smoothstep(v, 0.555, 0.58));
       const bandRow = (y - y0) * W * 3;
       const gridRow = y * W * 3;
       for (let x = 0; x < W; x++) {
@@ -1181,7 +1164,7 @@ export function buildDirect2to1EquirectGrid(
         // Scalar luminance micro-detail ratio from Master Anchor, gated by silhouette coherence
         // so Day sky vs Dusk foliage never bleeds negative blue or chromatic halos.
         const relDiff = Math.abs(cLowLum - aLowLum * lumRatio) / Math.max(0.06, cLowLum + aLowLum);
-        const coherence = 1 - smoothstep(0.18, 0.55, relDiff);
+        const coherence = 1 - MathUtils.smoothstep(relDiff, 0.18, 0.55);
         const anchorMicroRatio = Math.min(
           1.28,
           Math.max(0.76, (aPxLum + 0.035) / (aLowLum + 0.035))
@@ -1212,7 +1195,7 @@ function buildPeriodicLinearEquirectGrid(decodedImage, W, H, weather) {
   const linSrc = new Float32Array(srcW * srcH * 3);
   for (let y = 0; y < srcH; y++) {
     const vSrc = y / Math.max(1, srcH - 1);
-    const skyWeight = 1 - smoothstep(0.45, 0.56, vSrc);
+    const skyWeight = 1 - MathUtils.smoothstep(vSrc, 0.45, 0.56);
     for (let x = 0; x < srcW; x++) {
       const si = (y * srcW + x) * ch;
       const di = (y * srcW + x) * 3;
@@ -1325,7 +1308,7 @@ function buildPeriodicLinearEquirectGrid(decodedImage, W, H, weather) {
       if (sx < overlapPx) {
         const tau = sx / overlapPx;
         const wLow = 0.5 - 0.5 * Math.cos(Math.PI * tau);
-        const wHigh = smoothstep(0.40, 0.60, tau);
+        const wHigh = MathUtils.smoothstep(tau, 0.40, 0.60);
 
         sampleCatmullRomRgb(harmonizedSrc, srcW, srcH, sx, fy, false, pxLeft, 0);
         sampleCatmullRomRgb(harmonizedSrc, srcW, srcH, sx + periodPx, fy, false, pxRight, 0);
@@ -1420,7 +1403,7 @@ export async function fuseMultiAzimuthHorizonSuperRes(equirect, W, H, params) {
     const rawLin = new Float32Array(srcW * srcH * 3);
     for (let y = 0; y < srcH; y++) {
       const vBand = (yStart + (y / Math.max(1, srcH - 1)) * tileH) / H;
-      const skyWeight = 1 - smoothstep(0.45, 0.56, vBand);
+      const skyWeight = 1 - MathUtils.smoothstep(vBand, 0.45, 0.56);
       for (let x = 0; x < srcW; x++) {
         const si = (y * srcW + x) * ch;
         const di = (y * srcW + x) * 3;
@@ -1464,9 +1447,9 @@ export async function fuseMultiAzimuthHorizonSuperRes(equirect, W, H, params) {
       for (let tx = 0; tx < tileW; tx++) {
         let wx = 1.0;
         if (tx < hFeather) {
-          wx = smoothstep(0.36, 0.64, tx / hFeather);
+          wx = MathUtils.smoothstep(tx / hFeather, 0.36, 0.64);
         } else if (tx >= tileW - hFeather) {
-          wx = smoothstep(0.36, 0.64, (tileW - 1 - tx) / hFeather);
+          wx = MathUtils.smoothstep((tileW - 1 - tx) / hFeather, 0.36, 0.64);
         }
         const w = wx * wy;
         if (w <= 1e-5) continue;
@@ -1536,8 +1519,8 @@ function stabilizeEquirectPolesInPlace(equirect, W, H) {
 
   for (let y = 0; y < H; y++) {
     const v = y / Math.max(1, H - 1);
-    const zenithWeight = v < 0.10 ? 1 - smoothstep(0.0, 0.10, v) : 0;
-    const nadirWeight = v > 0.66 ? smoothstep(0.66, 0.96, v) : 0;
+    const zenithWeight = v < 0.10 ? 1 - MathUtils.smoothstep(v, 0.0, 0.10) : 0;
+    const nadirWeight = v > 0.66 ? MathUtils.smoothstep(v, 0.66, 0.96) : 0;
     if (zenithWeight <= 0 && nadirWeight <= 0) continue;
 
     const poleStrength = Math.max(zenithWeight, nadirWeight);
@@ -1569,7 +1552,7 @@ function stabilizeEquirectPolesInPlace(equirect, W, H) {
     const invSpan = 1 / (2 * blurRadius + 1);
     const exactPoleMix =
       v <= 0.015 ? 1 - v / 0.015 : v >= 0.97 ? (v - 0.97) / 0.03 : 0;
-    const deepGroundMix = v > 0.72 ? smoothstep(0.72, 0.98, v) * 0.82 : 0;
+    const deepGroundMix = v > 0.72 ? MathUtils.smoothstep(v, 0.72, 0.98) * 0.82 : 0;
 
     for (let x = 0; x < W; x++) {
       const cx = x + W;
@@ -1694,7 +1677,7 @@ export function finalizeEquirectHdrFromGrid(equirect, W, H, options = {}) {
 
   for (let y = 0; y < H; y++) {
     const v = y / Math.max(1, H - 1);
-    const skyMask = 1 - smoothstep(0.47, 0.515, v);
+    const skyMask = 1 - MathUtils.smoothstep(v, 0.47, 0.515);
     for (let x = 0; x < W; x++) {
       const srcX = colShift === 0 ? x : (x + colShift) % W;
       const si = (y * W + srcX) * 3;
@@ -1943,20 +1926,35 @@ function detectGcpProject(explicitProject) {
   } catch {
     // ignore
   }
-  return 'lovelace-open-models';
+  return process.env.GOOGLE_CLOUD_PROJECT || '';
 }
 
-function resolveCloudtopCli() {
-  if (existsSync(CLI_4K_PATH)) {
-    return { cliPath: CLI_4K_PATH, supportsImageSize: true };
+function getGeminiImageCliBin() {
+  return process.env.GEMINI_IMAGE_CLI_BIN || 'gemini-image';
+}
+
+function resolveGeminiImageCli() {
+  const cliBin = getGeminiImageCliBin();
+  if (cliBin.includes('/') || cliBin.includes('\\')) {
+    if (existsSync(cliBin)) {
+      return { cliPath: cliBin, supportsImageSize: true };
+    }
+    return { cliPath: '', supportsImageSize: false };
   }
-  if (existsSync(CLOUDTOP_CLI_PATH)) {
-    return { cliPath: CLOUDTOP_CLI_PATH, supportsImageSize: false };
+  const extensions = process.platform === 'win32' ? ['', '.exe', '.cmd'] : [''];
+  for (const dir of (process.env.PATH ?? '').split(delimiter)) {
+    if (!dir) continue;
+    for (const ext of extensions) {
+      const candidate = join(dir, cliBin + ext);
+      if (existsSync(candidate)) {
+        return { cliPath: candidate, supportsImageSize: true };
+      }
+    }
   }
   return { cliPath: '', supportsImageSize: false };
 }
 
-export async function generateNanoBananaRest({
+export async function generateGeminiImageRest({
   prompt,
   refs,
   apiKey,
@@ -1991,7 +1989,7 @@ export async function generateNanoBananaRest({
   });
   if (!res.ok) {
     const errBody = await res.text().catch(() => '');
-    throw new Error(`Gemini Nano Banana REST error (${res.status}): ${errBody.slice(0, 300)}`);
+    throw new Error(`Gemini image REST error (${res.status}): ${errBody.slice(0, 300)}`);
   }
   const json = /** @type {any} */ (await res.json());
   const candParts = json?.candidates?.[0]?.content?.parts ?? [];
@@ -2001,10 +1999,10 @@ export async function generateNanoBananaRest({
       return new Uint8Array(Buffer.from(b64, 'base64'));
     }
   }
-  throw new Error('Gemini Nano Banana REST response did not include an inlineData image part');
+  throw new Error('Gemini image REST response did not include an inlineData image part');
 }
 
-export async function generateNanoBananaCloudtopCli({
+export async function generateGeminiImageCli({
   prompt,
   refs,
   gcpProject,
@@ -2017,9 +2015,11 @@ export async function generateNanoBananaCloudtopCli({
   const { promisify } = await import('node:util');
   const execFileAsync = promisify(execFile);
 
-  const { cliPath, supportsImageSize } = resolveCloudtopCli();
+  const { cliPath, supportsImageSize } = resolveGeminiImageCli();
   if (!cliPath) {
-    throw new Error(`Neither ${CLI_4K_PATH} nor ${CLOUDTOP_CLI_PATH} is available`);
+    throw new Error(
+      `Gemini image CLI '${getGeminiImageCliBin()}' is not available (set GEMINI_IMAGE_CLI_BIN or install on PATH)`
+    );
   }
 
   const modelsToTry = model
@@ -2032,12 +2032,11 @@ export async function generateNanoBananaCloudtopCli({
   const baseTmp = scratchRoot || tmpdir();
 
   for (const candidateModel of modelsToTry) {
-    const outDir = mkdtempSync(join(baseTmp, 'husjs-nb-cli-'));
+    const outDir = mkdtempSync(join(baseTmp, 'husjs-hdri-cli-'));
     try {
       const args = [
         'generate',
-        '--project',
-        gcpProject,
+        ...(gcpProject ? ['--project', gcpProject] : []),
         '--location',
         'global',
         '--model',
@@ -2072,7 +2071,7 @@ export async function generateNanoBananaCloudtopCli({
       rmSync(outDir, { recursive: true, force: true });
     }
   }
-  throw lastError ?? new Error('generate_image_cli failed across candidate models');
+  throw lastError ?? new Error('Gemini image CLI failed across candidate models');
 }
 
 export async function generatePanoramaSourceBytes({
@@ -2086,12 +2085,12 @@ export async function generatePanoramaSourceBytes({
   scratchRoot = '',
 }) {
   const apiKey = process.env.GEMINI_API_KEY?.trim() ?? '';
-  const { cliPath } = resolveCloudtopCli();
+  const { cliPath } = resolveGeminiImageCli();
   const hasCli = Boolean(cliPath);
 
   if (backend === 'rest') {
     if (!apiKey) throw new Error('--backend rest requires GEMINI_API_KEY in environment');
-    return generateNanoBananaRest({
+    return generateGeminiImageRest({
       prompt,
       refs,
       apiKey,
@@ -2101,8 +2100,12 @@ export async function generatePanoramaSourceBytes({
     });
   }
   if (backend === 'cli') {
-    if (!hasCli) throw new Error(`--backend cli requires ${CLI_4K_PATH} or ${CLOUDTOP_CLI_PATH}`);
-    return generateNanoBananaCloudtopCli({
+    if (!hasCli) {
+      throw new Error(
+        `--backend cli requires '${getGeminiImageCliBin()}' on PATH or GEMINI_IMAGE_CLI_BIN`
+      );
+    }
+    return generateGeminiImageCli({
       prompt,
       refs,
       gcpProject: detectGcpProject(gcpProject),
@@ -2114,7 +2117,7 @@ export async function generatePanoramaSourceBytes({
   }
 
   if (apiKey) {
-    return generateNanoBananaRest({
+    return generateGeminiImageRest({
       prompt,
       refs,
       apiKey,
@@ -2124,7 +2127,7 @@ export async function generatePanoramaSourceBytes({
     });
   }
   if (hasCli) {
-    return generateNanoBananaCloudtopCli({
+    return generateGeminiImageCli({
       prompt,
       refs,
       gcpProject: detectGcpProject(gcpProject),
@@ -2134,7 +2137,7 @@ export async function generatePanoramaSourceBytes({
       scratchRoot,
     });
   }
-  throw new Error('No Nano Banana backend available');
+  throw new Error('No Gemini image generation backend available');
 }
 
 function detailSuffixForRes(detailRes) {

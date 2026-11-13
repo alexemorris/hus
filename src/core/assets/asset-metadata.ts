@@ -57,10 +57,6 @@ export interface AssetMetadata {
   readonly notes?: string;
 }
 
-// -----------------------------------------------------------------------------
-// In-viewer Asset Inspector snapshot & API
-// -----------------------------------------------------------------------------
-
 export interface InspectedAssetAction {
   readonly id: string;
   readonly label: string;
@@ -92,10 +88,6 @@ export interface TwinAssetInspectorApi {
   triggerAction(actionId: string): boolean;
   playSound(): boolean;
 }
-
-// -----------------------------------------------------------------------------
-// Bill-of-Materials & Schematic Schedule types
-// -----------------------------------------------------------------------------
 
 export interface AssetScheduleEntry {
   readonly key: string;
@@ -142,10 +134,6 @@ export interface AssetScheduleReport {
   readonly entries: readonly AssetScheduleEntry[];
   readonly roomFinishes?: readonly RoomFinishScheduleEntry[];
 }
-
-// -----------------------------------------------------------------------------
-// Pure formatters
-// -----------------------------------------------------------------------------
 
 export function formatAssetDimensionsMm(
   dims: readonly [number, number, number] | undefined
@@ -196,7 +184,6 @@ export function resolveAssetLinks(meta: AssetMetadata): readonly AssetLink[] {
   }
   return out;
 }
-
 
 export function formatPaintSurfaceSummary(
   spec: RoomPaintSurfaceSpec | readonly RoomPaintSurfaceSpec[] | undefined

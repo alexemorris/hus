@@ -97,9 +97,7 @@ export function buildMasterAndBedroom2Furnishings(
 ): void {
   const knobGeo = buildTurnedBrassKnobGeo(1);
 
-  // =========================================================================
-  // 1. MASTER SUITE (`X in [-4.636, -0.06], Z in [-5.934, 0.000]`)
-  // =========================================================================
+  // MASTER SUITE (`X in [-4.636, -0.06], Z in [-5.934, 0.000]`)
   const masterHeaderWall = new THREE.Group();
   masterHeaderWall.name = 'stahl.master.slatMirrorWall';
   addMesh(masterHeaderWall, bevelledBox(4.52, 0.36, 0.34, 0.006, 4, 0.9, 0.9), mcm.walnut, [-2.35, ceilingTopY - 0.182, -5.76]);
@@ -341,9 +339,7 @@ export function buildMasterAndBedroom2Furnishings(
     rotationY: -Math.PI * 0.74,
   });
 
-  // =========================================================================
-  // 2. BEDROOM 2 / GUEST & STUDY (`X in [-12.11, -7.36], Z in [-5.93, 0.00]`)
-  // =========================================================================
+  // BEDROOM 2 / GUEST & STUDY (`X in [-12.11, -7.36], Z in [-5.93, 0.00]`)
   const bed2Rug = addMesh(parent, bevelledBox(3.45, 0.0032, 2.75, 0.0014, 2, 0.75, 0.75), mcm.berberOat, [-10.12, 0.002, -4.25]);
   bed2Rug.name = 'stahl.bed2.berberRug';
   bed2Rug.receiveShadow = true;

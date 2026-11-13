@@ -109,12 +109,12 @@ export function AnnotatorPanel({ annotator }: AnnotatorPanelProps): JSX.Element 
 
   const toolLabel =
     tool === 'move'
-      ? 'Move Object'
+      ? 'Move object'
       : tool === 'rotate'
-        ? 'Rotate Object'
+        ? 'Rotate object'
         : tool === 'measure'
-          ? 'Measure Span'
-          : 'Pin Issue';
+          ? 'Measure span'
+          : 'Pin issue';
 
   const showMoveBox =
     (isActive && (tool === 'move' || tool === 'rotate')) || selected?.kind === 'move';
@@ -210,22 +210,22 @@ export function AnnotatorPanel({ annotator }: AnnotatorPanelProps): JSX.Element 
             <button
               class={`hud-rocker-btn annotator-mode-btn${isActive ? ' is-active-mode' : ''}`}
               type="button"
-              title="Toggle 3D Annotation Mode (Shortcut: Key 'A' or Shift+Click any surface)"
+              title="Toggle annotation mode (A or Shift+Click)"
               onClick={() => annotator.toggleAnnotateMode()}
             >
               <span class={`hud-rocker-dot${!isActive ? ' off-state' : ''}`} />
               <span class="hud-rocker-label">
-                {isActive ? `Annotate: ON · ${toolLabel}` : 'Annotate Mode: OFF'}
+                {isActive ? `Annotate: On · ${toolLabel}` : 'Annotate mode: Off'}
               </span>
               <span class="hud-rocker-hint">Shift+Click / A</span>
             </button>
           </div>
 
-          <div class="annotator-tools-bar" role="group" aria-label="Annotate Tool Mode">
+          <div class="annotator-tools-bar" role="group" aria-label="Annotation tool">
             <button
               class={`annotator-tool-btn kind-pin${tool === 'pin' ? ' is-active' : ''}`}
               type="button"
-              title="Pin Issue Tool (Shortcut: P) — Click any 3D surface to drop a numbered issue pin"
+              title="Pin issue (P): click any surface to place a pin"
               onClick={() => annotator.selectTool('pin', true)}
             >
               Pin (P)
@@ -233,7 +233,7 @@ export function AnnotatorPanel({ annotator }: AnnotatorPanelProps): JSX.Element 
             <button
               class={`annotator-tool-btn kind-move${tool === 'move' ? ' is-active' : ''}`}
               type="button"
-              title="Move Object Tool (Shortcut: M or W) — Click any 3D furniture/fixture to drag with 3D translation gizmo or nudge coordinates"
+              title="Move object (M or W): drag or nudge furniture and fixtures"
               onClick={() => annotator.selectTool('move', true)}
             >
               Move (M)
@@ -241,7 +241,7 @@ export function AnnotatorPanel({ annotator }: AnnotatorPanelProps): JSX.Element 
             <button
               class={`annotator-tool-btn kind-rotate${tool === 'rotate' ? ' is-active' : ''}`}
               type="button"
-              title="Rotate Object Tool (Shortcut: E) — Click any 3D furniture/fixture to rotate with 3D rotation rings or angle controls"
+              title="Rotate object (E): rotate furniture and fixtures"
               onClick={() => annotator.selectTool('rotate', true)}
             >
               Rotate (E)
@@ -249,7 +249,7 @@ export function AnnotatorPanel({ annotator }: AnnotatorPanelProps): JSX.Element 
             <button
               class={`annotator-tool-btn kind-measure${tool === 'measure' ? ' is-active' : ''}`}
               type="button"
-              title="3D Measure Span Tool (Shortcut: R) — Click Point A then Point B to measure distance and record real-world target dimension"
+              title="Measure span (R): click two points to measure distance"
               onClick={() => annotator.selectTool('measure', true)}
             >
               Measure (R)
@@ -260,20 +260,20 @@ export function AnnotatorPanel({ annotator }: AnnotatorPanelProps): JSX.Element 
             <button
               class="hud-action-btn annotator-copy-btn"
               type="button"
-              title="Copy all annotations (Pins, Object Moves/Rotations, and Measurements) as Markdown + JSON to paste into chat"
+              title="Copy all annotations as Markdown and JSON"
               onClick={() => {
                 void annotator.copyForAgent().then((ok) => {
-                  setCopyFeedback(ok ? 'Copied for Agent' : 'Copied');
+                  setCopyFeedback(ok ? 'Copied for agent' : 'Copied');
                   window.setTimeout(() => setCopyFeedback(null), 1800);
                 });
               }}
             >
-              {copyFeedback ?? 'Copy for Agent'}
+              {copyFeedback ?? 'Copy for agent'}
             </button>
             <button
               class="hud-inline-btn"
               type="button"
-              title="Download annotations & transforms as JSON"
+              title="Download annotations as JSON"
               onClick={() => annotator.exportJson()}
             >
               Export JSON
@@ -281,7 +281,7 @@ export function AnnotatorPanel({ annotator }: AnnotatorPanelProps): JSX.Element 
             <button
               class="hud-inline-btn"
               type="button"
-              title="Clear all 3D annotations"
+              title="Clear all annotations"
               onClick={() => annotator.clearAll()}
             >
               Clear
@@ -298,7 +298,7 @@ export function AnnotatorPanel({ annotator }: AnnotatorPanelProps): JSX.Element 
                   <button
                     class={`hud-inline-btn${gizmoMode === 'translate' ? ' is-active' : ''}`}
                     type="button"
-                    title="3D Translate Gizmo (Shortcut: M or W)"
+                    title="Translate gizmo (M or W)"
                     onClick={() => annotator.selectTool('move', true)}
                   >
                     Move (W)
@@ -306,7 +306,7 @@ export function AnnotatorPanel({ annotator }: AnnotatorPanelProps): JSX.Element 
                   <button
                     class={`hud-inline-btn${gizmoMode === 'rotate' ? ' is-active' : ''}`}
                     type="button"
-                    title="3D Rotate Gizmo (Shortcut: E)"
+                    title="Rotate gizmo (E)"
                     onClick={() => annotator.selectTool('rotate', true)}
                   >
                     Rotate (E)
@@ -316,7 +316,7 @@ export function AnnotatorPanel({ annotator }: AnnotatorPanelProps): JSX.Element 
 
               {!tf ? (
                 <div class="annotator-sub-hint">
-                  Click any 3D furniture, appliance, door, or fixture to attach the 3D Move / Rotate gizmo and drag or adjust it.
+                  Click any furniture item, appliance, door, or fixture to move or rotate it.
                 </div>
               ) : (
                 <div>
@@ -325,7 +325,7 @@ export function AnnotatorPanel({ annotator }: AnnotatorPanelProps): JSX.Element 
                       Target
                       <select
                         class="hud-select annotator-move-select"
-                        title="Choose whether to move/rotate the whole parent furniture group or an individual child mesh"
+                        title="Choose the parent group or an individual mesh"
                         value={tf.targetUuid}
                         onChange={(e) => annotator.switchMoveCandidate(e.currentTarget.value)}
                       >
@@ -405,12 +405,12 @@ export function AnnotatorPanel({ annotator }: AnnotatorPanelProps): JSX.Element 
                   </div>
 
                   <div class="annotator-nudge-bar">
-                    <button class="hud-inline-btn" type="button" title="Nudge West (-X 5cm)" onClick={() => annotator.nudgeSelected(-0.05, 0, 0, 0)}>-X</button>
-                    <button class="hud-inline-btn" type="button" title="Nudge East (+X 5cm)" onClick={() => annotator.nudgeSelected(0.05, 0, 0, 0)}>+X</button>
-                    <button class="hud-inline-btn" type="button" title="Nudge North (-Z 5cm)" onClick={() => annotator.nudgeSelected(0, 0, -0.05, 0)}>-Z</button>
-                    <button class="hud-inline-btn" type="button" title="Nudge South (+Z 5cm)" onClick={() => annotator.nudgeSelected(0, 0, 0.05, 0)}>+Z</button>
-                    <button class="hud-inline-btn" type="button" title="Nudge Down (-Y 2cm)" onClick={() => annotator.nudgeSelected(0, -0.02, 0, 0)}>-Y</button>
-                    <button class="hud-inline-btn" type="button" title="Nudge Up (+Y 2cm)" onClick={() => annotator.nudgeSelected(0, 0.02, 0, 0)}>+Y</button>
+                    <button class="hud-inline-btn" type="button" title="Nudge -X (5 cm)" onClick={() => annotator.nudgeSelected(-0.05, 0, 0, 0)}>-X</button>
+                    <button class="hud-inline-btn" type="button" title="Nudge +X (5 cm)" onClick={() => annotator.nudgeSelected(0.05, 0, 0, 0)}>+X</button>
+                    <button class="hud-inline-btn" type="button" title="Nudge -Z (5 cm)" onClick={() => annotator.nudgeSelected(0, 0, -0.05, 0)}>-Z</button>
+                    <button class="hud-inline-btn" type="button" title="Nudge +Z (5 cm)" onClick={() => annotator.nudgeSelected(0, 0, 0.05, 0)}>+Z</button>
+                    <button class="hud-inline-btn" type="button" title="Nudge -Y (2 cm)" onClick={() => annotator.nudgeSelected(0, -0.02, 0, 0)}>-Y</button>
+                    <button class="hud-inline-btn" type="button" title="Nudge +Y (2 cm)" onClick={() => annotator.nudgeSelected(0, 0.02, 0, 0)}>+Y</button>
                   </div>
 
                   <div class="annotator-nudge-bar">
@@ -424,7 +424,7 @@ export function AnnotatorPanel({ annotator }: AnnotatorPanelProps): JSX.Element 
                     <button
                       class="hud-inline-btn annotator-reset-btn"
                       type="button"
-                      title="Reset object to original position and rotation"
+                      title="Reset position and rotation"
                       onClick={() => annotator.resetSelectedMove()}
                     >
                       Reset
@@ -446,20 +446,20 @@ export function AnnotatorPanel({ annotator }: AnnotatorPanelProps): JSX.Element 
                 <div class="annotator-measure-opts">
                   <label
                     class="annotator-snap-label"
-                    title="Lock measurement line parallel to dominant X, Y, or Z axis (or hold Shift while measuring)"
+                    title="Snap measurement to the X, Y, or Z axis (or hold Shift)"
                   >
                     <input
                       type="checkbox"
                       checked={liveMeasure?.axisSnapLocked ?? axisSnap}
                       onChange={(e) => annotator.setMeasureAxisSnap(e.currentTarget.checked)}
                     />
-                    <span>Axis Snap</span>
+                    <span>Axis snap</span>
                   </label>
                   {liveMeasure?.active && (
                     <button
                       class="hud-inline-btn"
                       type="button"
-                      title="Cancel active measurement point"
+                      title="Cancel active measurement"
                       onClick={() => annotator.cancelMeasurement()}
                     >
                       Cancel Pt A
@@ -474,7 +474,7 @@ export function AnnotatorPanel({ annotator }: AnnotatorPanelProps): JSX.Element 
                 liveMeasure.deltaXYZ ? (
                   <>
                     <div class="annotator-measure-status">
-                      Click <strong>Point B</strong> to save span annotation (hold <strong>Shift</strong> for axis snap).
+                      Click <strong>Point B</strong> to save span (hold <strong>Shift</strong> to snap axis).
                     </div>
                     <div class="annotator-measure-readout">
                       <div class="annotator-measure-primary">
@@ -492,7 +492,7 @@ export function AnnotatorPanel({ annotator }: AnnotatorPanelProps): JSX.Element 
                   </>
                 ) : (
                   <div class="annotator-measure-status">
-                    Point A locked at <code>[{liveMeasure.startPoint?.join(', ')}]</code> — move cursor and click <strong>Point B</strong>.
+                    Point A locked at <code>[{liveMeasure.startPoint?.join(', ')}]</code>; click <strong>Point B</strong>.
                   </div>
                 )
               ) : selected?.kind === 'measure' && selected.measurement ? (
@@ -500,7 +500,7 @@ export function AnnotatorPanel({ annotator }: AnnotatorPanelProps): JSX.Element 
                   <div class="annotator-measure-status">
                     {isActive && tool === 'measure' ? (
                       <>
-                        Showing selected span. Click any 3D surface to start a new <strong>Point A</strong>.
+                        Showing selected span. Click any surface to start a new <strong>Point A</strong>.
                       </>
                     ) : (
                       <>
@@ -522,13 +522,13 @@ export function AnnotatorPanel({ annotator }: AnnotatorPanelProps): JSX.Element 
                     </div>
                   </div>
                   <div class="annotator-measure-target-row">
-                    <span class="annotator-field-label">Real / Target</span>
+                    <span class="annotator-field-label">Real / target</span>
                     <input
                       ref={targetInputRef}
                       class="hud-ai-input annotator-target-input"
                       type="text"
-                      placeholder="e.g. 2.45m or 2450mm (real-life measurement)"
-                      aria-label="Real or target measurement to correct model"
+                      placeholder="e.g. 2.45m or 2450mm"
+                      aria-label="Target measurement"
                       value={selected.measurement.targetMeasurement ?? ''}
                       onInput={(e) =>
                         annotator.updateTargetMeasurement(selected.id, e.currentTarget.value)
@@ -544,7 +544,7 @@ export function AnnotatorPanel({ annotator }: AnnotatorPanelProps): JSX.Element 
                 </>
               ) : (
                 <div class="annotator-measure-status">
-                  Click <strong>Point A</strong> on any 3D wall, floor, or cabinet, then click <strong>Point B</strong> to measure span.
+                  Click <strong>Point A</strong>, then <strong>Point B</strong> to measure a span.
                 </div>
               )}
             </div>
@@ -561,8 +561,8 @@ export function AnnotatorPanel({ annotator }: AnnotatorPanelProps): JSX.Element 
                 ref={noteInputRef}
                 class="hud-ai-input annotator-note-input"
                 type="text"
-                placeholder="Add note / instructions for this annotation (Enter to save)..."
-                aria-label="Annotation issue note"
+                placeholder="Add a note (Enter to save)..."
+                aria-label="Annotation note"
                 value={selected.note}
                 onInput={(e) => annotator.updateNote(selected.id, e.currentTarget.value)}
                 onKeyDown={(e) => {
@@ -582,7 +582,7 @@ export function AnnotatorPanel({ annotator }: AnnotatorPanelProps): JSX.Element 
           <div class="annotator-list">
             {records.length === 0 ? (
               <div class="annotator-empty">
-                Toggle <strong>Annotate Mode</strong> (or <strong>Shift + Click</strong>) and choose <strong>Pin</strong>, <strong>Move</strong>, <strong>Rotate</strong>, or <strong>Measure</strong> to record issues, object movements/rotations, or span measurements.
+                Turn on <strong>Annotate mode</strong> (or <strong>Shift+Click</strong>) to pin notes, move or rotate objects, or measure spans.
               </div>
             ) : (
               records.map((r) => {
@@ -594,7 +594,7 @@ export function AnnotatorPanel({ annotator }: AnnotatorPanelProps): JSX.Element 
                       (r.measurement.targetMeasurement?.trim()
                         ? `Span ${r.measurement.distanceM}m → Real/Target: ${r.measurement.targetMeasurement.trim()}`
                         : `Measured span: ${r.measurement.distanceM}m (${(r.measurement.distanceM * 100).toFixed(1)}cm)`)
-                    : r.note.trim() || '(Click to add description...)';
+                    : r.note.trim() || '(Click to add a note)';
                 const metaText =
                   kind === 'move' && r.objectTransform
                     ? `${r.objectTransform.targetName} · [${r.objectTransform.initialWorldCenter.join(', ')}] → [${r.objectTransform.newWorldCenter.join(', ')}]`
@@ -617,7 +617,7 @@ export function AnnotatorPanel({ annotator }: AnnotatorPanelProps): JSX.Element 
                       <button
                         type="button"
                         class="hud-inline-btn annotator-item-btn"
-                        title="Fly camera to this annotation view"
+                        title="Fly to annotation"
                         onClick={(e) => {
                           e.stopPropagation();
                           annotator.flyToRecord(r.id);
@@ -630,8 +630,8 @@ export function AnnotatorPanel({ annotator }: AnnotatorPanelProps): JSX.Element 
                         class="hud-inline-btn annotator-item-btn annotator-del-btn"
                         title={
                           kind === 'move'
-                            ? 'Delete this move annotation and restore original object position'
-                            : 'Delete this annotation'
+                            ? 'Delete annotation and restore original position'
+                            : 'Delete annotation'
                         }
                         onClick={(e) => {
                           e.stopPropagation();

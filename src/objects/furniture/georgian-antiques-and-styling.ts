@@ -937,7 +937,7 @@ export interface GeorgianFiresideSetOptions {
 }
 
 /**
- * English country-house Georgian fireside set:
+ * Traditional Georgian fireside set:
  * - Pierced-brass & deep-buttoned chestnut-leather Club Fender (`1360 x 380 x 460 mm`, `SeatInteractable`)
  * - Burnished copper helmet coal scuttle (`300 x 430 x 360 mm`) with anthracite coals & brass swing bail
  * - 4-piece turned Aged Brass fire-irons companion stand (`H 660 mm`: poker, tongs, pierced shovel & hearth brush).
@@ -1261,7 +1261,7 @@ export function buildGeorgianFiresideSet(
   return attachAssetMetadata(out, {
     name: 'Acres Farm Tufted Leather Club Fender & Brass Fireside Companion Set',
     brand: 'Acres Farm',
-    collection: 'Bespoke Club Fenders',
+    collection: 'Club Fenders',
     sku: 'AF-CF-1360-AB',
     finish: 'Chestnut Bridle Leather & Aged Brass Spindles',
     category: 'furniture',

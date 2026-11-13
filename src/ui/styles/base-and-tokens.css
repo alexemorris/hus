@@ -1,6 +1,4 @@
-/* ============================================================================
-   Design Tokens & Base Viewport Reset
-   ============================================================================ */
+/* Design tokens & base viewport reset */
 
 :root {
   --hud-bg: rgba(32, 32, 32, 0.94);
@@ -16,10 +14,7 @@
   --hud-font-mono: "SFMono-Regular", Consolas, monospace;
 }
 
-/* ============================================================================
-   Hus — Floating HUD Palette
-   Matte dark charcoal utility inspector, zero fancy gradients, 100% viewport
-   ============================================================================ */
+/* Hus floating HUD palette: matte dark charcoal utility inspector, 100% viewport */
 
 * {
   box-sizing: border-box;

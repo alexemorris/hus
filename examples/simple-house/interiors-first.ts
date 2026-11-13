@@ -79,7 +79,7 @@ export function buildSimpleHouseFirstInteriors(
   const northCut = shell.cut('north', 'first');
   const southCut = shell.cut('south', 'first');
 
-  // 1-4. Principal Bedroom, Walk-In Dressing, Landing Gallery & Principal Ensuite
+  // Principal Bedroom, Walk-In Dressing, Landing Gallery & Principal Ensuite
   buildSimpleHouseFirstWestAndLanding(ctx, shell, root, firstCeilingGroup);
 
   // Guest Bedroom 2 (X in [+1.89, +7.05], Z in [-0.10, +4.22])

@@ -1,6 +1,4 @@
-/* ============================================================================
-   3D Issue Annotator (docked inspector; see shell.css .shell-inspector)
-   ============================================================================ */
+/* 3D Issue Annotator (docked inspector; see shell.css .shell-inspector) */
 
 .annotator-body {
   max-height: calc(100vh - 60px);
@@ -487,9 +485,7 @@
 }
 
 
-/* ============================================================================
-   60 Hz GPU-Composited Screen-Space Annotation Pin Overlay & Summary Pill
-   ============================================================================ */
+/* 60 Hz GPU-composited screen-space annotation pin overlay & summary pill */
 
 .annotator-summary-pill-bar {
   display: flex;
@@ -571,9 +567,7 @@
   z-index: 2;
 }
 
-/* ============================================================================
-   Terrain Sculpt Brush Inspector
-   ============================================================================ */
+/* Terrain sculpt brush inspector */
 
 .terrain-sculpt-modes {
   display: grid;

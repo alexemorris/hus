@@ -83,11 +83,6 @@ function lerpAngle(fromRad: number, toRad: number, t: number): number {
   return fromRad + shortestAngleDelta(fromRad, toRad) * t;
 }
 
-function smoothstep(edge0: number, edge1: number, x: number): number {
-  const t = THREE.MathUtils.clamp((x - edge0) / Math.max(1e-5, edge1 - edge0), 0, 1);
-  return t * t * (3 - 2 * t);
-}
-
 /**
  * Call-of-Duty-style First-Person Walkthrough Controller (no weapon). House-specific spawns,
  * elevation, stairs, ladders, cutscenes and collision rules arrive via `HouseWalkthroughHooks`.
@@ -336,7 +331,6 @@ export class WalkthroughController {
     this.haltFreeMovementForCutscene();
     return true;
   }
-
 
   private tryTriggerCutscene(targetedPrompt: string | null): boolean {
     for (const cutscene of this.cutscenes) {
@@ -1011,7 +1005,7 @@ export class WalkthroughController {
       this.fpExitBlend = null;
 
       const FP_ENTRY_BLEND_DURATION_SEC = 0.52;
-      const wIn = smoothstep(0, FP_ENTRY_BLEND_DURATION_SEC, this.fpEntryBlend.elapsedSec);
+      const wIn = THREE.MathUtils.smoothstep(this.fpEntryBlend.elapsedSec, 0, FP_ENTRY_BLEND_DURATION_SEC);
       const [rawFx, rawFy, rawFz] = fpSample.footPosition;
       const [rawEx, rawEy, rawEz] = fpSample.eyePosition;
       const fx = THREE.MathUtils.lerp(this.fpEntryBlend.startFoot[0], rawFx, wIn);
@@ -1139,7 +1133,7 @@ export class WalkthroughController {
     if (this.fpExitBlend !== null) {
       this.fpExitBlend.elapsedSec += dtSeconds;
       const FP_EXIT_BLEND_DURATION_SEC = 0.45;
-      const wOut = smoothstep(0, FP_EXIT_BLEND_DURATION_SEC, this.fpExitBlend.elapsedSec);
+      const wOut = THREE.MathUtils.smoothstep(this.fpExitBlend.elapsedSec, 0, FP_EXIT_BLEND_DURATION_SEC);
       const fx = THREE.MathUtils.lerp(
         this.fpExitBlend.startFoot[0],
         this.fpExitBlend.targetFoot[0],

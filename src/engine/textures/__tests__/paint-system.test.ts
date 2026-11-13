@@ -18,7 +18,7 @@ import {
   type PaintSheen,
 } from '../paint-system.ts';
 
-describe('husjs physical architectural paint system (Stage 4.16)', () => {
+describe('husjs physical architectural paint system', () => {
   beforeEach(() => {
     clearPaintMaterialCache();
   });

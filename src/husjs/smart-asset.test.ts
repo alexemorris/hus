@@ -28,7 +28,7 @@ import {
   buildThomasCrapperLowLevelWc,
 } from './catalog/sanitaryware.ts';
 
-describe('Stage 4.14 — Self-Contained Smart Assets', () => {
+describe('Self-Contained Smart Assets', () => {
   it('auto-discovers zero-ctx catalog smart interactions & animates hinges, drawers, and toggles on scene.add(asset)', () => {
     const scene = new THREE.Scene();
 

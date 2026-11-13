@@ -1,5 +1,5 @@
 /**
- * Stage 4.10b — `examples/simple-house`
+ * `examples/simple-house`
  *
  * 14.82 m Symmetrical 5-Bay Georgian Country House (360 mm Flemish-bond brick,
  * Bath-stone Tuscan portico, hipped Welsh-slate roof, 3.30 m Entrance Hall

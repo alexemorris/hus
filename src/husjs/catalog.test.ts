@@ -6,7 +6,7 @@ import * as lighting from 'husjs/catalog/lighting';
 import * as sanitaryware from 'husjs/catalog/sanitaryware';
 
 describe('husjs/catalog/* public barrel entrypoints', () => {
-  it('re-exports Stage 4.10a architectural, appliances, furniture, lighting & sanitaryware builders', () => {
+  it('re-exports architectural, appliances, furniture, lighting & sanitaryware builders', () => {
     expect(typeof architectural.buildNeptuneInFrameCabinetRun).toBe('function');
     expect(typeof architectural.buildNeptuneLarderPantry).toBe('function');
     expect(typeof architectural.buildNeptuneMantleCanopyHood).toBe('function');

@@ -17,14 +17,14 @@ describe('Global Open-Meteo classification & parser', () => {
     expect(laUrl).toContain('timezone=auto');
     expect(laUrl).not.toContain('ukmo_seamless');
 
-    const ukUrl = buildOpenMeteoForecastUrl(52.544462, -0.947371);
-    expect(ukUrl).toContain('latitude=52.544462');
-    expect(ukUrl).toContain('longitude=-0.947371');
+    const ukUrl = buildOpenMeteoForecastUrl(51.84, -1.79);
+    expect(ukUrl).toContain('latitude=51.84');
+    expect(ukUrl).toContain('longitude=-1.79');
     expect(ukUrl).toContain('timezone=auto');
     expect(ukUrl).not.toContain('ukmo_seamless');
   });
 
-  it('classifies snow, heavy_rain, rain, drizzle, fog, overcast, partly_cloudy, and clear per Platform 37 rules', () => {
+  it('classifies snow, heavy_rain, rain, drizzle, fog, overcast, partly_cloudy, and clear per meteorological rules', () => {
     expect(
       deriveWeatherConditionFromTelemetry({
         wmoCode: 73,
@@ -357,7 +357,7 @@ describe('WeatherController composable 3-layer behaviour & 0% idle loop discipli
           for (let i = 0; i < maxCount; i++) {
             obj.getMatrixAt(i, mat);
             mat.decompose(pos, quat, scale);
-            // Zero slots may ever sit near world origin (0, 0, 0) or inside the Kitchen / Farmhouse!
+            // Zero slots may ever sit near world origin (0, 0, 0) or inside the building footprint
             const inKitchenBox =
               pos.x >= -22.5 &&
               pos.x <= 13.5 &&

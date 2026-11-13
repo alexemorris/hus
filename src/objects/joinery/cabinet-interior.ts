@@ -174,7 +174,7 @@ export function buildHollowCabinetCarcass(
   const isZOpen = openFace === '+z' || openFace === '-z';
   const openSign = openFace === '+z' || openFace === '+x' ? 1 : -1;
 
-  // 1. Optional lower kickboard / plinth block recessed 50mm behind the carcass front for a real shadow toe-kick
+  // Optional lower kickboard / plinth block recessed 50mm behind the carcass front for a real shadow toe-kick
   if (plinthH > 0.005) {
     const toeRecess = 0.050;
     const plinthW = isZOpen ? w : Math.max(0.08, w - toeRecess);
@@ -319,7 +319,7 @@ export function buildHollowCabinetCarcass(
     addLocalPanel(divU, cavMidY, divV, 0.018, innerH, divDepth, interiorMat, false);
   }
 
-  // 4. Internal Horizontal Shelves & Recessed Details
+  // Internal Horizontal Shelves & Recessed Details
   const computedShelfFracs: number[] | undefined =
     options.shelfCount !== undefined
       ? Array.from({ length: options.shelfCount }, (_, idx) => (idx + 1) / (options.shelfCount! + 1))
@@ -369,7 +369,7 @@ export function buildHollowCabinetCarcass(
     }
   }
 
-  // 5. Populate Authentic Interior Items so opening any cupboard reveals rich 3D detail
+  // Populate Authentic Interior Items so opening any cupboard reveals rich 3D detail
   if (populate) {
     const ceramicMat = getCeramicWhiteMat();
     const wickerMat = getWickerMat();

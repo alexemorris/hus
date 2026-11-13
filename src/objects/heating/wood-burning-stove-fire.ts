@@ -241,7 +241,7 @@ export interface WoodBurningStoveFireControllerConfig {
 
 /** Target update rate (~28 Hz) when the firebox is visible and close to the camera. */
 const FLAME_STEP_INTERVAL_SEC = 1 / 28;
-/** Beyond 14 m (overview, courtyard, outbuildings, far rooms) the stove settles at 0 fps. */
+/** Beyond 14 m (overview or distant rooms) the stove settles at 0 fps. */
 const FLAME_MAX_DISTANCE_SQ = 14 * 14;
 /** Minimum cos(angle) from camera forward axis once >1.2 m away (~78 deg half-angle cone). */
 const FLAME_MIN_VIEW_COS = 0.2;
@@ -374,7 +374,7 @@ export class WoodBurningStoveFireController implements AnimatedInteractable {
     this.#timeSec += stepDt;
     const t = this.#timeSec;
 
-    // 1. Multi-frequency turbulence across all sculpted outer flame tongues & inner white-hot cores
+    // Multi-frequency turbulence across all sculpted outer flame tongues & inner white-hot cores
     let totalFlameEnergy = 0;
     for (let i = 0; i < this.#flames.length; i++) {
       const f = this.#flames[i]!;
@@ -421,7 +421,7 @@ export class WoodBurningStoveFireController implements AnimatedInteractable {
 
     const avgEnergy = this.#flames.length > 0 ? totalFlameEnergy / this.#flames.length : 1;
 
-    // 2. Rising incandescent ember sparks drifting upward and spiralling inside the firebox
+    // Rising incandescent ember sparks drifting upward and spiralling inside the firebox
     for (let i = 0; i < this.#sparks.length; i++) {
       const s = this.#sparks[i]!;
       const cycle = (t * s.speed + s.phase) % 1;
@@ -435,7 +435,7 @@ export class WoodBurningStoveFireController implements AnimatedInteractable {
       s.mesh.updateMatrixWorld();
     }
 
-    // 3. Synchronized emissive breath across the ember bed, logs, firebox liner, glass, and hearth pool
+    // Synchronized emissive breath across the ember bed, logs, firebox liner, glass, and hearth pool
     const breath = Math.sin(t * 4.2) * 0.5 + Math.sin(t * 9.7 + 1.1) * 0.3 + (avgEnergy - 1) * 1.4;
     this.#emberMat.emissiveIntensity = 3.3 + breath * 0.65;
     this.#logMat.emissiveIntensity = 1.25 + breath * 0.32;
@@ -479,7 +479,7 @@ export function buildHallWoodBurningStoveFirebox(
   const coreFlameTex = createFlameGradientTexture(true);
   const hearthGlowTex = createHearthFirelightPoolTexture();
 
-  // 1. Warm-lit vermiculite firebox back, top baffle & side liners inside the recessed cavity
+  // Warm-lit vermiculite firebox back, top baffle & side liners inside the recessed cavity
   const fireboxLinerMat = new THREE.MeshStandardMaterial({
     color: 0x4a2210,
     emissive: 0xe85212,
@@ -505,7 +505,7 @@ export function buildHallWoodBurningStoveFirebox(
     stoveGroup.add(sideLiner);
   }
 
-  // 2. Incandescent fissured glowing ember bed & glowing coal chunks on the firebox floor
+  // Incandescent fissured glowing ember bed & glowing coal chunks on the firebox floor
   const emberMeshes: THREE.Mesh[] = [];
   const hallEmberGlowMat = new THREE.MeshStandardMaterial({
     color: 0xff6e22,
@@ -541,7 +541,7 @@ export function buildHallWoodBurningStoveFirebox(
     emberMeshes.push(emberChunk);
   }
 
-  // 3. Cast-iron front log guard / riddle grate bar across the lower firebox opening
+  // Cast-iron front log guard / riddle grate bar across the lower firebox opening
   const logGuardBar = tagHighLod(
     new THREE.Mesh(createSharedGeo(new THREE.BoxGeometry(0.012, 0.024, 0.244), { computeBoundingBox: true }), castIronMat)
   );
@@ -549,7 +549,7 @@ export function buildHallWoodBurningStoveFirebox(
   logGuardBar.position.set(-0.158, 0.21, 0);
   stoveGroup.add(logGuardBar);
 
-  // 4. Crossed charred split hardwood logs resting on the glowing ember bed with glowing fissures
+  // Crossed charred split hardwood logs resting on the glowing ember bed with glowing fissures
   const logMeshes: THREE.Mesh[] = [];
   const hallCharredLogMat = new THREE.MeshStandardMaterial({
     color: 0x331c12,
@@ -574,7 +574,7 @@ export function buildHallWoodBurningStoveFirebox(
     logMeshes.push(logMesh);
   }
 
-  // 5. 7 Sculpted Organic S-Curve Flame Tongues + 7 White-Hot Inner Flame Cores
+  // 7 Sculpted Organic S-Curve Flame Tongues + 7 White-Hot Inner Flame Cores
   //    Each tongue has its own material instance so its `emissiveIntensity` flickers independently!
   const flameSpecs: ReadonlyArray<
     readonly [
@@ -669,7 +669,7 @@ export function buildHallWoodBurningStoveFirebox(
     });
   }
 
-  // 6. 6 Rising Incandescent Ember Sparks drifting up through the flames
+  // 6 Rising Incandescent Ember Sparks drifting up through the flames
   const sparkGeo = createSharedGeo(new THREE.OctahedronGeometry(0.0055, 0), { computeBoundingBox: true });
   const sparkMat = new THREE.MeshStandardMaterial({
     color: 0xfff3b0,
@@ -705,7 +705,7 @@ export function buildHallWoodBurningStoveFirebox(
     });
   }
 
-  // 7. Clear heat-resistant ceramic glass viewing window (`*.doorGlass`) with warm firelight emissive tint
+  // Clear heat-resistant ceramic glass viewing window (`*.doorGlass`) with warm firelight emissive tint
   const stoveCeramicGlassMat = new THREE.MeshStandardMaterial({
     color: 0xffdfba,
     emissive: 0xff6a1a,
@@ -723,7 +723,7 @@ export function buildHallWoodBurningStoveFirebox(
   stoveDoorGlass.position.set(-0.178, 0.31, 0);
   stoveGroup.add(stoveDoorGlass);
 
-  // 8. Warm Emissive Firelight Glow Pool cast onto the brick hearth directly in front of the glass door
+  // Warm Emissive Firelight Glow Pool cast onto the brick hearth directly in front of the glass door
   const hearthGlowMat = new THREE.MeshStandardMaterial({
     color: 0xffa834,
     emissive: 0xff6a14,

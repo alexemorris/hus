@@ -41,11 +41,6 @@ export {
 } from './dpt-codec.ts';
 export {
   KNXPropertyBusController,
-  NIGHT_WALK_ABOVE_CABINET_PCT,
-  NIGHT_WALK_SPOTLIGHTS_PCT,
-  NIGHT_WALK_UNDER_CABINET_PCT,
-  NIGHT_WALK_UPLIGHTS_PCT,
-  NIGHT_WALK_UTILITY_PCT,
   TV_ARTWORKS,
   type KnxPresenceState,
   type KnxZoneStateView,

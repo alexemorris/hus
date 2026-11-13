@@ -1,8 +1,8 @@
 {
   "id": "./",
-  "name": "Georgian House — 3D Digital Twin",
+  "name": "Georgian House · 3D Digital Twin",
   "short_name": "Georgian House",
-  "description": "Interactive 3D architectural & smart-home digital twin of a Georgian Double-Fronted Country House: rooms, heritage lighting, trade views, and 1PV walkthrough.",
+  "description": "Interactive 3D architectural & smart-home digital twin of a Georgian Double-Fronted Country House: rooms, heritage lighting, trade views, and first-person walkthrough.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Zero-dependency layer boundary checker for src/.
 //
-// Dependency rule (Stage 3 husjs architecture):
+// Dependency rule (husjs layered architecture):
 //   core → (nothing)            engine → core           objects → engine, core
 //   integrations → core         state → core
 //   ui → core, state (src/ui/dev/** may also import engine + integrations for dev tools)
@@ -15,6 +15,12 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseCliFlags } from './cli-args.mjs';
+
+const BOUNDARIES_CLI_OPTIONS = {
+  json: { type: 'boolean' },
+  'no-baseline': { type: 'boolean' },
+};
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = join(ROOT, 'src');
@@ -362,7 +368,7 @@ export function checkBoundaries() {
   try {
     if (statSync(EXAMPLES).isDirectory()) dirsToScan.push(EXAMPLES);
   } catch {
-    // examples/ optional before Stage 4.3
+    // examples/ directory is optional
   }
   const files = [];
   for (const d of dirsToScan) walk(d, files);
@@ -386,8 +392,13 @@ function loadBaseline() {
 
 const isMain = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
+  const { values } = parseCliFlags(process.argv.slice(2), BOUNDARIES_CLI_OPTIONS);
+  if (values.help) {
+    console.log('Usage: node tools/check-boundaries.mjs [--json] [--no-baseline]');
+    process.exit(0);
+  }
   const all = checkBoundaries();
-  const baseline = process.argv.includes('--no-baseline') ? [] : loadBaseline();
+  const baseline = values['no-baseline'] ? [] : loadBaseline();
   const key = (v) => `${v.file}|${v.spec}`;
   const baselineKeys = new Set(baseline.map(key));
   const known = all.filter((v) => baselineKeys.has(key(v)));
@@ -395,7 +406,7 @@ if (isMain) {
   const liveKeys = new Set(all.map(key));
   const stale = baseline.filter((b) => !liveKeys.has(key(b)));
 
-  if (process.argv.includes('--json')) {
+  if (values.json) {
     console.log(JSON.stringify({ violations, known, stale }, null, 2));
   } else {
     for (const v of known) {

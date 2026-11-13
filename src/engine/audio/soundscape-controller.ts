@@ -1,3 +1,4 @@
+import { MathUtils } from 'three';
 import type {
   AcousticOcclusionState,
   NormalizedSoundscapeDescriptor,
@@ -41,12 +42,6 @@ const DEFAULT_WEATHER_AUDIO: AmbientWeatherAudioState = {
   snowIntensity: 0,
 };
 
-function smoothstep(edge0: number, edge1: number, x: number): number {
-  if (edge1 <= edge0) return x >= edge1 ? 1 : 0;
-  const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
-  return t * t * (3 - 2 * t);
-}
-
 /**
  * Computes normalized `(day, dusk, night)` crossfade weights summing to `1.0` for either
  * discrete `TimeOfDay` modes or continuous 24-hour local solar/civil time (`0..24`).
@@ -70,22 +65,22 @@ export function computeTimeOfDayStemWeights(
     return { day: 0, dusk: 0, night: 1 };
   }
   if (h < 6.2) {
-    const t = smoothstep(4.5, 6.2, h);
+    const t = MathUtils.smoothstep(h, 4.5, 6.2);
     return { day: 0, dusk: t, night: 1 - t };
   }
   if (h < 8.5) {
-    const t = smoothstep(6.2, 8.5, h);
+    const t = MathUtils.smoothstep(h, 6.2, 8.5);
     return { day: t, dusk: 1 - t, night: 0 };
   }
   if (h < 16.5) {
     return { day: 1, dusk: 0, night: 0 };
   }
   if (h < 18.8) {
-    const t = smoothstep(16.5, 18.8, h);
+    const t = MathUtils.smoothstep(h, 16.5, 18.8);
     return { day: 1 - t, dusk: t, night: 0 };
   }
   if (h < 21.5) {
-    const t = smoothstep(18.8, 21.5, h);
+    const t = MathUtils.smoothstep(h, 18.8, 21.5);
     return { day: 0, dusk: 1 - t, night: t };
   }
   return { day: 0, dusk: 0, night: 1 };

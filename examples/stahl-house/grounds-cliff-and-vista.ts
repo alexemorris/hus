@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { toCreasedNormals } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { smoothstep, type SkyWeatherSnapshot } from 'husjs';
+import type { SkyWeatherSnapshot } from 'husjs';
 import { applyMetricBoxUVs, getOrCreateCachedTexture } from 'husjs/materials';
 import { prepGeo, tagCollisionRole } from 'husjs/objects';
 import { getStonePbr1024, hashCell2D } from './pbr-textures.ts';
@@ -44,7 +44,7 @@ export function computeStahlCityLightsIntensity(
   if (!snapshot) return 0;
   if (snapshot.timeSlot === 'night' || snapshot.timeOfDay === 'night') return 1.0;
   const alt = snapshot.solar?.altitudeDeg ?? 45;
-  const twilightCurve = 1 - smoothstep(-6.5, 4.2, alt);
+  const twilightCurve = 1 - THREE.MathUtils.smoothstep(alt, -6.5, 4.2);
   if (snapshot.timeOfDay === 'dusk' || snapshot.timeSlot === 'dusk') {
     return Math.max(0.82, twilightCurve);
   }
@@ -244,10 +244,10 @@ export function buildLaBasinCityLightsVista(root: THREE.Group): void {
       uvs[vIdx * 2 + 1] = wz / gridTileM;
 
       const foothillsMask =
-        smoothstep(155, 285, dist) *
-        smoothstep(-48, -62, wy) *
-        smoothstep(40, 195, wz - Math.max(0, wx) * 0.18);
-      const mask = foothillsMask * (1 - smoothstep(2650, 3620, dist));
+        THREE.MathUtils.smoothstep(dist, 155, 285) *
+        (1 - THREE.MathUtils.smoothstep(wy, -62, -48)) *
+        THREE.MathUtils.smoothstep(wz - Math.max(0, wx) * 0.18, 40, 195);
+      const mask = foothillsMask * (1 - THREE.MathUtils.smoothstep(dist, 2650, 3620));
 
       colors[vIdx * 3] = mask * 1.15;
       colors[vIdx * 3 + 1] = mask * 1.06;

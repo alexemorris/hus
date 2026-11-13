@@ -536,7 +536,7 @@ function isDefaultIndoorFootprint(x: number, z: number): boolean {
   return x >= -23.0 && x <= 13.8 && z >= -11.8 && z <= 5.4;
 }
 
-/** Deterministically samples `(x, z)` strictly outside the farmhouse roof envelope (0% indoor leak). */
+/** Deterministically samples `(x, z)` strictly outside the building roof envelope (0% indoor leak). */
 function sampleOutdoorXZ(
   rand: () => number,
   halfSpanX: number,
@@ -677,7 +677,7 @@ export class WeatherController {
 
     const rand = mulberry32(20260837);
 
-    // 1. platform37-style Solar-Lit Volumetric Cumulus Cloud Deck (44 sky-dome clusters × 6 puffs,
+    // Solar-lit volumetric cumulus cloud deck (44 sky-dome clusters × 6 puffs,
     //    flat 0.42× condensation bases, progressive coverageOrder 0..100%, half-Lambert sun shading,
     //    British slate undersides & soft view-normal rim feathering in both WebGPU TSL & WebGL2 GLSL)
     const puffGeo = new THREE.IcosahedronGeometry(1, 1);
@@ -752,7 +752,6 @@ export class WeatherController {
       const horizonFade = float(1.0).sub(smoothstep(62.0, 90.0, distXZ));
       return clamp(rimFeather.mul(horizonFade).mul(cumulusParamsNode.z), 0.0, 0.95);
     })();
-
 
     this.cloudMesh = new THREE.InstancedMesh(puffGeo, this.cloudMaterial, TOTAL_CLOUD_INSTANCES);
     this.cloudMesh.name = '__hus_volumetric_clouds__';
@@ -1928,7 +1927,7 @@ export class WeatherController {
 
     const anchorX = THREE.MathUtils.lerp(cameraTarget.x, cameraPosition.x, 0.45);
     const anchorZ = THREE.MathUtils.lerp(cameraTarget.z, cameraPosition.z, 0.45);
-    // Quantize XZ tile cell so rain/snow stay world-anchored (0 swimming on camera orbit & dry farmhouse interior at cell 0,0)
+    // Quantize XZ tile cell so rain/snow stay world-anchored (0 swimming on camera orbit & dry interior at cell 0,0)
     const cellX = Math.round(anchorX / PRECIP_TILE_SPAN_XZ) * PRECIP_TILE_SPAN_XZ;
     const cellZ = Math.round(anchorZ / PRECIP_TILE_SPAN_XZ) * PRECIP_TILE_SPAN_XZ;
     const baseGroundY = this.sampleGroundY(cellX, cellZ) - 1.2;

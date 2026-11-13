@@ -46,16 +46,6 @@ import {
 import { ZoneLightingController, type SwitchDirection, type ZoneLevels } from './zone-lighting.ts';
 import type { KnxZoneBus } from '../../core/types/knx-zones.ts';
 
-/**
- * Legacy kitchen / utility night-object levels (kept as exports for HUD copy). The live
- * values come from each zone's `nightLevels` in the project.
- */
-export const NIGHT_WALK_UPLIGHTS_PCT = 3;
-export const NIGHT_WALK_SPOTLIGHTS_PCT = 4;
-export const NIGHT_WALK_UNDER_CABINET_PCT = 5;
-export const NIGHT_WALK_ABOVE_CABINET_PCT = 5;
-export const NIGHT_WALK_UTILITY_PCT = 5;
-
 export const TV_ARTWORKS: readonly string[] = [
   'Pastoral Hills Sunset',
   'St Ives Modernist',
@@ -79,14 +69,6 @@ export interface KnxPresenceState {
 const ACTIVE_SCENE_FULL = 99;
 /** Central scene index reported while the open-plan zone is lit but matches no stored scene. */
 const ACTIVE_SCENE_CUSTOM = 98;
-/** Zones the legacy "hold ▼ = all off" object puts into night mode. */
-const LEGACY_MASTER_OFF_ZONES: readonly RoomZoneId[] = [
-  'kitchen',
-  'sitting',
-  'utility',
-  'familyRoom',
-  'courtyard',
-];
 
 interface MutablePresence {
   detected: boolean;
@@ -141,7 +123,6 @@ export class KNXPropertyBusController implements KnxZoneBus {
     luxThreshold: 100,
   };
 
-  private stagedParams: DeviceParameters = { ...this.flashedParams };
   private isDirty = false;
 
   private readonly scenes: ScenePreset[];
@@ -224,10 +205,6 @@ export class KNXPropertyBusController implements KnxZoneBus {
     this.bindTransport(this.transport);
   }
 
-  // ---------------------------------------------------------------------------------------
-  // Transport
-  // ---------------------------------------------------------------------------------------
-
   private bindTransport(nextTransport: KNXBusTransport): void {
     this.unsubscribeTransportRx?.();
     this.unsubscribeTransportStatus?.();
@@ -269,14 +246,6 @@ export class KNXPropertyBusController implements KnxZoneBus {
     return this.transport.status;
   }
 
-  public getTransportEndpoint(): string | undefined {
-    return this.transport.endpointUrl;
-  }
-
-  // ---------------------------------------------------------------------------------------
-  // Project / topology accessors
-  // ---------------------------------------------------------------------------------------
-
   public getProject(): KnxProject {
     return this.project;
   }
@@ -301,24 +270,9 @@ export class KNXPropertyBusController implements KnxZoneBus {
     return this.project.presenceDetectors;
   }
 
-  /** Channels of a lighting zone (zone membership; falls back to `CircuitConfig.zoneId`). */
-  public getCircuitsForZone(zoneId: RoomZoneId): readonly CircuitConfig[] {
-    const zone = this.zoneLighting.getZone(zoneId);
-    if (zone) {
-      return zone.circuits
-        .map((id) => this.circuitById.get(id))
-        .filter((c): c is CircuitConfig => c !== undefined);
-    }
-    return this.project.circuits.filter((c) => c.zoneId === zoneId);
-  }
-
   public getSimTimeSec(): number {
     return this.simTimeSec;
   }
-
-  // ---------------------------------------------------------------------------------------
-  // Events
-  // ---------------------------------------------------------------------------------------
 
   public subscribe(fn: KNXEventListener): () => void {
     this.listeners.add(fn);
@@ -333,7 +287,7 @@ export class KNXPropertyBusController implements KnxZoneBus {
     }
   }
 
-  public emitTelegram(input: TelegramEmitInput): KNXTelegram {
+  private emitTelegram(input: TelegramEmitInput): KNXTelegram {
     const isGroup = input.isGroup ?? true;
     const hex = buildTP1FrameHex(input.src, input.dst, isGroup, input.payloadBytes);
 
@@ -373,16 +327,8 @@ export class KNXPropertyBusController implements KnxZoneBus {
     return telegram;
   }
 
-  // ---------------------------------------------------------------------------------------
-  // Simple getters
-  // ---------------------------------------------------------------------------------------
-
   public getFlashedParams(): Readonly<DeviceParameters> {
     return this.flashedParams;
-  }
-
-  public getStagedParams(): Readonly<DeviceParameters> {
-    return this.stagedParams;
   }
 
   public getIsDirty(): boolean {
@@ -421,16 +367,8 @@ export class KNXPropertyBusController implements KnxZoneBus {
     return this.ambientLux < this.flashedParams.luxThreshold;
   }
 
-  public isAnyLightOn(): boolean {
-    return this.project.circuits.some((c) => this.targetLevels[c.id] > 0);
-  }
-
-  public isAnyKitchenLightOn(): boolean {
+  private isAnyKitchenLightOn(): boolean {
     return SCENE_CIRCUIT_IDS.some((id) => this.targetLevels[id] > 0);
-  }
-
-  public isUtilityLightOn(): boolean {
-    return this.isZoneLit('utility');
   }
 
   public isCourtyardLightOn(): boolean {
@@ -447,10 +385,6 @@ export class KNXPropertyBusController implements KnxZoneBus {
     if (lp > 0) return `${mode} · Lamp Post ${lp}%`;
     return 'OFF (0%)';
   }
-
-  // ---------------------------------------------------------------------------------------
-  // Zone lighting (generic switch model)
-  // ---------------------------------------------------------------------------------------
 
   public getZoneState(zoneId: RoomZoneId): KnxZoneStateView {
     const state = this.zoneLighting.getState(zoneId);
@@ -636,17 +570,13 @@ export class KNXPropertyBusController implements KnxZoneBus {
     }
   }
 
-  // ---------------------------------------------------------------------------------------
-  // Presence detectors
-  // ---------------------------------------------------------------------------------------
-
   public getPresenceState(pa: string): KnxPresenceState {
     const p = this.presence.get(pa);
     return p ? { detected: p.detected, lastSeenSimSec: p.lastSeenSimSec } : { detected: false, lastSeenSimSec: null };
   }
 
   /** Effective hold time of a detector (override → detector parameter → project default). */
-  public getPresenceHoldTimeSec(pa?: string): number {
+  private getPresenceHoldTimeSec(pa?: string): number {
     if (this.presenceHoldOverrideSec !== null) return this.presenceHoldOverrideSec;
     const detector = pa ? this.detectorByPa.get(pa) : undefined;
     return detector?.params.holdTimeSec ?? this.project.defaultPresenceHoldTimeSec;
@@ -706,7 +636,7 @@ export class KNXPropertyBusController implements KnxZoneBus {
     return next;
   }
 
-  public isZoneOccupied(zoneId: RoomZoneId): boolean {
+  private isZoneOccupied(zoneId: RoomZoneId): boolean {
     return this.project.presenceDetectors.some(
       (d) => d.zoneId === zoneId && (this.presence.get(d.pa)?.detected ?? false)
     );
@@ -776,10 +706,6 @@ export class KNXPropertyBusController implements KnxZoneBus {
     );
   }
 
-  // ---------------------------------------------------------------------------------------
-  // Legacy kitchen / utility / courtyard / room APIs (wrappers over the zone model)
-  // ---------------------------------------------------------------------------------------
-
   public getKitchenMotionDetected(): boolean {
     const d = this.legacyDetector('kitchen');
     return d ? this.getPresenceState(d.pa).detected : false;
@@ -810,17 +736,9 @@ export class KNXPropertyBusController implements KnxZoneBus {
     return this.getUtilityMotionDetected();
   }
 
-  public isUtilitySwitchOn(): boolean {
+  private isUtilitySwitchOn(): boolean {
     const mode = this.zoneLighting.getState('utility').mode;
     return mode === 'scene' || mode === 'full' || mode === 'manual';
-  }
-
-  public isKitchenNightDimActive(): boolean {
-    return this.zoneLighting.getState('kitchen').mode === 'night' && this.isZoneLit('kitchen');
-  }
-
-  public isUtilityNightDimActive(): boolean {
-    return this.zoneLighting.getState('utility').mode === 'night' && this.isZoneLit('utility');
   }
 
   /** True when a zone containing `circuitId` idles in night mode with the circuit lit. */
@@ -878,10 +796,7 @@ export class KNXPropertyBusController implements KnxZoneBus {
     this.activeSceneIndex = ACTIVE_SCENE_FULL;
   }
 
-  /**
-   * Legacy "all off" (hold ▼ on a kitchen toggle / central master-off object): night mode for
-   * the kitchen, sitting area, utility, dining room and courtyard.
-   */
+  /** Central master-off object (hold ▼): places every registered zone into night mode. */
   public handleSwitchLongPressHoldDown(
     switchLocation?: string,
     sourcePa = this.project.centralPa.kitchenSwitchGroup
@@ -889,16 +804,14 @@ export class KNXPropertyBusController implements KnxZoneBus {
     if (this.activeSceneIndex >= 0 && this.activeSceneIndex <= 2) {
       this.lastActiveSceneIndex = this.activeSceneIndex;
     }
-    for (const zoneId of LEGACY_MASTER_OFF_ZONES) {
-      if (this.zoneLighting.getZone(zoneId)) {
-        this.enterZoneNightSilently(zoneId);
-      }
+    for (const zone of this.project.zones) {
+      this.enterZoneNightSilently(zone.id);
     }
     this.refreshActiveCentralScene();
     const loc = switchLocation
       ? sourcePa === this.project.centralPa.aiBridge
         ? switchLocation
-        : `Corston (${switchLocation} ▼ Hold)`
+        : `Switch (${switchLocation} ▼ Hold)`
       : 'Hold ▼ Down';
     this.emitTelegram({
       src: sourcePa,
@@ -906,16 +819,12 @@ export class KNXPropertyBusController implements KnxZoneBus {
       isGroup: true,
       apci: 'A_GroupValue_Write',
       dpt: '1.001',
-      summary: `${loc} → All off: kitchen, sitting, utility, dining & courtyard → night mode${
+      summary: `${loc} → All zones OFF → night mode${
         this.isBelowLuxThreshold() ? '' : ` (${this.ambientLux}lx daylight → off)`
       }`,
       payloadBytes: encodeDpt1(false),
     });
     this.notify({ type: 'stateChange', reason: 'masterOff' });
-  }
-
-  public handleSwitchLongPressHold(): void {
-    this.handleSwitchLongPressHoldDown();
   }
 
   public handleCourtyardSwitchShortPress(
@@ -950,10 +859,6 @@ export class KNXPropertyBusController implements KnxZoneBus {
     this.zoneLighting.markMode(zoneId, 'night');
     this.nightEnteredSimSec.set(zoneId, this.simTimeSec);
   }
-
-  // ---------------------------------------------------------------------------------------
-  // Frame TV art (kitchen presence)
-  // ---------------------------------------------------------------------------------------
 
   public isTvArtModeActive(): boolean {
     return this.getKitchenMotionDetected();
@@ -1004,10 +909,6 @@ export class KNXPropertyBusController implements KnxZoneBus {
     });
   }
 
-  // ---------------------------------------------------------------------------------------
-  // Car gates
-  // ---------------------------------------------------------------------------------------
-
   public isCarGatesOpen(): boolean {
     return this.carGatesOpen;
   }
@@ -1053,10 +954,6 @@ export class KNXPropertyBusController implements KnxZoneBus {
     return this.setCarGatesOpen(!this.carGatesOpen, true, sourcePa);
   }
 
-  // ---------------------------------------------------------------------------------------
-  // Lux
-  // ---------------------------------------------------------------------------------------
-
   public setAmbientLux(lux: number, emitBus = true): void {
     const wasDark = this.isBelowLuxThreshold();
     this.ambientLux = Math.max(0, Math.round(lux));
@@ -1087,10 +984,6 @@ export class KNXPropertyBusController implements KnxZoneBus {
     this.notify({ type: 'stateChange', reason: 'sensorChange' });
   }
 
-  // ---------------------------------------------------------------------------------------
-  // Central scene table (legacy kitchen open-plan scenes)
-  // ---------------------------------------------------------------------------------------
-
   public recallScene(sceneIdx: number, sourcePa = this.project.centralPa.kitchenSwitchGroup, switchLocation?: string): void {
     const scene = this.scenes[sceneIdx];
     if (!scene) return;
@@ -1102,7 +995,7 @@ export class KNXPropertyBusController implements KnxZoneBus {
     const locPrefix = switchLocation
       ? sourcePa === this.project.centralPa.aiBridge
         ? `${switchLocation} → `
-        : `Corston (${switchLocation}) → `
+        : `Switch (${switchLocation}) → `
       : '';
     const sceneTierTag = scene.isSwitchScene ? '' : ' [Extended AI/UI Scene]';
     this.emitTelegram({
@@ -1178,10 +1071,6 @@ export class KNXPropertyBusController implements KnxZoneBus {
     this.notify({ type: 'eepromChanged' });
   }
 
-  // ---------------------------------------------------------------------------------------
-  // Channels
-  // ---------------------------------------------------------------------------------------
-
   public setCircuitLevel(
     circuitId: CircuitId,
     pct: number,
@@ -1204,7 +1093,7 @@ export class KNXPropertyBusController implements KnxZoneBus {
         sourcePa === this.project.centralPa.aiBridge
           ? 'AI Gateway → '
           : switchLocation
-            ? `Corston (${switchLocation}) → `
+            ? `Switch (${switchLocation}) → `
             : '';
       this.emitTelegram({
         src: sourcePa,
@@ -1258,10 +1147,6 @@ export class KNXPropertyBusController implements KnxZoneBus {
       this.project.pushButtons.find((b) => b.gangs.some((g) => g.zoneId === zoneId));
     return button?.pa ?? this.project.centralPa.ipInterface;
   }
-
-  // ---------------------------------------------------------------------------------------
-  // External bus frames
-  // ---------------------------------------------------------------------------------------
 
   /**
    * Ingests a raw KNX TP1/cEMI hex frame or structured frame received from the physical bus
@@ -1375,8 +1260,8 @@ export class KNXPropertyBusController implements KnxZoneBus {
 
     const ga = this.project.centralGa;
     if (dst === ga.masterOff) {
-      for (const zoneId of LEGACY_MASTER_OFF_ZONES) {
-        if (this.zoneLighting.getZone(zoneId)) this.enterZoneNightSilently(zoneId);
+      for (const zone of this.project.zones) {
+        this.enterZoneNightSilently(zone.id);
       }
       this.refreshActiveCentralScene();
       rx('1.001', 'Master Off → night mode');
@@ -1425,102 +1310,9 @@ export class KNXPropertyBusController implements KnxZoneBus {
     }
   }
 
-  // ---------------------------------------------------------------------------------------
-  // EEPROM / ETS programming
-  // ---------------------------------------------------------------------------------------
-
-  public updateStagedParams(partial: Partial<DeviceParameters>): void {
-    this.stagedParams = { ...this.stagedParams, ...partial };
-    this.isDirty = true;
-    this.notify({ type: 'eepromChanged' });
+  public compileEEPROMImage(_useStaged = true): Uint8Array {
+    return compileEEPROMBytes(this.flashedParams, this.scenes);
   }
-
-  public compileEEPROMImage(useStaged = true): Uint8Array {
-    const params = useStaged ? this.stagedParams : this.flashedParams;
-    return compileEEPROMBytes(params, this.scenes);
-  }
-
-  public async executeFlashProcedure(onProgress?: (pct: number, msg: string) => void): Promise<void> {
-    const eeprom = this.compileEEPROMImage(true);
-    const pa = this.project.centralPa;
-    const steps: ReadonlyArray<{
-      readonly pct: number;
-      readonly msg: string;
-      readonly tg: TelegramEmitInput;
-    }> = [
-      {
-        pct: 20,
-        msg: `T_Connect(${pa.kitchenSwitchGroup} & ${pa.kitchenActuator})`,
-        tg: {
-          src: pa.ipInterface,
-          dst: pa.kitchenSwitchGroup,
-          isGroup: false,
-          apci: 'T_Connect',
-          dpt: 'Mgmt',
-          summary: `Open P2P Management Connection → ${pa.kitchenSwitchGroup}`,
-          payloadBytes: [0x80],
-        },
-      },
-      {
-        pct: 45,
-        msg: 'A_DeviceDescriptor_Read(0) → Mask 0x07B0',
-        tg: {
-          src: pa.kitchenSwitchGroup,
-          dst: pa.ipInterface,
-          isGroup: false,
-          apci: 'A_DeviceDescriptor_Res',
-          dpt: 'Mask',
-          summary: 'Mask Version 0x07B0 (System B)',
-          payloadBytes: [0x03, 0x40, 0x07, 0xb0],
-        },
-      },
-      {
-        pct: 75,
-        msg: 'A_Memory_Write(0x4018..0x403F)',
-        tg: {
-          src: pa.ipInterface,
-          dst: pa.kitchenSwitchGroup,
-          isGroup: false,
-          apci: 'A_Memory_Write',
-          dpt: 'EEPROM',
-          summary: `Write Params (Hold=${this.stagedParams.holdThresholdMs}ms, Lux<${this.stagedParams.luxThreshold}lx)`,
-          payloadBytes: [0x02, 0x84, 0x40, 0x18, ...Array.from(eeprom.slice(24, 28))],
-        },
-      },
-      {
-        pct: 100,
-        msg: 'A_Restart(0x0380) → Online',
-        tg: {
-          src: pa.ipInterface,
-          dst: pa.kitchenActuator,
-          isGroup: false,
-          apci: 'A_Restart',
-          dpt: 'Mgmt',
-          summary: 'LoadState = LOADED (0x01) · A_Restart Complete',
-          payloadBytes: [0x03, 0x80],
-        },
-      },
-    ];
-
-    for (const step of steps) {
-      this.emitTelegram(step.tg);
-      if (onProgress) onProgress(step.pct, step.msg);
-      await new Promise<void>((resolve) => setTimeout(resolve, 180));
-    }
-
-    const wasDark = this.isBelowLuxThreshold();
-    this.flashedParams = { ...this.stagedParams };
-    this.isDirty = false;
-    if (wasDark !== this.isBelowLuxThreshold()) {
-      this.setAmbientLux(this.ambientLux, false);
-    }
-    this.notify({ type: 'flashed', params: this.flashedParams });
-    this.notify({ type: 'stateChange', reason: 'sensorChange' });
-  }
-
-  // ---------------------------------------------------------------------------------------
-  // Simulation step
-  // ---------------------------------------------------------------------------------------
 
   /** True while any soft-dim channel ramp or motorized car-gate travel has not yet reached its target. */
   public hasPendingAnimations(): boolean {
@@ -1623,10 +1415,6 @@ export class KNXPropertyBusController implements KnxZoneBus {
     }
   }
 
-  // ---------------------------------------------------------------------------------------
-  // Internals
-  // ---------------------------------------------------------------------------------------
-
   private clampForCircuit(circuitId: CircuitId, pct: number): number {
     const clamped = Math.max(0, Math.min(100, Math.round(pct)));
     const circuit = this.circuitById.get(circuitId);
@@ -1698,7 +1486,7 @@ export class KNXPropertyBusController implements KnxZoneBus {
 
   private prefix(sourcePa: string, location?: string): string {
     if (sourcePa === this.project.centralPa.aiBridge) return 'AI Gateway → ';
-    if (location) return `Corston (${location}) → `;
+    if (location) return `Switch (${location}) → `;
     const button = this.pushButtonByPa.get(sourcePa);
     return button ? `${button.name} (${button.pa}) → ` : '';
   }

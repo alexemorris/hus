@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * `husjs audit` — deterministic architectural & 1PV walkthrough verification suite CLI.
+ * `husjs audit` — deterministic architectural & first-person walkthrough verification suite CLI.
  *
  * Loads any Hus.js house definition or `PropertySceneProfile` headlessly in Node via Vite SSR,
  * constructs the full 3D scene graph, and runs the 4 architectural audit checks:
  *   1. zFighting   (coplanar triangle overlap detector, epsilon = 0.35 mm)
  *   2. cutaway     (cutawayWall descriptor integrity & missing wall attachments)
  *   3. doorSwings  (swept 3D OBB door-swing & drawer-slide collision clearance)
- *   4. walkthrough (staircase vertical headroom >= 1.95 m & 20 cm 1PV capsule BFS reachability)
+ *   4. walkthrough (staircase vertical headroom >= 1.95 m & 20 cm first-person capsule BFS reachability)
  *
  * Usage:
  *   husjs audit --house simple-flat
@@ -18,6 +18,7 @@
 import { existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { parseCliFlags } from './cli-args.mjs';
 import { resolveHouseModulePath } from './husjs-zfight.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -29,82 +30,40 @@ const CHECK_LABELS = {
   zFighting: 'Z-Fighting Coplanar Overlap',
   cutaway: 'Cutaway Wall Integrity',
   doorSwings: 'Door-Swing & Drawer Clearance',
-  walkthrough: '1PV Walkthrough & Stair Headroom',
+  walkthrough: 'First-Person Walkthrough & Stair Headroom',
 };
 
-const VALUE_FLAGS = new Set(['house', 'skip']);
-const BOOLEAN_FLAGS = new Set(['json', 'strict', 'all-examples']);
+const AUDIT_CLI_OPTIONS = {
+  house: { type: 'string' },
+  skip: { type: 'string' },
+  json: { type: 'boolean' },
+  strict: { type: 'boolean' },
+  'all-examples': { type: 'boolean' },
+};
 
 export function parseAuditCliArgs(argv) {
-  /** @type {Record<string, string>} */
-  const flags = {};
-  let help = false;
-  let json = false;
-  let strict = false;
-  let allExamples = false;
+  const { values } = parseCliFlags(argv, AUDIT_CLI_OPTIONS);
 
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === '--help' || arg === '-h') {
-      help = true;
-      continue;
-    }
-    if (!arg.startsWith('--')) {
-      throw new Error(`Unexpected positional argument '${arg}'`);
-    }
-    const eqIdx = arg.indexOf('=');
-    const key = eqIdx >= 0 ? arg.slice(2, eqIdx) : arg.slice(2);
-
-    if (BOOLEAN_FLAGS.has(key)) {
-      if (eqIdx >= 0) {
-        const val = arg.slice(eqIdx + 1).toLowerCase();
-        if (val !== 'true' && val !== 'false' && val !== '1' && val !== '0') {
-          throw new Error(`Invalid boolean value for '--${key}': '${val}'`);
-        }
-        const enabled = val === 'true' || val === '1';
-        if (key === 'json') json = enabled;
-        if (key === 'strict') strict = enabled;
-        if (key === 'all-examples') allExamples = enabled;
-      } else {
-        if (key === 'json') json = true;
-        if (key === 'strict') strict = true;
-        if (key === 'all-examples') allExamples = true;
-      }
-      continue;
-    }
-
-    if (!VALUE_FLAGS.has(key)) {
-      throw new Error(`Unknown flag '--${key}'`);
-    }
-
-    if (eqIdx >= 0) {
-      flags[key] = arg.slice(eqIdx + 1);
-    } else {
-      const next = argv[i + 1];
-      if (next === undefined || next.startsWith('--')) {
-        throw new Error(`Missing value for flag '--${key}'`);
-      }
-      flags[key] = next;
-      i++;
-    }
-  }
-
-  if (help) {
+  if (values.help) {
     return { help: true };
   }
 
-  if (allExamples && flags.house !== undefined) {
+  const json = values.json === true;
+  const strict = values.strict === true;
+  const allExamples = values['all-examples'] === true;
+
+  if (allExamples && values.house !== undefined) {
     throw new Error('Cannot combine --house with --all-examples');
   }
 
-  if (flags.house === '') {
+  if (values.house === '') {
     throw new Error("Flag '--house' needs a non-empty value");
   }
 
   /** @type {string[]} */
   const skipChecks = [];
-  if (flags.skip !== undefined && flags.skip.trim().length > 0) {
-    for (const raw of flags.skip.split(',')) {
+  if (values.skip !== undefined && values.skip.trim().length > 0) {
+    for (const raw of values.skip.split(',')) {
       const check = raw.trim();
       if (!check) continue;
       if (!VALID_CHECKS.has(check)) {
@@ -120,7 +79,7 @@ export function parseAuditCliArgs(argv) {
 
   return {
     help: false,
-    house: flags.house ?? DEFAULT_HOUSE,
+    house: values.house ?? DEFAULT_HOUSE,
     allExamples,
     json,
     strict,
@@ -132,13 +91,13 @@ export function printAuditHelp(log = console.log) {
   log(`Usage: husjs audit [options]
        node tools/husjs-audit.mjs [options]
 
-Runs the built-in architectural & 1PV walkthrough verification suite on a Hus.js house.
+Runs the built-in architectural & first-person walkthrough verification suite on a Hus.js house.
 
 Checks:
   zFighting      Coplanar triangle z-fighting overlap detector (epsilon = 0.35 mm)
   cutaway        Cutaway wall descriptor validity & missing wall attachments
   doorSwings     Swept 3D OBB door-swing & drawer-slide collision clearance
-  walkthrough    Staircase vertical headroom (>= 1.95 m) & 20 cm 1PV capsule BFS reachability
+  walkthrough    Staircase vertical headroom (>= 1.95 m) & 20 cm first-person capsule BFS reachability
 
 Options:
   --house <id-or-path>     House id ('simple-flat', 'simple-house', 'stahl-house',) or path to a .ts/.js house module
@@ -303,13 +262,13 @@ function formatAuditTable(houseId, report, strict) {
 
   const lines = [
     `[husjs audit] ${houseId}: ${overallLabel} (${report.errorCount} error(s), ${report.warningCount} warning(s), ${report.durationMs.toFixed(0)} ms)`,
-    '  Check                            | Status | Errors | Warnings | Time (ms)',
-    '-----------------------------------+--------+--------+----------+----------',
+    '  Check                                     | Status | Errors | Warnings | Time (ms)',
+    '--------------------------------------------+--------+--------+----------+----------',
   ];
 
   for (const check of CHECK_ORDER) {
     const c = report.checks[check];
-    const label = CHECK_LABELS[check].padEnd(32, ' ');
+    const label = CHECK_LABELS[check].padEnd(41, ' ');
     const statusRaw =
       c.status === 'skipped'
         ? 'SKIP'

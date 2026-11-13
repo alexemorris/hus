@@ -170,9 +170,7 @@ function buildDecoFourSpokeCrosstop(
   return group;
 }
 
-// ---------------------------------------------------------------------------
-// 1. Perrin & Rowe `3142PF` Deco 3-Hole Basin Mixer w/ Pop-Up Waste
-// ---------------------------------------------------------------------------
+// Perrin & Rowe `3142PF` Deco 3-Hole Basin Mixer w/ Pop-Up Waste
 
 export function buildDeco3HoleBasinMixer3142(
   opts: PerrinRoweDeco3HoleBasinMixerOptions
@@ -188,7 +186,7 @@ export function buildDeco3HoleBasinMixer3142(
   const root = new THREE.Group();
   root.name = namePrefix;
 
-  // --- Central Faceted Art Deco Spout + Pop-Up Pull Rod (61mm AF base, H=130mm knob, 135mm reach) ---
+  // Central Faceted Art Deco Spout + Pop-Up Pull Rod (61mm AF base, H=130mm knob, 135mm reach)
   const spoutGroup = new THREE.Group();
   spoutGroup.name = `${namePrefix}.centralSpout`;
 
@@ -258,7 +256,7 @@ export function buildDeco3HoleBasinMixer3142(
 
   root.add(spoutGroup);
 
-  // --- Left (Hot) & Right (Cold) Deco Side Valves (48mm AF plinth, H = 95mm overall, ±100mm CRS) ---
+  // Left (Hot) & Right (Cold) Deco Side Valves (48mm AF plinth, H = 95mm overall, ±100mm CRS)
   const halfSpread = valveSpreadM * 0.5;
   for (const side of ['hotLeft', 'coldRight'] as const) {
     const xPos = side === 'hotLeft' ? -halfSpread : halfSpread;
@@ -319,10 +317,8 @@ export function buildDeco3HoleBasinMixer3142(
   });
 }
 
-// ---------------------------------------------------------------------------
-// 2. Perrin & Rowe `DSS1PF` Deco Concealed Thermostatic Shower Set
+// Perrin & Rowe `DSS1PF` Deco Concealed Thermostatic Shower Set
 //    (`5158PF` + `5193PF` + `5184PF` + `5135PF` + `5140PF` + `5195PF` + `5146PF`)
-// ---------------------------------------------------------------------------
 
 export function buildDecoConcealedShowerSet(
   opts: PerrinRoweDecoConcealedShowerSetOptions
@@ -343,8 +339,8 @@ export function buildDecoConcealedShowerSet(
   const root = new THREE.Group();
   root.name = namePrefix;
 
-  // --- A. `5158PF` Deco Concealed Thermostatic Mixer + `5193PF` Deco 2-Way Diverter ---
-  // Grouped together under `thermostaticValve5158` so Room 20 can mount both controls cleanly
+  // `5158PF` Deco Concealed Thermostatic Mixer + `5193PF` Deco 2-Way Diverter
+  // Grouped together under `thermostaticValve5158` so callers can mount both controls cleanly
   // on the South 150mm stud wetroom wall inside the 860mm arch!
   const valveGroup = new THREE.Group();
   valveGroup.name = `${namePrefix}.thermostaticValve5158`;
@@ -461,7 +457,7 @@ export function buildDecoConcealedShowerSet(
   valveGroup.add(diverterGroup);
   root.add(valveGroup);
 
-  // --- B. `5184PF` 410mm Deco Wall Arm + `5135PF` (`5105PF`) Ø200 × 70mm Stepped Deco Deluge Rose ---
+  // `5184PF` 410mm Deco Wall Arm + `5135PF` (`5105PF`) Ø200 × 70mm Stepped Deco Deluge Rose
   const overheadGroup = new THREE.Group();
   overheadGroup.name = `${namePrefix}.overheadShower`;
   overheadGroup.position.set(0, overheadArmYM, 0);
@@ -575,7 +571,7 @@ export function buildDecoConcealedShowerSet(
   overheadGroup.add(roseGroup);
   root.add(overheadGroup);
 
-  // --- C. `5140PF` 600mm CRS Deco Slide Rail + `5195PF` Deco Handshower + `5146PF` Wall Outlet ---
+  // `5140PF` 600mm CRS Deco Slide Rail + `5195PF` Deco Handshower + `5146PF` Wall Outlet
   const railGroup = new THREE.Group();
   railGroup.name = `${namePrefix}.slideRailAssembly`;
   railGroup.position.set(slideRailOffsetXM, slideRailCenterYM, 0);
@@ -771,9 +767,7 @@ export function buildDecoConcealedShowerSet(
   });
 }
 
-// ---------------------------------------------------------------------------
-// 3. Perrin & Rowe `6122PF` Deco Twin-Prong Robe Hook (55mm AF, W75 × D48mm)
-// ---------------------------------------------------------------------------
+// Perrin & Rowe `6122PF` Deco Twin-Prong Robe Hook (55mm AF, W75 × D48mm)
 
 export function buildDecoRobeHook6122(opts: PerrinRoweDecoRobeHookOptions): THREE.Group {
   const { namePrefix, finish } = opts;
@@ -825,9 +819,7 @@ export function buildDecoRobeHook6122(opts: PerrinRoweDecoRobeHookOptions): THRE
   return finalizeSanitaryGroup(root, 'sanitary');
 }
 
-// ---------------------------------------------------------------------------
-// 4. Perrin & Rowe `6148PF` Deco Wall Toilet Roll Holder (W160 × H100 × D75mm)
-// ---------------------------------------------------------------------------
+// Perrin & Rowe `6148PF` Deco Wall Toilet Roll Holder (W160 × H100 × D75mm)
 
 export function buildDecoPaperHolder6148(opts: PerrinRoweDecoPaperHolderOptions): THREE.Group {
   const { namePrefix, finish, includePaperRoll = true } = opts;

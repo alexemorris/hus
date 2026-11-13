@@ -472,8 +472,6 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
     this.walkthrough.restoreFromSessionIfActive(this.camera.getPoseSnapshot());
   }
 
-  // --- Frame loop -----------------------------------------------------------------
-
   public handleResize(): void {
     const w = this.canvas.clientWidth;
     const h = Math.max(1, this.canvas.clientHeight);
@@ -678,7 +676,6 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
     if (!cameraMoved && !this.userInteracting) this.graphics.notifyIdle();
   }
 
-
   /** Re-evaluates cutaways, point-light culling, the current room and view listeners. */
   protected refreshView(forceNotifyView: boolean): void {
     const rig = this.camera.rig;
@@ -747,8 +744,6 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
       });
     }
   }
-
-  // --- Composite operations ------------------------------------------------------
 
   /** Re-frames the camera on the current room (or the default overview). */
   public recenterView(): void {
@@ -1040,17 +1035,17 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
     this.environment.bakeProceduralEnvironments(glRenderer);
     this.environment.applyTimeOfDay(this.environment.currentMinutes, this.scene);
 
-    // 1. Load & PMREM-bake the 512x256 countryside HDRI upfront during #loading-screen
+    // Load & PMREM-bake the 512x256 HDRI upfront during #loading-screen
     //    so zero post-boot HDR fetch/decode/PMREM stalls ever occur after loading.finish().
     await onProgress?.('Loading countryside HDRI…', 0.72);
     await this.environment.preloadActiveHdr(glRenderer);
 
-    // 2. Upload 100% of unique scene textures (DataTextures, HDR PMREM, async images, remaining canvases)
+    // Upload unique scene textures (DataTextures, HDR PMREM, async images, canvases)
     //    to GPU VRAM upfront while #loading-screen is visible so zero post-boot texture uploads occur.
     await onProgress?.('Uploading PBR surface maps…', 0.80);
     const uploadedTextures = await this.uploadAllSceneTexturesUpfront();
 
-    // 3. Synchronize starting exterior view & matrices, then compile 100% of unique scene
+    // Synchronize starting exterior view & matrices, then compile unique scene
     //    GPURenderPipelines (including hidden LOD0/LOD1/LOD2 rooms, cutaway walls, doors,
     //    transparent glass, DoubleSide, mirrored negative-scale, and cutaway-toggled light variants)
     //    asynchronously in parallel against the exact MSAA rgba16float PassNode target.
@@ -1092,7 +1087,7 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
 
     await this.compileSceneAcrossTimeOfDayBuckets(perspCam);
 
-    // 4. Render Frame 0 (including the 4096x4096 directional shadow pass while zero-area warmup
+    // Render Frame 0 (including the 4096x4096 directional shadow pass while zero-area warmup
     //    dummies are attached so all shadow-caster depth pipelines also compile upfront).
     await onProgress?.('Rendering first frame…', 0.96);
     this.renderer.invalidateShadows();

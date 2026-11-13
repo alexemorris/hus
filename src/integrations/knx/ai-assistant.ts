@@ -14,10 +14,6 @@ import type { KnxLightingZone, KnxProject } from './project.ts';
  * common commands ("barn downlights 40%", "office off", "kitchen night mode").
  */
 
-// -----------------------------------------------------------------------------
-// Public contract
-// -----------------------------------------------------------------------------
-
 /** Zone-level actuator objects (scene / night / full / off) the assistant drives. */
 export interface KnxAssistantZoneBus {
   recallZoneScene(zoneId: RoomZoneId, sceneIndex: number, sourcePa?: string, location?: string): void;
@@ -55,7 +51,7 @@ export type KnxAssistantBus = Pick<
     getTargetLevels(): Readonly<Partial<Record<CircuitId, number>>>;
   };
 
-/** A non-KNX scene device the assistant can trigger by name (e.g. the barn pool-table break). */
+/** A non-KNX scene device the assistant can trigger by name (e.g. an animated prop or scene sequence). */
 export interface KnxAssistantDevice {
   /** Interactable id passed to {@link KnxAssistantEnvironment.triggerDevice}. */
   readonly id: string;
@@ -172,10 +168,6 @@ export interface AIAssistantExecutionResult {
 
 export type KnxAssistantModel = 'gemini-3.5-flash-lite' | 'gemini-3.5-flash';
 
-// -----------------------------------------------------------------------------
-// Internals
-// -----------------------------------------------------------------------------
-
 interface VertexFunctionCallPart {
   readonly name?: string;
   readonly args?: Readonly<Record<string, unknown>>;
@@ -245,10 +237,6 @@ function parseZoneMode(raw: unknown): ZoneModeCommand | null {
   if (v === 'off' || v === 'dark') return 'off';
   return null;
 }
-
-// -----------------------------------------------------------------------------
-// Tool schema (generated from the project)
-// -----------------------------------------------------------------------------
 
 /** Builds the Gemini function declarations for a project. */
 export function buildKnxAiTools(project: KnxAssistantProject): KNXFunctionDeclaration[] {
@@ -411,10 +399,6 @@ export function buildKnxAiTools(project: KnxAssistantProject): KNXFunctionDeclar
   );
   return tools;
 }
-
-// -----------------------------------------------------------------------------
-// Assistant
-// -----------------------------------------------------------------------------
 
 export class KNXAIAssistant {
   private readonly bus: KnxAssistantBus;
@@ -659,8 +643,6 @@ export class KNXAIAssistant {
     return { executedCalls, summaries };
   }
 
-  // --- Name coercion ---------------------------------------------------------------------------
-
   private resolveZoneId(raw: unknown): RoomZoneId | null {
     if (typeof raw !== 'string' || !raw.trim()) return null;
     const exact = this.project.zones.find((z) => z.id === raw);
@@ -818,8 +800,6 @@ export class KNXAIAssistant {
     }
   }
 
-  // --- Execution -------------------------------------------------------------------------------
-
   public invokeToolCall(call: KNXToolCall): string {
     const pa = this.sourcePa;
     switch (call.name) {
@@ -937,8 +917,6 @@ export class KNXAIAssistant {
       }
     }
   }
-
-  // --- Offline parser --------------------------------------------------------------------------
 
   /** Parses a prompt without the model; exposed for tests and offline use. */
   public parseLocally(prompt: string): KNXToolCall[] {
@@ -1064,10 +1042,6 @@ export class KNXAIAssistant {
 }
 
 export { TV_ARTWORKS };
-
-// -----------------------------------------------------------------------------
-// Voice input (Web Speech API, strictly typed)
-// -----------------------------------------------------------------------------
 
 interface SpeechRecognitionAlternativeLike {
   readonly transcript: string;

@@ -7,10 +7,6 @@ import {
   type GlbExportViewerLike,
 } from './glb-scene-exporter.ts';
 
-// ---------------------------------------------------------------------------
-// Minimal DOM stand-ins (Node has no canvas, `document` or `FileReader`)
-// ---------------------------------------------------------------------------
-
 interface FakeImageData {
   readonly data: Uint8ClampedArray;
   readonly width: number;
@@ -127,10 +123,6 @@ afterAll(() => {
   vi.unstubAllGlobals();
 });
 
-// ---------------------------------------------------------------------------
-// `.glb` container helpers
-// ---------------------------------------------------------------------------
-
 interface GltfTextureRef {
   readonly index: number;
   readonly extensions?: { readonly KHR_texture_transform?: { readonly scale?: number[] } };
@@ -197,8 +189,6 @@ function readExportedImage(glb: ParsedGlb, textureIndex: number): FakeImageData 
     data: new Uint8ClampedArray(bytes.subarray(12)),
   };
 }
-
-// ---------------------------------------------------------------------------
 
 describe('convertHeightfieldToNormalRgba', () => {
   const size = 8;

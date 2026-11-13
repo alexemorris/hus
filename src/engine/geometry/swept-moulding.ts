@@ -1075,7 +1075,7 @@ export function addCasedArchitravePortal(
 }
 
 /**
- * Crown cornice cross-section in `(d, h)` for bespoke floor-to-ceiling Shaker cabinetry & vaulted wardrobes:
+ * Crown cornice cross-section in `(d, h)` for floor-to-ceiling Shaker cabinetry & vaulted wardrobes:
  * - `d` (`0..projection`) projects outward from the cabinetry front face,
  * - `h` (`-height..+0.004`) hangs downward from the ceiling line (`h = 0`) when swept along an increasing
  *   horizontal/raked ceiling path `(u0, y0) -> (u1, y1)`.
@@ -1166,7 +1166,7 @@ export interface SolidOakWindowTrimOptions {
 }
 
 /**
- * Adds bespoke internal window trim:
+ * Adds internal window trim:
  * 1. `24 mm` thick bullnose window board (`R = 12mm` half-round front edge) with `30 mm` returned horns,
  * 2. `5 mm`-quirked 3-sided 45°-mitred `75 mm × 20 mm` Ogee/Torus window architrave seated flush on the board,
  * 3. Moulded `18 × 36 mm` Ogee/Cavetto under-sill apron flush beneath the window board.
@@ -1190,7 +1190,7 @@ export function addSolidOakWindowTrim(
   const uArchOuterLeft = options.skipArchitrave ? uLeft : uArchLeft - archW;
   const uArchOuterRight = options.skipArchitrave ? uRight : uArchRight + archW;
 
-  // 1. 24mm R=12mm Half-Round Bullnose Window Board with exact 30mm returned horns on each side
+  // 24mm R=12mm half-round bullnose window board with 30mm returned horns on each side
   const sillWidth = Math.max(0.12, uArchOuterRight - uArchOuterLeft + 0.060);
   const boardH = 0.024;
   const boardBotY = options.sillY + 0.004;
@@ -1240,7 +1240,7 @@ export function addSolidOakWindowTrim(
   windowBoard.receiveShadow = true;
   parent.add(windowBoard);
 
-  // 2. 3-Sided 45°-Mitred Window Architrave stepped back by a 5mm reveal quirk & seated flush on the board
+  // 3-sided 45°-mitred window architrave stepped back by a 5mm reveal quirk, seated flush on the board
   const archBotY = boardTopY;
   if (!options.skipArchitrave && uArchRight - uArchLeft > 0.08 && options.headY - archBotY > 0.12) {
     const innerHeadY = options.headY - 0.006 + quirk;
@@ -1272,7 +1272,7 @@ export function addSolidOakWindowTrim(
     parent.add(oakArchitrave);
   }
 
-  // 3. Moulded 18 × 36mm Ogee Under-Sill Apron seated flush beneath the window board
+  // Moulded 18 × 36mm ogee under-sill apron seated flush beneath the window board
   if (!options.skipUnderApron) {
     const apronSpan = Math.max(0.12, uArchOuterRight - uArchOuterLeft);
     const apronH = 0.036;

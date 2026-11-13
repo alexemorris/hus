@@ -211,7 +211,7 @@ export function buildBcDesignsCopperBoatBath(
   const scaleX = lengthM / 1.700;
   const scaleZ = widthM / 0.740;
 
-  // 1) Overhanging gloss-white bullnose rolled rim (~52mm end overhang, ~46mm side overhang, 47mm vertical bullnose)
+  // Overhanging gloss-white bullnose rolled rim (~52mm end overhang, ~46mm side overhang, 47mm vertical bullnose)
   const rimOverhangA = 0.052 * scaleX;
   const rimOverhangB = 0.046 * scaleZ;
   const rimBullHalfH = 0.0235; // 47mm thick exterior white bullnose rolled rim
@@ -219,7 +219,7 @@ export function buildBcDesignsCopperBoatBath(
   const aBodyTop = aMax - rimOverhangA; // 0.798m on 1.70m bath
   const bBodyTop = bMax - rimOverhangB; // 0.324m on 0.74m bath
 
-  // 2) Tailored cottage frustum rake (~15.5° inward rake at rounded ends -> 1336mm waist matching UK 1342mm CAD,
+  // Tailored cottage frustum rake (~15.5° inward rake at rounded ends -> 1336mm waist matching UK 1342mm CAD,
   //    ~8.0° inward rake along front/back walls -> 536mm waist width)
   const waistY = centerRimY * 0.332; // ~0.212m (~33% of center height — tall signature cottage moulded plinth)
   const endBodyRake = 0.130 * scaleX;
@@ -228,8 +228,8 @@ export function buildBcDesignsCopperBoatBath(
   const aWaist = aBodyTop - endBodyRake; // 0.668m (1336mm waist length)
   const bWaist = bBodyTop - sideBodyRake; // 0.268m (536mm waist width)
 
-  // --- 1. Tall 3-Part Architectural Moulded Plinth / Skirt (y = 0 .. waistY) ---
-  // Matches Emily's Slide 3 burnished-bronze plinth silhouette:
+  // Tall 3-Part Architectural Moulded Plinth / Skirt (y = 0 .. waistY)
+  // Burnished-bronze plinth silhouette:
   // - Upper cambered collar moulding (top 44mm of plinth): steps crisply +16mm/+14mm proud at waistY,
   //   cants gently down to +11mm/+10mm, then steps inward into a natural shadow throat (+4mm/+3.5mm)
   // - Tall smooth inward-canted plinth skirt band (118mm tall): tapers from +4mm/+3.5mm down to -8mm/-6mm
@@ -351,7 +351,7 @@ export function buildBcDesignsCopperBoatBath(
   waistSeamMesh.name = `${p}.waistShadowSeam`;
   group.add(waistSeamMesh);
 
-  // --- 2. Inward-Tapering Burnished Copper/Bronze Body (y = waistY .. underside of white rolled rim) ---
+  // Inward-Tapering Burnished Copper/Bronze Body (y = waistY .. underside of white rolled rim)
   const hullSteps = 12;
   const hullRings: RingSpec[] = [
     { a: aWaist - 0.005, b: bWaist - 0.005, yAt: () => waistY - 0.0005, vUv: 0.0 },
@@ -387,7 +387,7 @@ export function buildBcDesignsCopperBoatBath(
   copperShellMesh.name = `${p}.copperOuterShell`;
   group.add(copperShellMesh);
 
-  // --- 3. Gloss-White Overhanging Bullnose Roll-Top Rim & Double-Ended Interior Bowl ---
+  // Gloss-White Overhanging Bullnose Roll-Top Rim & Double-Ended Interior Bowl
   const rimTotalWidthA = 0.074 * scaleX;
   const rimTotalWidthB = 0.066 * scaleZ;
   const innerLipDrop = 0.018;
@@ -485,7 +485,7 @@ export function buildBcDesignsCopperBoatBath(
   innerBowlMesh.name = `${p}.acrymiteInnerBowl`;
   group.add(innerBowlMesh);
 
-  // --- 4. WAS050G Polished Brass Center Dome Clicker Waste & Internal Circular Perforated Overflow Rose ---
+  // WAS050G Polished Brass Center Dome Clicker Waste & Internal Circular Perforated Overflow Rose
   const wasteGroup = new THREE.Group();
   wasteGroup.name = `${p}.wasteAndOverflow`;
   group.add(wasteGroup);

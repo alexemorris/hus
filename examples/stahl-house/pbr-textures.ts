@@ -7,10 +7,8 @@ export interface PbrTextureSuite {
   readonly roughnessMap: THREE.DataTexture;
 }
 
-// ---------------------------------------------------------------------------
 // Ultra-Fast Branchless Palette-LUT PBR Generator (`<= 320 ms` cold boot!)
 // Generates true 2048x2048 & 1024x1024 albedo/normal/roughness DataTextures.
-// ---------------------------------------------------------------------------
 const N256 = 256;
 const M255 = 255;
 
@@ -219,11 +217,9 @@ function makeSuite(
   };
 }
 
-// ---------------------------------------------------------------------------
-// 1. 2048x2048 Trowelled Sealed Concrete (5'x5' = 1.524m scored 4x4 bay grid)
+// 2048x2048 Trowelled Sealed Concrete (5'x5' = 1.524m scored 4x4 bay grid)
 //    Bakes 4 distinct 512x512 slab-bay variants & blit-assembles a non-repeating
 //    4x4 bay 2048x2048 albedo + 1024x1024 normal & roughness in ~35 ms!
-// ---------------------------------------------------------------------------
 interface SharedConcreteAll {
   readonly intMap2048: THREE.DataTexture;
   readonly terMap2048: THREE.DataTexture;
@@ -358,9 +354,7 @@ export function getScoredConcretePbr2048(variant: 'interior' | 'terrace'): PbrTe
     : { map: c.terMap2048, normalMap: c.normTex1024, roughnessMap: c.terRough1024 };
 }
 
-// ---------------------------------------------------------------------------
-// 2. 1024x1024 Book-Matched American Black Walnut
-// ---------------------------------------------------------------------------
+// 1024x1024 Book-Matched American Black Walnut
 export function getWalnutPbr1024(): PbrTextureSuite {
   return getOrCreateCachedTexture('stahl:pbr:walnut1024', () => {
     const size = 1024;
@@ -412,9 +406,7 @@ export function getWalnutPbr1024(): PbrTextureSuite {
   });
 }
 
-// ---------------------------------------------------------------------------
-// 3. 1024x1024 Molded Santos Palisander Rosewood (Eames 670/671)
-// ---------------------------------------------------------------------------
+// 1024x1024 Molded Santos Palisander Rosewood (Eames 670/671)
 export function getRosewoodPbr1024(): PbrTextureSuite {
   return getOrCreateCachedTexture('stahl:pbr:rosewood1024', () => {
     const { fbmCoarse, fbmMed, speckle, hGrid } = getTables();
@@ -459,9 +451,7 @@ export function getRosewoodPbr1024(): PbrTextureSuite {
   });
 }
 
-// ---------------------------------------------------------------------------
-// 4. 1024x1024 Vein-Cut Honed Roman Travertine
-// ---------------------------------------------------------------------------
+// 1024x1024 Vein-Cut Honed Roman Travertine
 export function getTravertinePbr1024(): PbrTextureSuite {
   return getOrCreateCachedTexture('stahl:pbr:travertine1024', () => {
     const { fbmCoarse, fbmMed, fbmFine, speckle, hGrid } = getTables();
@@ -499,9 +489,7 @@ export function getTravertinePbr1024(): PbrTextureSuite {
   });
 }
 
-// ---------------------------------------------------------------------------
-// 5. 1024x1024 Palos Verdes Stone & Decomposed Granite Outcrop Rock
-// ---------------------------------------------------------------------------
+// 1024x1024 Palos Verdes Stone & Decomposed Granite Outcrop Rock
 export function getStonePbr1024(kind: 'palosVerdes' | 'decomposedGranite'): PbrTextureSuite {
   return getOrCreateCachedTexture(`stahl:pbr:stone1024:${kind}`, () => {
     const { fbmCoarse, fbmMed, fbmFine, speckle, hGrid } = getTables();
@@ -545,9 +533,7 @@ export function getStonePbr1024(kind: 'palosVerdes' | 'decomposedGranite'): PbrT
   });
 }
 
-// ---------------------------------------------------------------------------
-// 6. 1024x1024 High-Pile Cream Shag Wool Rug
-// ---------------------------------------------------------------------------
+// 1024x1024 High-Pile Cream Shag Wool Rug
 export function getShagWoolPbr1024(): PbrTextureSuite {
   return getOrCreateCachedTexture('stahl:pbr:shag1024', () => {
     const { fbmCoarse, fbmMed, fbmFine, speckle, hGrid } = getTables();
@@ -579,9 +565,7 @@ export function getShagWoolPbr1024(): PbrTextureSuite {
   });
 }
 
-// ---------------------------------------------------------------------------
-// 7. 1024x1024 Woven Bouclé, Berber Loop & Fine Linen
-// ---------------------------------------------------------------------------
+// 1024x1024 Woven Bouclé, Berber Loop & Fine Linen
 export function getWovenTextilePbr1024(kind: 'boucle' | 'berber' | 'linen'): PbrTextureSuite {
   return getOrCreateCachedTexture(`stahl:pbr:textile1024:${kind}`, () => {
     const { fbmMed, fbmFine, speckle, hGrid } = getTables();
@@ -641,9 +625,7 @@ export function getWovenTextilePbr1024(kind: 'boucle' | 'berber' | 'linen'): Pbr
   });
 }
 
-// ---------------------------------------------------------------------------
-// 8. 1024x1024 Supple Pebble-Grain Aniline Leather
-// ---------------------------------------------------------------------------
+// 1024x1024 Supple Pebble-Grain Aniline Leather
 export function getLeatherPbr1024(): PbrTextureSuite {
   return getOrCreateCachedTexture('stahl:pbr:leather1024', () => {
     const { fbmCoarse, fbmMed, fbmFine, speckle, hGrid } = getTables();
@@ -672,11 +654,9 @@ export function getLeatherPbr1024(): PbrTextureSuite {
   });
 }
 
-// ---------------------------------------------------------------------------
-// 9. 1024x1024 Mosaic Tile Co. 4"x4" (102 mm) & Pool Waterline Ceramic Tiles
+// 1024x1024 Mosaic Tile Co. 4"x4" (102 mm) & Pool Waterline Ceramic Tiles
 //    Bakes 128x128/256x256 pillow-bevel normal & roughness + full 1024x1024
 //    per-tile kiln-varied glazed albedo!
-// ---------------------------------------------------------------------------
 interface SharedTileSurface {
   readonly normTex: THREE.DataTexture;
   readonly roughTex: THREE.DataTexture;
@@ -815,9 +795,7 @@ export function getCeramicTilePbr1024(variant: 'bathBlue4x4' | 'bathSand4x4' | '
   });
 }
 
-// ---------------------------------------------------------------------------
-// 10. 512x512 Painted Structural Steel, Brushed Anodized Metal & Fiberglass
-// ---------------------------------------------------------------------------
+// 512x512 Painted Structural Steel, Brushed Anodized Metal & Fiberglass
 export function getArchitecturalFinishPbr512(
   kind: 'paintedSteel' | 'anodizedAlum' | 'brushedStainless' | 'moldedFiberglass' | 'plaster'
 ): PbrTextureSuite {
@@ -868,9 +846,7 @@ export function getArchitecturalFinishPbr512(
   });
 }
 
-// ---------------------------------------------------------------------------
-// 11. Translucent Woven Wire Spark-Screen & Vinyl Yacht-Cord Textures
-// ---------------------------------------------------------------------------
+// Translucent Woven Wire Spark-Screen & Vinyl Yacht-Cord Textures
 export function getWovenSparkMeshTexture512(): THREE.DataTexture {
   return getOrCreateCachedTexture('stahl:pbr:sparkMesh512', () => {
     const c256 = new Uint32Array(256 * 256);

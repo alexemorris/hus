@@ -22,16 +22,16 @@ export function AssetInspectorPopover(): JSX.Element | null {
     return (
       <aside
         class="shell-inspector shell-glass asset-inspector-panel is-open is-empty"
-        aria-label="Smart asset inspector"
+        aria-label="Asset inspector"
       >
         <header class="shell-inspector-head is-static">
-          <span class="shell-inspector-title">Inspect Asset</span>
-          <span class="shell-pill">Pick 3D object</span>
+          <span class="shell-inspector-title">Inspect asset</span>
+          <span class="shell-pill">Pick an object</span>
           <button
             class="shell-icon-btn shell-icon-btn-sm"
             type="button"
-            title="Exit Inspect mode (Esc)"
-            aria-label="Exit Inspect mode"
+            title="Exit inspect mode (Esc)"
+            aria-label="Exit inspect mode"
             onClick={() => ctl.closeAssetInspector()}
           >
             <Icon name="close" size={16} />
@@ -39,8 +39,8 @@ export function AssetInspectorPopover(): JSX.Element | null {
         </header>
         <div class="hud-body asset-inspector-body">
           <p class="asset-inspector-hint">
-            Click any fixture, sanitaryware, appliance, window, or piece of furniture to inspect its
-            specification, SKU, finish, dimensions, and technical schematics.
+            Click any fixture, appliance, window, or furniture item to view its finish, dimensions,
+            and product links.
           </p>
         </div>
       </aside>
@@ -55,7 +55,7 @@ export function AssetInspectorPopover(): JSX.Element | null {
   return (
     <aside
       class="shell-inspector shell-glass asset-inspector-panel is-open"
-      aria-label="Smart asset inspector"
+      aria-label="Asset inspector"
     >
       <header class="shell-inspector-head is-static">
         <div class="asset-inspector-head-titles">
@@ -70,8 +70,8 @@ export function AssetInspectorPopover(): JSX.Element | null {
         <button
           class="shell-icon-btn shell-icon-btn-sm"
           type="button"
-          title="Close Asset Inspector (Esc)"
-          aria-label="Close Asset Inspector"
+          title="Close asset inspector (Esc)"
+          aria-label="Close asset inspector"
           onClick={() => ctl.closeAssetInspector()}
         >
           <Icon name="close" size={16} />
@@ -107,7 +107,7 @@ export function AssetInspectorPopover(): JSX.Element | null {
             )}
             {priceText && (
               <div class="asset-spec-row">
-                <dt>Guide Price</dt>
+                <dt>Guide price</dt>
                 <dd>{priceText}</dd>
               </div>
             )}
@@ -118,7 +118,7 @@ export function AssetInspectorPopover(): JSX.Element | null {
 
         {(actions.length > 0 || hasSpatialAudio) && (
           <section class="hud-section">
-            <div class="asset-inspector-section-label">Controls & Acoustics</div>
+            <div class="asset-inspector-section-label">Controls &amp; sound</div>
             <div class="asset-inspector-actions">
               {actions.map((act) => (
                 <button
@@ -139,13 +139,13 @@ export function AssetInspectorPopover(): JSX.Element | null {
                   onClick={() => ctl.playInspectedAssetSound()}
                 >
                   <Icon name="volume" size={14} />
-                  <span>Audition Spatial Sound</span>
+                  <span>Play spatial sound</span>
                 </button>
               )}
               <button
                 type="button"
                 class="hud-inline-btn asset-action-btn"
-                title="Frame camera onto this asset"
+                title="Frame this asset"
                 onClick={() => ctl.frameInspectedAsset()}
               >
                 <Icon name="target" size={14} />
@@ -157,7 +157,7 @@ export function AssetInspectorPopover(): JSX.Element | null {
 
         {links.length > 0 && (
           <section class="hud-section hud-section-last">
-            <div class="asset-inspector-section-label">Product & Technical Schematics</div>
+            <div class="asset-inspector-section-label">Product &amp; schematics</div>
             <div class="asset-inspector-links">
               {links.map((link) => (
                 <a

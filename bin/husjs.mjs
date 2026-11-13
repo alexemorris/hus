@@ -6,21 +6,22 @@
  *   husjs hdri [--preset <id>] [options]              Generate seamless 360° Radiance .hdr suite
  *   husjs export [--house <id-or-url>] [options]      Export a house to .glb / .blend
  *   husjs zfight [--house <id-or-path>] [options]     Detect coplanar 3D z-fighting overlaps
- *   husjs audit [--house <id-or-path>] [options]      Run architectural & 1PV walkthrough audit
+ *   husjs audit [--house <id-or-path>] [options]      Run architectural & first-person walkthrough audit
  *   husjs schedule [--house <id-or-path>] [options]   Export FF&E / sanitaryware / joinery schedule
  */
 
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { parseArgs } from 'node:util';
 
 const USAGE = `Usage: husjs <command> [options]
 
 Commands:
   terrain    Fetch elevation tiles and write a .husgrid.json terrain grid
-  hdri       Generate seamless 360° Radiance .hdr environment panoramas via Nano Banana
+  hdri       Generate seamless 360° Radiance .hdr environment panoramas via Gemini image generation
   export     Export a house to binary glTF (.glb) and/or Blender (.blend)
   zfight     Detect coplanar 3D triangle z-fighting overlaps in a house scene
-  audit      Run architectural & 1PV walkthrough verification suite on a house scene
+  audit      Run architectural & first-person walkthrough verification suite on a house scene
   schedule   Export FF&E, sanitaryware, joinery & appliance schedule (Markdown / CSV / JSON)
   help       Show this help message
 
@@ -45,9 +46,16 @@ Run 'husjs <command> --help' for the options of a command.`;
 export async function dispatchHusjsCli(argv, io = {}) {
   const log = io.log ?? console.log;
   const error = io.error ?? console.error;
-  const [command, ...rest] = argv;
+  const { values, positionals } = parseArgs({
+    args: argv.slice(0, 1),
+    options: { help: { type: 'boolean', short: 'h' } },
+    strict: false,
+    allowPositionals: true,
+  });
+  const command = positionals[0] ?? argv[0];
+  const rest = argv.slice(1);
 
-  if (command === undefined || command === 'help' || command === '--help' || command === '-h') {
+  if (values.help || command === undefined || command === 'help') {
     log(USAGE);
     return 0;
   }

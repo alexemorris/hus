@@ -70,7 +70,7 @@ export const DEFAULT_HUS_LOCATION: HouseLocation = {
   elevationM: 142,
 };
 
-/** Canonical weather conditions matching Platform 37 & Open-Meteo Met Office UKV classification. */
+/** Canonical weather conditions matching Open-Meteo Met Office UKV classification. */
 export type WeatherCondition =
   | 'clear'
   | 'partly_cloudy'

@@ -305,9 +305,7 @@ export function buildLefroyBrooksLaChapelleWashstand(
   const bowlHalfD = (bowlFrontZ - bowlRearZ) * 0.5;   // 0.138m
   const bowlHalfW = widthM * 0.5 - 0.074;             // 0.2135m (427mm interior bowl width)
 
-  // =========================================================================
-  // 1. `LB 7723` Vitreous China `1910 La Chapelle` 3TH Basin (575 × 468 × 895mm)
-  // =========================================================================
+  // `LB 7723` Vitreous China `1910 La Chapelle` 3TH Basin (575 × 468 × 895mm)
   const basinGroup = new THREE.Group();
   basinGroup.name = `${p}.laChapelleBasin7723`;
   root.add(basinGroup);
@@ -487,9 +485,7 @@ export function buildLefroyBrooksLaChapelleWashstand(
   wasteCap.position.set(0, bowlFloorY + 0.003, wasteZ);
   basinGroup.add(wasteCap);
 
-  // =========================================================================
-  // 2. `LB 3226BN` (`BN` Silver Nickel) Ball-Jointed Tubular Console Stand
-  // =========================================================================
+  // `LB 3226BN` (`BN` Silver Nickel) Ball-Jointed Tubular Console Stand
   const standGroup = new THREE.Group();
   standGroup.name = `${p}.consoleStand3226BN`;
   root.add(standGroup);
@@ -632,9 +628,7 @@ export function buildLefroyBrooksLaChapelleWashstand(
   towelRailMesh.name = `${standGroup.name}.bowedTowelRail570`;
   standGroup.add(towelRailMesh);
 
-  // =========================================================================
-  // 3. `6303PF` Exposed Pewter Bottle Trap + Rigid Ø15mm Supply Pipes
-  // =========================================================================
+  // `6303PF` Exposed Pewter Bottle Trap + Rigid Ø15mm Supply Pipes
   const plumbingGroup = new THREE.Group();
   plumbingGroup.name = `${p}.exposedPlumbing6303PF`;
   root.add(plumbingGroup);
@@ -764,9 +758,7 @@ export function buildLefroyBrooksLaChapelleWashstand(
     }
   }
 
-  // =========================================================================
   // Perrin & Rowe `Deco` `3142PF` 3TH Basin Mixer (`200mm` CRS at `z = 70mm`) or Composable Tap
-  // =========================================================================
   if (opts.tap === undefined || opts.tap === 'default') {
     const mixer = buildDeco3HoleBasinMixer3142({
       namePrefix: `${p}.deco3HoleMixer3142`,

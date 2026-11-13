@@ -579,7 +579,7 @@ function BusInspector({ deps: { knx } }: PanelProps): JSX.Element {
 /**
  * Smart home & KNX developer panel: scenes, wall switches, live circuits,
  * viewport / LOD / UFH toggles, UniFi simulation and the KNX bus inspector.
- * Renders entirely from the injected deps — no static DOM is required.
+ * Renders entirely from the injected deps; no static DOM is required.
  */
 export function DevSmartHomePanel({ deps }: { readonly deps: DevToolsDeps }): JSX.Element {
   const refresh = useLiveDeps(deps);

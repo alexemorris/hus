@@ -272,7 +272,7 @@ describe('Per-house scoped annotations & legacy migration', () => {
     expect(controller.getScopedApi().notes.getRecords()).toHaveLength(2);
     expect(syncedMarkerCounts[syncedMarkerCounts.length - 1]).toBe(2);
 
-    controller.setActiveHouse('stahl-house', 'Stahl House — Case Study #22');
+    controller.setActiveHouse('stahl-house', 'Stahl House (Case Study #22)');
     expect(controller.getHouseId()).toBe('stahl-house');
     expect(controller.getScopedApi().notes.getRecords()).toHaveLength(1);
     expect(controller.getScopedApi().notes.getRecords()[0]?.note).toBe('Stahl glass corner');
@@ -305,9 +305,9 @@ describe('Per-house scoped annotations & legacy migration', () => {
 
     const stahlReport = formatAnnotationsForAgent(
       [makeRecord(1, 'stahlPoolTerrace', 'Pool Terrace', 'Check deck joint')],
-      'Stahl House — Case Study #22'
+      'Stahl House (Case Study #22)'
     );
-    expect(stahlReport).toContain('# Stahl House — Case Study #22 3D Scene Annotations (1)');
+    expect(stahlReport).toContain('# Stahl House (Case Study #22) 3D Scene Annotations (1)');
     expect(stahlReport).not.toContain('Manor House');
 
     const payload = buildNotesJsonPayload(notes);

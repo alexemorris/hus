@@ -62,11 +62,6 @@ const COLOR_SNOW_FOG = new THREE.Color(0xdce5f0);
 const COLOR_DAYLIGHT_GI_CLEAR = new THREE.Color(1.0, 0.98, 0.94);
 const COLOR_DAYLIGHT_GI_OVERCAST = new THREE.Color(0.90, 0.95, 1.02);
 
-function smoothstepRange(edge0: number, edge1: number, x: number): number {
-  const t = THREE.MathUtils.clamp((x - edge0) / Math.max(1e-6, edge1 - edge0), 0, 1);
-  return t * t * (3 - 2 * t);
-}
-
 /**
  * Evaluates Spencer/NOAA solar + Meeus Ch. 47 lunar ephemeris, 3D `(Season × TimeSlot × WeatherRegime)`
  * environment coordinates, location/season climate capabilities, continuous `0..100%` two-stage
@@ -257,7 +252,7 @@ export class AtmosphereEphemerisSolver {
   }
 
   /**
-   * Modulates a base preset or continuous lighting state with continuous `0..100%` platform37-style
+   * Modulates a base preset or continuous lighting state with continuous `0..100%`
    * two-stage cloud-to-lighting & sky coupling (no `0..35%` dead zone!).
    * Returns `fogClearRadiusM` for the `renderGroup` fog uniform.
    */
@@ -285,8 +280,8 @@ export class AtmosphereEphemerisSolver {
       ? THREE.MathUtils.clamp(weatherState.fogIntensity, 0, 1)
       : 0;
 
-    const partlyBlend = smoothstepRange(0.04, 0.55, effCloudCover);
-    const overcastBlend = smoothstepRange(0.45, 0.96, effCloudCover);
+    const partlyBlend = THREE.MathUtils.smoothstep(effCloudCover, 0.04, 0.55);
+    const overcastBlend = THREE.MathUtils.smoothstep(effCloudCover, 0.45, 0.96);
     const nightFactor = this.currentNightFactor();
     const dayScatterWeight = 1.0 - nightFactor;
 
@@ -320,11 +315,11 @@ export class AtmosphereEphemerisSolver {
       Math.min(0.92, partlyBlend * 0.22 + overcastBlend * 0.66)
     );
 
-    const penumbraCurve = Math.pow(smoothstepRange(0.02, 0.95, effCloudCover), 1.15);
+    const penumbraCurve = Math.pow(THREE.MathUtils.smoothstep(effCloudCover, 0.02, 0.95), 1.15);
     target.sunShadowRadius = 1.0 + 27.0 * penumbraCurve + manualFogScale * 5.0;
-    const midCloudShadowSoften = 1.0 - smoothstepRange(0.42, 0.94, effCloudCover) * 0.34;
+    const midCloudShadowSoften = 1.0 - THREE.MathUtils.smoothstep(effCloudCover, 0.42, 0.94) * 0.34;
     const overcastShadowExtinction =
-      effCloudCover >= 0.995 ? 0.0 : 1.0 - smoothstepRange(0.86, 0.995, effCloudCover);
+      effCloudCover >= 0.995 ? 0.0 : 1.0 - THREE.MathUtils.smoothstep(effCloudCover, 0.86, 0.995);
     target.sunShadowIntensity = midCloudShadowSoften * overcastShadowExtinction;
 
     const attenuatedDaySolarFlux =
@@ -446,7 +441,7 @@ export class AtmosphereEphemerisSolver {
   ): THREE.Color {
     const horizon = this.horizonScratch.copy(baseHorizon);
     const coupling = weather.getAtmosphereCoupling();
-    const overcastBlend = smoothstepRange(0.45, 0.95, coupling.effCloudCover);
+    const overcastBlend = THREE.MathUtils.smoothstep(coupling.effCloudCover, 0.45, 0.95);
     if (overcastBlend > 0.01) {
       horizon.lerp(this.colorScratch.setHex(0x8896a6), overcastBlend * 0.35);
     }
