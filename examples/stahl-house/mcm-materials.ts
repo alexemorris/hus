@@ -1,119 +1,24 @@
 import * as THREE from 'three';
 import { applyMetricBoxUVs, getOrCreateCachedTexture } from 'husjs/materials';
 import { prepGeo } from 'husjs/objects';
+import {
+  configureDataTex,
+  getArchitecturalFinishPbr512,
+  getCeramicTilePbr1024,
+  getLeatherPbr1024,
+  getRosewoodPbr1024,
+  getShagWoolPbr1024,
+  getTravertinePbr1024,
+  getVinylYachtCordPbr512,
+  getWalnutPbr1024,
+  getWovenTextilePbr1024,
+  hashCell2D,
+} from './pbr-textures.ts';
 
-function hash2(ix: number, iy: number, seed: number): number {
-  let n = Math.imul(ix, 374761393) + Math.imul(iy, 668265263) + Math.imul(seed, 1442695041);
-  n = (n ^ (n >>> 13)) >>> 0;
-  n = Math.imul(n, 1274126177) >>> 0;
-  return ((n ^ (n >>> 16)) >>> 0) / 4294967295;
-}
-
-function vnoise(x: number, y: number, seed: number): number {
-  const ix = Math.floor(x);
-  const iy = Math.floor(y);
-  const fx = x - ix;
-  const fy = y - iy;
-  const ux = fx * fx * (3 - 2 * fx);
-  const uy = fy * fy * (3 - 2 * fy);
-  const a = hash2(ix, iy, seed);
-  const b = hash2(ix + 1, iy, seed);
-  const c = hash2(ix, iy + 1, seed);
-  const d = hash2(ix + 1, iy + 1, seed);
-  return a + (b - a) * ux + (c - a) * uy + (a - b - c + d) * ux * uy;
-}
-
-function fbm2(x: number, y: number, seed: number): number {
-  return (
-    vnoise(x, y, seed) * 0.55 +
-    vnoise(x * 2.07, y * 2.07, seed + 31) * 0.28 +
-    vnoise(x * 4.31, y * 4.31, seed + 73) * 0.17
-  );
-}
-
-interface PbrBundle {
-  readonly map: THREE.DataTexture;
-  readonly normalMap: THREE.DataTexture;
-  readonly roughnessMap: THREE.DataTexture;
-}
-
-function buildPbrDataBundle(
+function buildAlbedoTex(
   key: string,
   size: number,
-  normalScale: number,
   repeat: readonly [number, number],
-  sample: (u: number, v: number, x: number, y: number) => {
-    readonly r: number;
-    readonly g: number;
-    readonly b: number;
-    readonly h: number;
-    readonly rough: number;
-  }
-): PbrBundle {
-  return getOrCreateCachedTexture(key, () => {
-    const colorData = new Uint8Array(size * size * 4);
-    const normalData = new Uint8Array(size * size * 4);
-    const roughData = new Uint8Array(size * size * 4);
-    const heights = new Float32Array(size * size);
-
-    for (let y = 0; y < size; y++) {
-      const v = y / size;
-      for (let x = 0; x < size; x++) {
-        const u = x / size;
-        const s = sample(u, v, x, y);
-        heights[y * size + x] = s.h;
-        const idx = (y * size + x) * 4;
-        colorData[idx] = Math.max(0, Math.min(255, Math.round(s.r)));
-        colorData[idx + 1] = Math.max(0, Math.min(255, Math.round(s.g)));
-        colorData[idx + 2] = Math.max(0, Math.min(255, Math.round(s.b)));
-        colorData[idx + 3] = 255;
-        const rv = Math.max(8, Math.min(255, Math.round(s.rough * 255)));
-        roughData[idx] = rv;
-        roughData[idx + 1] = rv;
-        roughData[idx + 2] = rv;
-        roughData[idx + 3] = 255;
-      }
-    }
-
-    for (let y = 0; y < size; y++) {
-      const ym = (y - 1 + size) % size;
-      const yp = (y + 1) % size;
-      for (let x = 0; x < size; x++) {
-        const xm = (x - 1 + size) % size;
-        const xp = (x + 1) % size;
-        const dx = (heights[y * size + xp]! - heights[y * size + xm]!) * normalScale;
-        const dy = (heights[yp * size + x]! - heights[ym * size + x]!) * normalScale;
-        const inv = 1 / Math.hypot(dx, dy, 1);
-        const idx = (y * size + x) * 4;
-        normalData[idx] = Math.round((-dx * inv * 0.5 + 0.5) * 255);
-        normalData[idx + 1] = Math.round((-dy * inv * 0.5 + 0.5) * 255);
-        normalData[idx + 2] = Math.round((inv * 0.5 + 0.5) * 255);
-        normalData[idx + 3] = 255;
-      }
-    }
-
-    const cfg = (tex: THREE.DataTexture, srgb: boolean): THREE.DataTexture => {
-      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-      tex.repeat.set(repeat[0], repeat[1]);
-      if (srgb) tex.colorSpace = THREE.SRGBColorSpace;
-      tex.magFilter = THREE.LinearFilter;
-      tex.minFilter = THREE.LinearMipmapLinearFilter;
-      tex.generateMipmaps = true;
-      tex.needsUpdate = true;
-      return tex;
-    };
-
-    return {
-      map: cfg(new THREE.DataTexture(colorData, size, size, THREE.RGBAFormat), true),
-      normalMap: cfg(new THREE.DataTexture(normalData, size, size, THREE.RGBAFormat), false),
-      roughnessMap: cfg(new THREE.DataTexture(roughData, size, size, THREE.RGBAFormat), false),
-    };
-  });
-}
-
-function buildAlbedoTexture(
-  key: string,
-  size: number,
   paint: (u: number, v: number, x: number, y: number) => readonly [number, number, number]
 ): THREE.DataTexture {
   return getOrCreateCachedTexture(key, () => {
@@ -129,13 +34,7 @@ function buildAlbedoTexture(
         data[idx + 3] = 255;
       }
     }
-    const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    tex.magFilter = THREE.LinearFilter;
-    tex.minFilter = THREE.LinearMipmapLinearFilter;
-    tex.generateMipmaps = true;
-    tex.needsUpdate = true;
-    return tex;
+    return configureDataTex(data, size, true, repeat);
   });
 }
 
@@ -178,6 +77,8 @@ export interface McmMaterials {
   readonly serigraphMat: THREE.MeshStandardMaterial;
   readonly ceramicTeal: THREE.MeshStandardMaterial;
   readonly ceramicTerracotta: THREE.MeshStandardMaterial;
+  readonly stonewareWhite: THREE.MeshStandardMaterial;
+  readonly vinylYachtCord: THREE.MeshStandardMaterial;
   readonly muranoAmberGlass: THREE.MeshPhysicalMaterial;
   readonly vinylRecord: THREE.MeshStandardMaterial;
 }
@@ -187,358 +88,368 @@ let cachedMcmMaterials: McmMaterials | null = null;
 export function getMcmMaterials(): McmMaterials {
   if (cachedMcmMaterials) return cachedMcmMaterials;
 
-  // Book-matched American black walnut (512x512 cathedral & straight grain + open pores)
-  const walnutMaps = buildPbrDataBundle('stahl:mcm:walnut512', 512, 1.85, [1, 1], (u, v) => {
-    const bu = Math.abs((u * 2) % 2 - 1); // Book-matched symmetry across panel seam
-    const warp = fbm2(bu * 3.5, v * 2.2, 101) * 0.22;
-    const ring = Math.sin((bu * 15.0 + warp * 8.5 + Math.sin(v * Math.PI * 2) * 0.45) * Math.PI);
-    const fine = vnoise(bu * 95, v * 24, 113);
-    const pore = vnoise(bu * 180, v * 42, 127) < 0.14 ? -0.18 : 0;
-    const tone = 0.5 + 0.34 * ring + (fine - 0.5) * 0.22 + pore;
-    return {
-      r: 86 + tone * 46,
-      g: 55 + tone * 32,
-      b: 35 + tone * 21,
-      h: Math.max(0, Math.min(1, 0.55 + ring * 0.12 + pore + (fine - 0.5) * 0.08)),
-      rough: 0.38 - ring * 0.04 - pore * 0.22,
-    };
-  });
+  const walnutMaps = getWalnutPbr1024();
+  const rosewoodMaps = getRosewoodPbr1024();
+  const travertineMaps = getTravertinePbr1024();
+  const shagMaps = getShagWoolPbr1024();
+  const berberMaps = getWovenTextilePbr1024('berber');
+  const boucleMaps = getWovenTextilePbr1024('boucle');
+  const linenMaps = getWovenTextilePbr1024('linen');
+  const leatherMaps = getLeatherPbr1024();
+  const mosaicBlueMaps = getCeramicTilePbr1024('bathBlue4x4');
+  const mosaicSandMaps = getCeramicTilePbr1024('bathSand4x4');
+  const stainlessMaps = getArchitecturalFinishPbr512('brushedStainless');
+  const alumMaps = getArchitecturalFinishPbr512('anodizedAlum');
+  const steelMaps = getArchitecturalFinishPbr512('paintedSteel');
+  const fiberglassMaps = getArchitecturalFinishPbr512('moldedFiberglass');
+  const plasterMaps = getArchitecturalFinishPbr512('plaster');
+  const yachtCordMaps = getVinylYachtCordPbr512();
 
-  // Molded Santos Palisander rosewood veneer for Eames 670/671 shells
-  const rosewoodMaps = buildPbrDataBundle('stahl:mcm:rosewood256', 256, 1.5, [1, 1], (u, v) => {
-    const swirl = fbm2(u * 4.2, v * 2.6, 211);
-    const streak = Math.sin((u * 19.0 + swirl * 9.0) * Math.PI);
-    const darkVein = Math.pow(Math.max(0, -streak), 2.2);
-    const amber = Math.max(0, streak) * 0.5;
-    return {
-      r: 92 + amber * 64 - darkVein * 58,
-      g: 42 + amber * 34 - darkVein * 28,
-      b: 26 + amber * 18 - darkVein * 18,
-      h: 0.52 + streak * 0.1,
-      rough: 0.29 + darkVein * 0.06,
-    };
-  });
-
-  // Vein-cut honed Roman travertine
-  const travertineMaps = buildPbrDataBundle('stahl:mcm:travertine256', 256, 1.7, [1, 1], (u, v) => {
-    const band = fbm2(u * 2.4, v * 11.5, 307);
-    const vein = Math.sin((v * 14.0 + band * 2.8) * Math.PI);
-    const pit = vnoise(u * 44, v * 140, 317) < 0.09 ? -0.24 : 0;
-    const base = 218 + vein * 14 + (band - 0.5) * 18 + pit * 45;
-    return {
-      r: base + 8,
-      g: base + 1,
-      b: base - 14,
-      h: Math.max(0, Math.min(1, 0.6 + vein * 0.08 + pit)),
-      rough: 0.42 - pit * 0.35,
-    };
-  });
-
-  // High-pile warm ivory shag wool rug
-  const shagMaps = buildPbrDataBundle('stahl:mcm:shag256', 256, 2.8, [6, 6], (u, v) => {
-    const tuftA = vnoise(u * 46, v * 46, 401);
-    const tuftB = vnoise(u * 92 + 3.1, v * 88 + 1.7, 419);
-    const curl = fbm2(u * 18, v * 18, 433);
-    const h = 0.35 + tuftA * 0.38 + tuftB * 0.27;
-    const shade = 224 + (tuftA - 0.5) * 24 + (curl - 0.5) * 18 + (tuftB - 0.5) * 14;
-    return {
-      r: shade + 6,
-      g: shade + 2,
-      b: shade - 10,
-      h,
-      rough: 0.93 + (0.5 - tuftA) * 0.05,
-    };
-  });
-
-  // Flat-weave oat Berber wool rug for Master & Bedroom 2
-  const berberMaps = buildPbrDataBundle('stahl:mcm:berber256', 256, 2.1, [8, 8], (u, v) => {
-    const loopX = Math.abs(Math.sin(u * Math.PI * 64));
-    const loopY = Math.abs(Math.sin(v * Math.PI * 48));
-    const fleck = vnoise(u * 70, v * 70, 461);
-    const loop = loopX * 0.55 + loopY * 0.45;
-    const c = 198 + loop * 22 + (fleck - 0.5) * 26;
-    return {
-      r: c + 7,
-      g: c + 1,
-      b: c - 13,
-      h: 0.4 + loop * 0.42,
-      rough: 0.91,
-    };
-  });
-
-  // Nubby mid-century bouclé wool upholstery (warm ivory & camel variants)
-  const boucleMaps = buildPbrDataBundle('stahl:mcm:boucle256', 256, 2.2, [7, 7], (u, v) => {
-    const warp = Math.abs(Math.sin(u * Math.PI * 72));
-    const weft = Math.abs(Math.sin(v * Math.PI * 72));
-    const slub = vnoise(u * 54, v * 54, 503);
-    const h = 0.35 + (warp * 0.5 + weft * 0.5) * 0.38 + slub * 0.25;
-    const lum = 212 + (h - 0.5) * 34;
-    return {
-      r: lum + 6,
-      g: lum + 1,
-      b: lum - 11,
-      h,
-      rough: 0.87 + (0.5 - slub) * 0.08,
-    };
-  });
-
-  // Fine pebble-grain aniline leather
-  const leatherMaps = buildPbrDataBundle('stahl:mcm:leather256', 256, 1.35, [5, 5], (u, v) => {
-    const p1 = vnoise(u * 84, v * 84, 607);
-    const p2 = vnoise(u * 156, v * 156, 619);
-    const h = 0.45 + p1 * 0.35 + p2 * 0.2;
-    return {
-      r: 30 + h * 14,
-      g: 29 + h * 14,
-      b: 30 + h * 15,
-      h,
-      rough: 0.36 + (1 - h) * 0.14,
-    };
-  });
-
-  // 1960s 2"x2" glazed ceramic mosaic tile (Bath Core walls, floor & sunken Roman tub)
-  const createMosaic = (key: string, baseRgb: readonly [number, number, number], seed: number): PbrBundle =>
-    buildPbrDataBundle(key, 256, 2.4, [1, 1], (u, v) => {
-      const cells = 16; // 16 tiles per 0.81m repeat -> ~50mm (2") square ceramic mosaic!
-      const cu = (u * cells) % 1;
-      const cv = (v * cells) % 1;
-      const ix = Math.floor(u * cells);
-      const iy = Math.floor(v * cells);
-      const edge = Math.min(cu, 1 - cu, cv, 1 - cv);
-      const isGrout = edge < 0.065;
-      const varTone = (hash2(ix, iy, seed) - 0.5) * 18;
-      if (isGrout) {
-        return { r: 214, g: 211, b: 203, h: 0.18, rough: 0.86 };
+  // Fluted architectural glass normal map (512x512 crisp vertical reeds)
+  const flutedNorm = getOrCreateCachedTexture('stahl:mcm:flutedNorm512', () => {
+    const size = 512;
+    const data = new Uint8Array(size * size * 4);
+    for (let x = 0; x < size; x++) {
+      const gx = Math.cos((x / size) * Math.PI * 2 * 32) * 0.85;
+      const inv = 127.5 / Math.sqrt(gx * gx + 1);
+      const nx = Math.max(0, Math.min(255, Math.round(-gx * inv + 127.5)));
+      const nz = Math.max(0, Math.min(255, Math.round(inv + 127.5)));
+      for (let y = 0; y < size; y++) {
+        const idx = (y * size + x) * 4;
+        data[idx] = nx;
+        data[idx + 1] = 128;
+        data[idx + 2] = nz;
+        data[idx + 3] = 255;
       }
-      const pillow = Math.min(1, edge * 7.5);
-      return {
-        r: baseRgb[0] + varTone,
-        g: baseRgb[1] + varTone * 0.9,
-        b: baseRgb[2] + varTone * 0.85,
-        h: 0.55 + pillow * 0.35,
-        rough: 0.19 + (hash2(ix, iy, seed + 17) - 0.5) * 0.05,
-      };
+    }
+    return configureDataTex(data, size, false, [3, 1]);
+  });
+
+  // Bubble-lamp silk-resin wire-ribbed normal map (512x512)
+  const bubbleRibNorm = getOrCreateCachedTexture('stahl:mcm:bubbleRibNorm512', () => {
+    const size = 512;
+    const data = new Uint8Array(size * size * 4);
+    for (let y = 0; y < size; y++) {
+      const gy = Math.cos((y / size) * Math.PI * 2 * 28) * 0.42;
+      for (let x = 0; x < size; x++) {
+        const gx = Math.cos((x / size) * Math.PI * 2 * 36) * 0.34;
+        const inv = 127.5 / Math.sqrt(gx * gx + gy * gy + 1);
+        const idx = (y * size + x) * 4;
+        data[idx] = Math.round(-gx * inv + 127.5);
+        data[idx + 1] = Math.round(-gy * inv + 127.5);
+        data[idx + 2] = Math.round(inv + 127.5);
+        data[idx + 3] = 255;
+      }
+    }
+    return configureDataTex(data, size, false, [1, 1]);
+  });
+
+  // 512x512 hand-loomed California striped wool throw
+  const stripedMap = buildAlbedoTex('stahl:mcm:stripedThrow512', 512, [2, 2], (_u, v, x, y) => {
+    const band = (v * 8) % 1;
+    const twill = ((x + y) & 3) === 0 ? 7 : -4;
+    const grain = (hashCell2D(x >> 1, y >> 1, 907) - 0.5) * 12 + twill;
+    if (band < 0.3) return [214 + grain, 154 + grain, 54 + grain];
+    if (band < 0.45) return [237 + grain, 231 + grain, 217 + grain];
+    if (band < 0.73) return [86 + grain, 148 + grain, 154 + grain];
+    if (band < 0.87) return [205 + grain, 95 + grain, 61 + grain];
+    return [58 + grain, 51 + grain, 44 + grain];
+  });
+
+  // 512x512 Arts & Architecture June 1960 cover graphic (Case Study House #22 issue)
+  const aaCoverMap = buildAlbedoTex('stahl:mcm:aaCover512', 512, [1, 1], (u, v, x, y) => {
+    const paper = (hashCell2D(x >> 1, y >> 1, 411) - 0.5) * 6;
+    if (v > 0.83 || u < 0.06 || u > 0.94 || v < 0.05) {
+      if (v > 0.88 && v < 0.93 && u > 0.1 && u < 0.78 && (x & 7) < 5) {
+        return [32, 34, 36]; // Crisp masthead typography bar
+      }
+      return [240 + paper, 236 + paper, 226 + paper];
+    }
+    if (Math.abs(u - 0.54) < 0.008 || Math.abs(v - 0.36) < 0.008) {
+      return [240 + paper, 236 + paper, 226 + paper];
+    }
+    if (u < 0.54 && v > 0.36) return [28 + paper, 34 + paper, 42 + paper];
+    if (u >= 0.54 && v > 0.52) return [72 + paper, 143 + paper, 160 + paper];
+    if (v <= 0.36 && u > 0.34) return [214 + paper, 149 + paper, 48 + paper];
+    return [206 + paper, 88 + paper, 56 + paper];
+  });
+
+  // 512x512 California Hard-Edge Geometric Serigraph (Karl Benjamin / John McLaughlin 1960 homage)
+  const serigraphMap = buildAlbedoTex('stahl:mcm:serigraph512', 512, [1, 1], (u, v, x, y) => {
+    const tooth = (hashCell2D(x >> 1, y >> 1, 523) - 0.5) * 5;
+    if (u < 0.065 || u > 0.935 || v < 0.065 || v > 0.935) {
+      return [243 + tooth, 239 + tooth, 230 + tooth];
+    }
+    const iu = (u - 0.065) / 0.87;
+    const iv = (v - 0.065) / 0.87;
+    if (iu < 0.335) return iv > 0.42 ? [33 + tooth, 38 + tooth, 45 + tooth] : [215 + tooth, 156 + tooth, 52 + tooth];
+    if (iu < 0.67) {
+      if (iv > 0.68) return [208 + tooth, 93 + tooth, 57 + tooth];
+      if (iv > 0.28) return [239 + tooth, 234 + tooth, 221 + tooth];
+      return [84 + tooth, 150 + tooth, 157 + tooth];
+    }
+    return iv > 0.52 ? [84 + tooth, 150 + tooth, 157 + tooth] : [33 + tooth, 38 + tooth, 45 + tooth];
+  });
+
+  const makeFiberglass = (hex: number, rough: number): THREE.MeshStandardMaterial =>
+    new THREE.MeshStandardMaterial({
+      color: hex,
+      normalMap: fiberglassMaps.normalMap,
+      normalScale: new THREE.Vector2(0.22, 0.22),
+      roughnessMap: fiberglassMaps.roughnessMap,
+      roughness: rough,
+      metalness: 0.04,
     });
 
-  const mosaicBlueMaps = createMosaic('stahl:mcm:mosaicBlue256', [106, 166, 178], 701);
-  const mosaicSandMaps = createMosaic('stahl:mcm:mosaicSand256', [208, 199, 181], 733);
-
-  // Brushed 304 stainless steel (Thermador ovens, fridge, cooktop & Lyoncraft double sink)
-  const stainlessMaps = buildPbrDataBundle('stahl:mcm:stainless256', 256, 0.9, [2, 2], (u, v) => {
-    const brush = vnoise(u * 14, v * 220, 809) * 0.65 + vnoise(u * 28, v * 410, 821) * 0.35;
-    const c = 198 + (brush - 0.5) * 24;
-    return { r: c, g: c + 2, b: c + 5, h: 0.45 + brush * 0.2, rough: 0.26 + (brush - 0.5) * 0.08 };
-  });
-
-  // Fluted architectural glass normal map for sunken shower bypass doors
-  const flutedMaps = buildPbrDataBundle('stahl:mcm:flutedGlass256', 256, 2.6, [3, 1], (u) => {
-    const wave = 0.5 + 0.5 * Math.sin(u * Math.PI * 48);
-    return { r: 232, g: 243, b: 245, h: wave, rough: 0.18 };
-  });
-
-  // Striped geometric throw blanket for Bedroom 2
-  const stripedMap = buildAlbedoTexture('stahl:mcm:stripedThrow128', 128, (u, v) => {
-    const band = (v * 10) % 1;
-    const weave = (vnoise(u * 80, v * 80, 907) - 0.5) * 14;
-    if (band < 0.32) return [214 + weave, 154 + weave, 54 + weave]; // Mustard ochre
-    if (band < 0.46) return [236 + weave, 230 + weave, 216 + weave]; // Ivory
-    if (band < 0.74) return [88 + weave, 148 + weave, 152 + weave]; // Koenig aqua
-    if (band < 0.88) return [204 + weave, 96 + weave, 62 + weave]; // Persimmon
-    return [62 + weave, 54 + weave, 46 + weave]; // Espresso charcoal
-  });
-  stripedMap.wrapS = stripedMap.wrapT = THREE.RepeatWrapping;
-
-  // Arts & Architecture June 1960 cover graphic (Case Study House #22 issue!)
-  const aaCoverMap = buildAlbedoTexture('stahl:mcm:aaCover128', 128, (u, v) => {
-    if (v > 0.82) return [238, 234, 224]; // Masthead band
-    if (u < 0.07 || u > 0.93 || v < 0.06) return [238, 234, 224];
-    // Iconic architectural black/blue/ochre modernist block composition
-    if (u < 0.54 && v > 0.36) return [28, 34, 42];
-    if (u >= 0.54 && v > 0.52) return [74, 142, 158];
-    if (v <= 0.36 && u > 0.34) return [212, 148, 48];
-    return [205, 88, 56];
-  });
-
-  // California Hard-Edge Geometric Serigraph (Karl Benjamin / John McLaughlin 1960 homage)
-  const serigraphMap = buildAlbedoTexture('stahl:mcm:serigraph256', 256, (u, v) => {
-    if (u < 0.06 || u > 0.94 || v < 0.06 || v > 0.94) return [242, 238, 229]; // Crisp mat board
-    const iu = (u - 0.06) / 0.88;
-    const iv = (v - 0.06) / 0.88;
-    if (iu < 0.34) return iv > 0.42 ? [34, 38, 44] : [214, 156, 52];
-    if (iu < 0.68) {
-      if (iv > 0.68) return [208, 94, 58];
-      if (iv > 0.28) return [238, 233, 220];
-      return [86, 150, 156];
-    }
-    return iv > 0.52 ? [86, 150, 156] : [34, 38, 44];
-  });
+  const makeFormica = (hex: number, rough = 0.28): THREE.MeshStandardMaterial =>
+    new THREE.MeshStandardMaterial({
+      color: hex,
+      normalMap: steelMaps.normalMap,
+      normalScale: new THREE.Vector2(0.08, 0.08),
+      roughnessMap: steelMaps.roughnessMap,
+      roughness: rough,
+      metalness: 0.03,
+    });
 
   cachedMcmMaterials = {
     walnut: new THREE.MeshStandardMaterial({
       map: walnutMaps.map,
       normalMap: walnutMaps.normalMap,
-      normalScale: new THREE.Vector2(0.45, 0.45),
+      normalScale: new THREE.Vector2(0.52, 0.52),
       roughnessMap: walnutMaps.roughnessMap,
-      roughness: 0.42,
+      roughness: 0.4,
       metalness: 0.03,
     }),
     rosewood: new THREE.MeshStandardMaterial({
       map: rosewoodMaps.map,
       normalMap: rosewoodMaps.normalMap,
-      normalScale: new THREE.Vector2(0.35, 0.35),
+      normalScale: new THREE.Vector2(0.42, 0.42),
       roughnessMap: rosewoodMaps.roughnessMap,
-      roughness: 0.3,
+      roughness: 0.32,
       metalness: 0.04,
     }),
     travertine: new THREE.MeshStandardMaterial({
       map: travertineMaps.map,
       normalMap: travertineMaps.normalMap,
-      normalScale: new THREE.Vector2(0.4, 0.4),
+      normalScale: new THREE.Vector2(0.48, 0.48),
       roughnessMap: travertineMaps.roughnessMap,
-      roughness: 0.44,
+      roughness: 0.42,
       metalness: 0.02,
     }),
     shagWool: new THREE.MeshStandardMaterial({
       map: shagMaps.map,
       normalMap: shagMaps.normalMap,
-      normalScale: new THREE.Vector2(0.85, 0.85),
+      normalScale: new THREE.Vector2(0.95, 0.95),
       roughnessMap: shagMaps.roughnessMap,
       roughness: 0.95,
     }),
     berberOat: new THREE.MeshStandardMaterial({
       map: berberMaps.map,
       normalMap: berberMaps.normalMap,
-      normalScale: new THREE.Vector2(0.65, 0.65),
+      normalScale: new THREE.Vector2(0.7, 0.7),
       roughnessMap: berberMaps.roughnessMap,
       roughness: 0.92,
     }),
     boucleIvory: new THREE.MeshStandardMaterial({
-      color: 0xf4efe4,
+      color: 0xf5f0e5,
       map: boucleMaps.map,
       normalMap: boucleMaps.normalMap,
-      normalScale: new THREE.Vector2(0.6, 0.6),
+      normalScale: new THREE.Vector2(0.68, 0.68),
       roughnessMap: boucleMaps.roughnessMap,
       roughness: 0.88,
     }),
     boucleCamel: new THREE.MeshStandardMaterial({
-      color: 0xd2bc9b,
+      color: 0xd3bd9c,
       map: boucleMaps.map,
       normalMap: boucleMaps.normalMap,
-      normalScale: new THREE.Vector2(0.6, 0.6),
+      normalScale: new THREE.Vector2(0.68, 0.68),
       roughnessMap: boucleMaps.roughnessMap,
       roughness: 0.88,
     }),
     blackLeather: new THREE.MeshStandardMaterial({
       map: leatherMaps.map,
       normalMap: leatherMaps.normalMap,
-      normalScale: new THREE.Vector2(0.35, 0.35),
+      normalScale: new THREE.Vector2(0.44, 0.44),
       roughnessMap: leatherMaps.roughnessMap,
-      roughness: 0.36,
+      roughness: 0.38,
       metalness: 0.04,
     }),
     saddleLeather: new THREE.MeshStandardMaterial({
-      color: 0xb66e3d,
+      color: 0xb76e3d,
       normalMap: leatherMaps.normalMap,
-      normalScale: new THREE.Vector2(0.35, 0.35),
-      roughness: 0.4,
+      normalScale: new THREE.Vector2(0.44, 0.44),
+      roughnessMap: leatherMaps.roughnessMap,
+      roughness: 0.42,
       metalness: 0.03,
     }),
-    fiberglassParchment: new THREE.MeshStandardMaterial({ color: 0xebe6da, roughness: 0.36, metalness: 0.04 }),
-    fiberglassOchre: new THREE.MeshStandardMaterial({ color: 0xd69638, roughness: 0.38, metalness: 0.04 }),
-    fiberglassSeafoam: new THREE.MeshStandardMaterial({ color: 0x6ea6a4, roughness: 0.38, metalness: 0.04 }),
-    formicaAqua: new THREE.MeshStandardMaterial({ color: 0x5c9fa1, roughness: 0.3, metalness: 0.03 }),
-    formicaMustard: new THREE.MeshStandardMaterial({ color: 0xd59c38, roughness: 0.3, metalness: 0.03 }),
-    formicaPersimmon: new THREE.MeshStandardMaterial({ color: 0xd2623e, roughness: 0.3, metalness: 0.03 }),
-    formicaWhite: new THREE.MeshStandardMaterial({ color: 0xf2eee3, roughness: 0.28, metalness: 0.03 }),
-    formicaCharcoal: new THREE.MeshStandardMaterial({ color: 0x2d3135, roughness: 0.34, metalness: 0.05 }),
+    fiberglassParchment: makeFiberglass(0xebe6da, 0.34),
+    fiberglassOchre: makeFiberglass(0xd69638, 0.36),
+    fiberglassSeafoam: makeFiberglass(0x6ea6a4, 0.36),
+    formicaAqua: makeFormica(0x5c9fa1, 0.28),
+    formicaMustard: makeFormica(0xd59c38, 0.28),
+    formicaPersimmon: makeFormica(0xd2623e, 0.28),
+    formicaWhite: makeFormica(0xf2eee3, 0.26),
+    formicaCharcoal: makeFormica(0x2d3135, 0.32),
     mosaicBlue: new THREE.MeshStandardMaterial({
       map: mosaicBlueMaps.map,
       normalMap: mosaicBlueMaps.normalMap,
-      normalScale: new THREE.Vector2(0.55, 0.55),
+      normalScale: new THREE.Vector2(0.65, 0.65),
       roughnessMap: mosaicBlueMaps.roughnessMap,
-      roughness: 0.22,
+      roughness: 0.85,
+      metalness: 0.04,
     }),
     mosaicSand: new THREE.MeshStandardMaterial({
       map: mosaicSandMaps.map,
       normalMap: mosaicSandMaps.normalMap,
-      normalScale: new THREE.Vector2(0.55, 0.55),
+      normalScale: new THREE.Vector2(0.65, 0.65),
       roughnessMap: mosaicSandMaps.roughnessMap,
-      roughness: 0.24,
+      roughness: 0.85,
+      metalness: 0.03,
     }),
     brushedStainless: new THREE.MeshStandardMaterial({
       map: stainlessMaps.map,
       normalMap: stainlessMaps.normalMap,
-      normalScale: new THREE.Vector2(0.25, 0.25),
+      normalScale: new THREE.Vector2(0.28, 0.28),
       roughnessMap: stainlessMaps.roughnessMap,
       roughness: 0.26,
+      metalness: 0.91,
+    }),
+    polishedChrome: new THREE.MeshStandardMaterial({
+      color: 0xe9eef2,
+      normalMap: alumMaps.normalMap,
+      normalScale: new THREE.Vector2(0.05, 0.05),
+      roughness: 0.09,
+      metalness: 0.97,
+    }),
+    satinBrass: new THREE.MeshStandardMaterial({
+      color: 0xd6b064,
+      normalMap: alumMaps.normalMap,
+      normalScale: new THREE.Vector2(0.14, 0.14),
+      roughnessMap: alumMaps.roughnessMap,
+      roughness: 0.24,
+      metalness: 0.89,
+    }),
+    blackenedSteel: new THREE.MeshStandardMaterial({
+      color: 0x1e2124,
+      normalMap: steelMaps.normalMap,
+      normalScale: new THREE.Vector2(0.18, 0.18),
+      roughnessMap: steelMaps.roughnessMap,
+      roughness: 0.42,
+      metalness: 0.76,
+    }),
+    dieCastAlum: new THREE.MeshStandardMaterial({
+      color: 0xd8dee2,
+      map: alumMaps.map,
+      normalMap: alumMaps.normalMap,
+      normalScale: new THREE.Vector2(0.2, 0.2),
+      roughnessMap: alumMaps.roughnessMap,
+      roughness: 0.22,
       metalness: 0.9,
     }),
-    polishedChrome: new THREE.MeshStandardMaterial({ color: 0xe6eaee, roughness: 0.1, metalness: 0.96 }),
-    satinBrass: new THREE.MeshStandardMaterial({ color: 0xd5af62, roughness: 0.24, metalness: 0.88 }),
-    blackenedSteel: new THREE.MeshStandardMaterial({ color: 0x1e2124, roughness: 0.42, metalness: 0.74 }),
-    dieCastAlum: new THREE.MeshStandardMaterial({ color: 0xd6dce0, roughness: 0.2, metalness: 0.9 }),
-    porcelainWhite: new THREE.MeshStandardMaterial({ color: 0xf8f7f3, roughness: 0.13, metalness: 0.03 }),
+    porcelainWhite: new THREE.MeshStandardMaterial({
+      color: 0xf8f7f3,
+      normalMap: steelMaps.normalMap,
+      normalScale: new THREE.Vector2(0.04, 0.04),
+      roughness: 0.12,
+      metalness: 0.03,
+    }),
     opalGlass: new THREE.MeshStandardMaterial({
       color: 0xfffaf0,
       emissive: new THREE.Color(0xffdfa8),
       emissiveIntensity: 0.0,
-      roughness: 0.32,
+      normalMap: bubbleRibNorm,
+      normalScale: new THREE.Vector2(0.22, 0.22),
+      roughness: 0.34,
     }),
     flutedGlass: new THREE.MeshPhysicalMaterial({
       color: 0xdff0f2,
-      normalMap: flutedMaps.normalMap,
-      normalScale: new THREE.Vector2(0.65, 0.65),
+      normalMap: flutedNorm,
+      normalScale: new THREE.Vector2(0.75, 0.75),
       transparent: true,
-      opacity: 0.48,
-      roughness: 0.2,
+      opacity: 0.5,
+      roughness: 0.18,
       metalness: 0.04,
-      ior: 1.5,
+      ior: 1.52,
     }),
-    plateMirror: new THREE.MeshStandardMaterial({ color: 0xebf2f5, roughness: 0.03, metalness: 0.98 }),
+    plateMirror: new THREE.MeshStandardMaterial({ color: 0xecf3f6, roughness: 0.03, metalness: 0.98 }),
     sheerCasement: new THREE.MeshStandardMaterial({
-      color: 0xf3efe6,
+      color: 0xf4f0e7,
+      map: linenMaps.map,
+      normalMap: linenMaps.normalMap,
+      normalScale: new THREE.Vector2(0.32, 0.32),
       transparent: true,
-      opacity: 0.62,
-      roughness: 0.9,
+      opacity: 0.64,
+      roughness: 0.88,
       side: THREE.DoubleSide,
     }),
     bedspreadOat: new THREE.MeshStandardMaterial({
-      color: 0xe6decb,
+      color: 0xe7dfcc,
+      map: linenMaps.map,
       normalMap: boucleMaps.normalMap,
-      normalScale: new THREE.Vector2(0.35, 0.35),
+      normalScale: new THREE.Vector2(0.42, 0.42),
+      roughnessMap: boucleMaps.roughnessMap,
       roughness: 0.88,
     }),
     throwOchre: new THREE.MeshStandardMaterial({
-      color: 0xc88d32,
+      color: 0xc98e33,
       normalMap: boucleMaps.normalMap,
-      normalScale: new THREE.Vector2(0.4, 0.4),
+      normalScale: new THREE.Vector2(0.48, 0.48),
+      roughnessMap: boucleMaps.roughnessMap,
       roughness: 0.86,
     }),
     throwOlive: new THREE.MeshStandardMaterial({
-      color: 0x6f7a4e,
+      color: 0x6f7b4f,
       normalMap: boucleMaps.normalMap,
-      normalScale: new THREE.Vector2(0.4, 0.4),
+      normalScale: new THREE.Vector2(0.48, 0.48),
+      roughnessMap: boucleMaps.roughnessMap,
       roughness: 0.86,
     }),
     throwStriped: new THREE.MeshStandardMaterial({
       map: stripedMap,
       normalMap: boucleMaps.normalMap,
-      normalScale: new THREE.Vector2(0.35, 0.35),
+      normalScale: new THREE.Vector2(0.42, 0.42),
+      roughnessMap: boucleMaps.roughnessMap,
       roughness: 0.86,
     }),
-    pillowLinen: new THREE.MeshStandardMaterial({ color: 0xf5f1e7, roughness: 0.84 }),
-    aaCoverMat: new THREE.MeshStandardMaterial({ map: aaCoverMap, roughness: 0.36 }),
-    serigraphMat: new THREE.MeshStandardMaterial({ map: serigraphMap, roughness: 0.52 }),
-    ceramicTeal: new THREE.MeshStandardMaterial({ color: 0x3b7d84, roughness: 0.24, metalness: 0.05 }),
-    ceramicTerracotta: new THREE.MeshStandardMaterial({ color: 0xb85d3b, roughness: 0.62 }),
+    pillowLinen: new THREE.MeshStandardMaterial({
+      color: 0xf6f2e8,
+      map: linenMaps.map,
+      normalMap: linenMaps.normalMap,
+      normalScale: new THREE.Vector2(0.35, 0.35),
+      roughnessMap: linenMaps.roughnessMap,
+      roughness: 0.84,
+    }),
+    aaCoverMat: new THREE.MeshStandardMaterial({ map: aaCoverMap, roughness: 0.34 }),
+    serigraphMat: new THREE.MeshStandardMaterial({ map: serigraphMap, roughness: 0.5 }),
+    ceramicTeal: new THREE.MeshStandardMaterial({ color: 0x3b7d84, roughness: 0.2, metalness: 0.05 }),
+    ceramicTerracotta: new THREE.MeshStandardMaterial({
+      color: 0xb85d3b,
+      normalMap: plasterMaps.normalMap,
+      normalScale: new THREE.Vector2(0.25, 0.25),
+      roughness: 0.62,
+    }),
+    stonewareWhite: new THREE.MeshStandardMaterial({
+      color: 0xf1ede3,
+      normalMap: plasterMaps.normalMap,
+      normalScale: new THREE.Vector2(0.24, 0.24),
+      roughnessMap: plasterMaps.roughnessMap,
+      roughness: 0.64,
+    }),
+    vinylYachtCord: new THREE.MeshStandardMaterial({
+      map: yachtCordMaps.map,
+      normalMap: yachtCordMaps.normalMap,
+      normalScale: new THREE.Vector2(0.55, 0.55),
+      roughnessMap: yachtCordMaps.roughnessMap,
+      roughness: 0.42,
+    }),
     muranoAmberGlass: new THREE.MeshPhysicalMaterial({
       color: 0xd9872a,
       transparent: true,
-      opacity: 0.76,
-      roughness: 0.08,
-      ior: 1.52,
+      opacity: 0.78,
+      roughness: 0.07,
+      ior: 1.53,
     }),
-    vinylRecord: new THREE.MeshStandardMaterial({ color: 0x141517, roughness: 0.22, metalness: 0.15 }),
+    vinylRecord: new THREE.MeshStandardMaterial({ color: 0x141517, roughness: 0.2, metalness: 0.16 }),
   };
 
   return cachedMcmMaterials;
