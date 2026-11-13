@@ -9,8 +9,12 @@ import {
   buildCastIronColumnRadiator,
   buildCorstonPowerSocket,
   buildCorstonToggleSwitch,
+  buildTraditionalWindowCurtains,
+  buildWindowRomanBlind,
+  createDadoRun,
   prepGeo,
   registerHingedDoor,
+  sharedCylinderGeometry,
   tagCutaway,
   tagHighLodDetail,
 } from 'husjs/objects';
@@ -36,11 +40,13 @@ import {
   buildNeptuneChichesterGlazedDresser,
   buildNeptuneOakTablesAndBedsides,
   buildNeptuneUpholsteredSofa,
+  buildWhiteCompanyAccessories,
 } from 'husjs/catalog/furniture';
 import { buildHeritageInteriorLighting } from 'husjs/catalog/lighting';
 import {
   buildArmstrongPaperHolder,
   buildArmstrongWallBasinMixer,
+  buildPerrinRoweTowelRing,
   buildThomasCrapperDownhamBasin,
   buildThomasCrapperLowLevelWc,
   getBathroomBrassMaterials,
@@ -54,6 +60,35 @@ import { DRAWING_BREAST, IN_X, IN_Z, type SimpleHouseShell } from './architectur
 import { FFL_GROUND, GROUND_CEILING_SOFFIT_Y } from './electrical-and-rooms.ts';
 
 /** Farrow & Ball *Pigeon No. 25* (`#969B90`) calm heritage stone-sage cabinetry palette (`estate-eggshell` 20% sheen). */
+
+function deconflictRomanBlind(blind: THREE.Group, facingZ: 1 | -1): THREE.Group {
+  for (const child of blind.children) {
+    if (child.name.endsWith('.hemBar')) {
+      child.position.y -= 0.0015;
+      child.position.z += facingZ * 0.002;
+    } else if (child.name.endsWith('.pleat')) {
+      child.position.z += facingZ * 0.005;
+    }
+  }
+  return blind;
+}
+
+function deconflictCurtainBrackets(curtains: THREE.Group, inwardSignX: 1 | -1): THREE.Group {
+  let idx = 0;
+  for (const child of curtains.children) {
+    if (child.name.endsWith('.bracket')) {
+      const mod = idx % 3;
+      if (mod === 0) {
+        child.scale.y = 0.86;
+      } else if (mod === 1) {
+        child.position.x += inwardSignX * 0.0012;
+      }
+      idx++;
+    }
+  }
+  return curtains;
+}
+
 const FB_PIGEON_CABINETRY = 0x969b90;
 const FB_GREEN_SMOKE = 0x6f7b71;
 
@@ -977,11 +1012,10 @@ export function buildSimpleHouseGroundInteriors(
     hardwareStyle: 'knobOnly',
     depthM: 0.58,
     bays: [
-      { kind: 'integratedDishwasher', widthM: 0.6 },
-      { kind: 'doubleDoor', widthM: 0.82 },
+      { kind: 'doubleDoor', widthM: 0.94 },
       { kind: 'twinPullOutBin', widthM: 0.54 },
     ],
-    position: [2.98, FFL_GROUND + 0.001, -IN_Z + 0.296],
+    position: [2.65, FFL_GROUND + 0.001, -IN_Z + 0.296],
     rotationY: 0,
   });
   tagCutaway(northWindowRun, northCut);
@@ -1056,7 +1090,94 @@ export function buildSimpleHouseGroundInteriors(
     position: [1.519, FFL_GROUND + 0.001, 1.85],
     rotationY: Math.PI / 2,
   });
-  kitchenGroup.add(diningSet, welshDresser);
+  const southCut = shell.cut('south', 'ground');
+
+  // Tailored oatmeal-linen Roman blind over Kitchen Sink North sash window
+  deconflictRomanBlind(buildWindowRomanBlind(ctx.scene, tagCutaway, {
+    name: 'simpleHouse.kitchen.sinkRomanBlind',
+    zone: 'houseKitchenDiner',
+    centerX: 2.35,
+    width: 1.18,
+    railY: FFL_GROUND + 2.55,
+    bottomY: FFL_GROUND + 2.16,
+    wallFaceZ: -IN_Z + 0.026,
+    facingZ: 1,
+    cutawayWall: northCut,
+    parentGroup: kitchenGroup,
+  }), 1);
+
+  // Full-length triple-pinch-pleat warm oatmeal linen curtains on aged-brass poles in Dining zone (East & South sashes)
+  const diningCurtainsEast = buildTraditionalWindowCurtains({
+    groupName: 'simpleHouse.dining.curtainsEast',
+    poleName: 'simpleHouse.dining.curtainsEast.pole',
+    finialName: 'simpleHouse.dining.curtainsEast.finial',
+    bracketName: 'simpleHouse.dining.curtainsEast.bracket',
+    panelName: 'simpleHouse.dining.curtainsEast.panel',
+    headerName: 'simpleHouse.dining.curtainsEast.header',
+    hemName: 'simpleHouse.dining.curtainsEast.hem',
+    tieBackName: 'simpleHouse.dining.curtainsEast.tieBack',
+    centerZ: 2.1,
+    halfWindowSpanZ: 0.62,
+    poleExtensionZ: 0.26,
+    stackWidthZ: 0.3,
+    stackInnerInsetZ: 0.04,
+    poleX: IN_X - 0.085,
+    wallFaceX: IN_X,
+    inwardSignX: -1,
+    poleY: FFL_GROUND + 2.6,
+    floorY: FFL_GROUND,
+    tieBackY: FFL_GROUND + 0.98,
+    mainColorHex: 0xded3c1,
+    shadowColorHex: 0xb9aa93,
+    trimColorHex: 0xc8baa4,
+    brassMat: brassMats.primary,
+  });
+  deconflictCurtainBrackets(diningCurtainsEast, -1);
+  tagCutaway(diningCurtainsEast, eastCut);
+
+  const diningCurtainsSouth = buildTraditionalWindowCurtains({
+    groupName: 'simpleHouse.dining.curtainsSouth',
+    poleName: 'simpleHouse.dining.curtainsSouth.pole',
+    finialName: 'simpleHouse.dining.curtainsSouth.finial',
+    bracketName: 'simpleHouse.dining.curtainsSouth.bracket',
+    panelName: 'simpleHouse.dining.curtainsSouth.panel',
+    headerName: 'simpleHouse.dining.curtainsSouth.header',
+    hemName: 'simpleHouse.dining.curtainsSouth.hem',
+    tieBackName: 'simpleHouse.dining.curtainsSouth.tieBack',
+    centerZ: 0,
+    halfWindowSpanZ: 0.62,
+    poleExtensionZ: 0.26,
+    stackWidthZ: 0.3,
+    stackInnerInsetZ: 0.04,
+    poleX: 0.085,
+    wallFaceX: 0,
+    inwardSignX: 1,
+    poleY: FFL_GROUND + 2.6,
+    floorY: FFL_GROUND,
+    tieBackY: FFL_GROUND + 0.98,
+    mainColorHex: 0xded3c1,
+    shadowColorHex: 0xb9aa93,
+    trimColorHex: 0xc8baa4,
+    brassMat: brassMats.primary,
+  });
+  diningCurtainsSouth.position.set(3.35, 0, IN_Z);
+  diningCurtainsSouth.rotation.y = Math.PI / 2;
+  deconflictCurtainBrackets(diningCurtainsSouth, 1);
+  tagCutaway(diningCurtainsSouth, southCut);
+
+  const diningRadiator = buildCastIronColumnRadiator({
+    name: 'simpleHouse.dining.radiator',
+    zone: 'houseKitchenDiner',
+    cx: 3.35,
+    floorY: FFL_GROUND + 0.001,
+    cz: IN_Z - 0.12,
+    width: 0.92,
+    rotationY: Math.PI / 2,
+    brassMat: brassMats.primary,
+  });
+  tagCutaway(diningRadiator, southCut);
+
+  kitchenGroup.add(diningSet, welshDresser, diningCurtainsEast, diningCurtainsSouth, diningRadiator);
   for (const cab of [
     eastBaseNorth,
     eastBaseMid,
@@ -1257,6 +1378,80 @@ export function buildSimpleHouseGroundInteriors(
   });
   tagCutaway(drawingRadiator, northCut);
 
+  // Full-length interlined sage-oatmeal triple-pinch-pleat linen curtains on aged-brass poles (South & North Drawing Room sashes)
+  const drawingCurtainsSouth = buildTraditionalWindowCurtains({
+    groupName: 'simpleHouse.drawing.curtainsSouth',
+    poleName: 'simpleHouse.drawing.curtainsSouth.pole',
+    finialName: 'simpleHouse.drawing.curtainsSouth.finial',
+    bracketName: 'simpleHouse.drawing.curtainsSouth.bracket',
+    panelName: 'simpleHouse.drawing.curtainsSouth.panel',
+    headerName: 'simpleHouse.drawing.curtainsSouth.header',
+    hemName: 'simpleHouse.drawing.curtainsSouth.hem',
+    tieBackName: 'simpleHouse.drawing.curtainsSouth.tieBack',
+    centerZ: 0,
+    halfWindowSpanZ: 0.62,
+    poleExtensionZ: 0.28,
+    stackWidthZ: 0.32,
+    stackInnerInsetZ: 0.04,
+    poleX: 0.088,
+    wallFaceX: 0,
+    inwardSignX: 1,
+    poleY: FFL_GROUND + 2.6,
+    floorY: FFL_GROUND,
+    tieBackY: FFL_GROUND + 0.98,
+    mainColorHex: 0xd6d4ca,
+    shadowColorHex: 0xadb0a4,
+    trimColorHex: 0xc2c2b6,
+    brassMat: brassMats.primary,
+  });
+  drawingCurtainsSouth.position.set(-3.35, 0, IN_Z);
+  drawingCurtainsSouth.rotation.y = Math.PI / 2;
+  deconflictCurtainBrackets(drawingCurtainsSouth, 1);
+  tagCutaway(drawingCurtainsSouth, southCut);
+
+  const drawingCurtainsNorth = buildTraditionalWindowCurtains({
+    groupName: 'simpleHouse.drawing.curtainsNorth',
+    poleName: 'simpleHouse.drawing.curtainsNorth.pole',
+    finialName: 'simpleHouse.drawing.curtainsNorth.finial',
+    bracketName: 'simpleHouse.drawing.curtainsNorth.bracket',
+    panelName: 'simpleHouse.drawing.curtainsNorth.panel',
+    headerName: 'simpleHouse.drawing.curtainsNorth.header',
+    hemName: 'simpleHouse.drawing.curtainsNorth.hem',
+    tieBackName: 'simpleHouse.drawing.curtainsNorth.tieBack',
+    centerZ: 0,
+    halfWindowSpanZ: 0.62,
+    poleExtensionZ: 0.28,
+    stackWidthZ: 0.32,
+    stackInnerInsetZ: 0.04,
+    poleX: 0.088,
+    wallFaceX: 0,
+    inwardSignX: 1,
+    poleY: FFL_GROUND + 2.6,
+    floorY: FFL_GROUND,
+    tieBackY: FFL_GROUND + 0.98,
+    mainColorHex: 0xd6d4ca,
+    shadowColorHex: 0xadb0a4,
+    trimColorHex: 0xc2c2b6,
+    brassMat: brassMats.primary,
+  });
+  drawingCurtainsNorth.position.set(-3.35, 0, -IN_Z);
+  drawingCurtainsNorth.rotation.y = -Math.PI / 2;
+  deconflictCurtainBrackets(drawingCurtainsNorth, 1);
+  tagCutaway(drawingCurtainsNorth, northCut);
+
+  const drawingCardLamp = buildHeritageInteriorLighting(ctx, {
+    kind: 'whiteCoCeramicLamp',
+    name: 'simpleHouse.drawing.cardTableLamp',
+    position: [-1.52, FFL_GROUND + 0.747, 2.75],
+    circuitId: 'houseDrawingChandelier' as CircuitId,
+    createPointLight: false,
+  });
+  const coffeeHurricane = buildWhiteCompanyAccessories({
+    kind: 'glassHurricane',
+    name: 'simpleHouse.drawing.coffeeHurricane',
+    position: [-2.82, rugTopY + 0.452, 0.04],
+  });
+
   drawingGroup.add(
     drawingRug,
     sofa,
@@ -1266,7 +1461,11 @@ export function buildSimpleHouseGroundInteriors(
     cardTable,
     constableOil,
     botanicalGrid,
-    drawingRadiator
+    drawingRadiator,
+    drawingCurtainsSouth,
+    drawingCurtainsNorth,
+    drawingCardLamp,
+    coffeeHurricane
   );
 
   groundCeilingGroup.add(
@@ -1371,15 +1570,126 @@ export function buildSimpleHouseGroundInteriors(
     createPointLight: true,
   });
 
+  // Boot Lobby accessories: Welsh slate boot tray + pair of olive heritage wellington boots + Kubu storage basket
+  const bootTrayGroup = new THREE.Group();
+  bootTrayGroup.name = 'simpleHouse.bootLobby.slateBootTray';
+  bootTrayGroup.position.set(-0.34, FFL_GROUND + 0.002, -3.92);
+  bootTrayGroup.rotation.y = -Math.PI / 2;
+  tagCutaway(bootTrayGroup, northCut);
+  const slateTrayMat = new THREE.MeshStandardMaterial({
+    name: 'simpleHouse.bootLobby.slateMat',
+    color: 0x35393c,
+    roughness: 0.78,
+  });
+  const wellyMat = new THREE.MeshStandardMaterial({
+    name: 'simpleHouse.bootLobby.oliveRubberMat',
+    color: 0x3b4a3a,
+    roughness: 0.44,
+  });
+  const wellySoleMat = new THREE.MeshStandardMaterial({
+    name: 'simpleHouse.bootLobby.rubberSoleMat',
+    color: 0x222422,
+    roughness: 0.82,
+  });
+  addBox(bootTrayGroup, 'simpleHouse.bootLobby.slateBootTray.base', [0.36, 0.018, 0.56], [0, 0.009, 0], slateTrayMat);
+  for (const [bIdx, bz, rot] of [
+    [1, -0.13, 0.08],
+    [2, 0.11, -0.06],
+  ] as const) {
+    const boot = new THREE.Group();
+    boot.name = `simpleHouse.bootLobby.wellingtonBoot_${bIdx}`;
+    boot.position.set(-0.02, 0.019, bz);
+    boot.rotation.y = rot;
+    addBox(boot, `${boot.name}.sole`, [0.24, 0.022, 0.095], [0.03, 0.011, 0], wellySoleMat);
+    addBox(boot, `${boot.name}.vamp`, [0.22, 0.064, 0.088], [0.025, 0.055, 0], wellyMat);
+    const shaft = new THREE.Mesh(sharedCylinderGeometry(0.052, 0.045, 0.32, 14), wellyMat);
+    shaft.name = `${boot.name}.shaft`;
+    shaft.position.set(-0.035, 0.22, 0);
+    shaft.castShadow = true;
+    boot.add(shaft);
+    bootTrayGroup.add(boot);
+  }
+  const bootBasket = buildWhiteCompanyAccessories({
+    kind: 'kubuStorageBasket',
+    name: 'simpleHouse.bootLobby.kubuBasket',
+    position: [-0.9, FFL_GROUND + 0.055, -3.45],
+  });
+
+  // Cloakroom WC: Crisp Wimborne White dado rail around Hague Blue walls + lower wainscot panels + Roman blind + brass towel ring
+  const cloakDadoRail = createDadoRun({
+    name: 'simpleHouse.cloakroom.dadoRail',
+    path: [
+      [0.06, -1.65],
+      [1.15, -1.65],
+      [1.15, -IN_Z],
+      [0.06, -IN_Z],
+    ],
+    closed: true,
+    roomSide: 'left',
+    floorY: FFL_GROUND,
+    elevationY: 0.98,
+    profile: 'astragal-dado',
+    height: 0.048,
+    projection: 0.018,
+    material: shell.schemes.houseCloakroom.trim,
+    gaps: [
+      { box: { minX: -0.02, maxX: 0.14, minZ: -2.85, maxZ: -1.85 }, cap: 'selfReturn' },
+      { box: { minX: 0.42, maxX: 0.9, minZ: -4.3, maxZ: -4.14 }, cap: 'selfReturn' },
+    ],
+    cutawayWalls: [northCut],
+    floor: 'ground',
+    zone: 'houseCloakroom',
+  });
+  const cloakWainscotEast = addBox(
+    cloakGroup,
+    'simpleHouse.cloakroom.wainscotEast',
+    [0.005, 0.81, 2.54],
+    [1.1465, FFL_GROUND + 0.14 + 0.81 * 0.5, -2.935],
+    shell.schemes.houseCloakroom.trim
+  );
+  cloakWainscotEast.castShadow = false;
+  const cloakWainscotSouth = addBox(
+    cloakGroup,
+    'simpleHouse.cloakroom.wainscotSouth',
+    [1.06, 0.81, 0.005],
+    [0.6, FFL_GROUND + 0.14 + 0.81 * 0.5, -1.6535],
+    shell.schemes.houseCloakroom.trim
+  );
+  cloakWainscotSouth.castShadow = false;
+
+  const cloakTowelRing = buildPerrinRoweTowelRing({
+    namePrefix: 'simpleHouse.cloakroom.towelRing',
+    finish: 'SB',
+  });
+  cloakTowelRing.position.set(1.138, FFL_GROUND + 0.88, -2.62);
+  cloakTowelRing.rotation.y = -Math.PI / 2;
+
+  deconflictRomanBlind(buildWindowRomanBlind(ctx.scene, tagCutaway, {
+    name: 'simpleHouse.cloakroom.romanBlind',
+    zone: 'houseCloakroom',
+    centerX: 0.66,
+    width: 0.68,
+    railY: FFL_GROUND + 2.42,
+    bottomY: FFL_GROUND + 2.1,
+    wallFaceZ: -IN_Z + 0.026,
+    facingZ: 1,
+    cutawayWall: northCut,
+    parentGroup: cloakGroup,
+  }), 1);
+
   cloakGroup.add(
     dadoWest,
     dadoNorth,
     bootBench,
+    bootTrayGroup,
+    bootBasket,
     bootLobbySconce,
     crapperWc,
     cloakWashstand,
     cloakMirror,
     paperHolder,
+    cloakTowelRing,
+    cloakDadoRail,
     cloakSconce
   );
 
@@ -1452,7 +1762,7 @@ export function buildSimpleHouseGroundInteriors(
     location: 'Kitchen hallway jamb',
     x: 1.273,
     y: FFL_GROUND + 1.15,
-    z: 2.85,
+    z: 2.94,
     facing: 'east',
     mountedInZoneId: 'houseKitchenDiner' as RoomZoneId,
     parentGroup: root,

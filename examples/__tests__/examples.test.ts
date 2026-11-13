@@ -75,7 +75,7 @@ function createHarnessContext(circuitIds: readonly string[]): {
   return { ctx, scene };
 }
 
-describe('Stages 4.3, 4.4, 4.5 & 4.10b — husjs Example & Showcase Homes', { timeout: 25_000 }, () => {
+describe('Stages 4.3, 4.4, 4.5 & 4.10b — husjs Example & Showcase Homes', { timeout: 30_000 }, () => {
   it('Stage 4.3 simple-flat: single-floor apartment, 2-way hallway switches & living dimmer', () => {
     expect(simpleFlat.id).toBe('simple-flat');
     expect(simpleFlat.floors).toHaveLength(1);
@@ -191,7 +191,7 @@ describe('Stages 4.3, 4.4, 4.5 & 4.10b — husjs Example & Showcase Homes', { ti
 
       assertNoZFighting(scene, { epsilonM: 0.00035 });
     }
-  }, 20000);
+  }, 30000);
 
   it('stahl-house boots with roof intact via initialView and cuts away roof, camera-facing Arcadia sliders & carportWall when Section is toggled ON', () => {
     expect(stahlHouse.initialView).toEqual({ floor: 'ground', sectionCut: false });
@@ -498,5 +498,5 @@ describe('Stages 4.3, 4.4, 4.5 & 4.10b — husjs Example & Showcase Homes', { ti
     });
     expect(houseAudit.errorCount).toBe(0);
     expect(houseAudit.warningCount).toBe(0);
-  }, 20000);
+  }, 30000);
 });

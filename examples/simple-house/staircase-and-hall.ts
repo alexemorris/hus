@@ -3,9 +3,13 @@ import type { CircuitId } from 'husjs';
 import { applyMetricBoxUVs, createRoomPaintScheme } from 'husjs/materials';
 import {
   buildCastIronColumnRadiator,
+  buildWindowRomanBlind,
   createBalustradeRun,
   createStaircase,
   prepGeo,
+  sharedCylinderGeometry,
+  sharedSphereGeometry,
+  tagCutaway,
 } from 'husjs/objects';
 import { createHeritageFloorFinishMaterial } from 'husjs/catalog/architectural';
 import {
@@ -16,7 +20,7 @@ import {
 import { buildHeritageInteriorLighting } from 'husjs/catalog/lighting';
 import { getBathroomBrassMaterials } from 'husjs/catalog/sanitaryware';
 import type { SceneBuilderContext } from 'husjs/viewer';
-import { FFL_FIRST, FFL_GROUND, FIRST_CEILING_SOFFIT_Y, GROUND_CEILING_SOFFIT_Y } from './electrical-and-rooms.ts';
+import { EXT_WALL_T, FFL_FIRST, FFL_GROUND, FIRST_CEILING_SOFFIT_Y, GROUND_CEILING_SOFFIT_Y, HALF_D, HALF_W } from './electrical-and-rooms.ts';
 
 export type SimpleHouseStair = ReturnType<typeof createStaircase>;
 
@@ -105,6 +109,19 @@ export function sampleSimpleHouseStairY(x: number, z: number): number | null {
   return samplerStair.sampleWalkableY(x, z);
 }
 
+
+function deconflictRomanBlind(blind: THREE.Group, facingZ: 1 | -1): THREE.Group {
+  for (const child of blind.children) {
+    if (child.name.endsWith('.hemBar')) {
+      child.position.y -= 0.0015;
+      child.position.z += facingZ * 0.002;
+    } else if (child.name.endsWith('.pleat')) {
+      child.position.z += facingZ * 0.005;
+    }
+  }
+  return blind;
+}
+
 export function buildSimpleHouseStaircaseAndHall(ctx: SceneBuilderContext, stair: SimpleHouseStair): void {
   const groundGroup = ctx.floor ? ctx.floor('ground').group : ctx.scene;
   const groundCeilingGroup = ctx.floor ? ctx.floor('ground').ceilingGroup : ctx.groundFloorCeilingGroup;
@@ -173,7 +190,100 @@ export function buildSimpleHouseStaircaseAndHall(ctx: SceneBuilderContext, stair
     name: 'simpleHouse.hall.diffuser',
     position: [-0.9, FFL_GROUND + 0.756, 2.92],
   });
-  groundGroup.add(consoleTable, pierMirror, hurricane, diffuser);
+  // Entrance coir threshold mat inside front door + aged-brass umbrella stand & heritage walking sticks
+  const coirMat = new THREE.MeshStandardMaterial({
+    name: 'simpleHouse.hall.coirDoormatMat',
+    color: 0x9d8362,
+    roughness: 0.95,
+  });
+  const coirBorderMat = new THREE.MeshStandardMaterial({
+    name: 'simpleHouse.hall.coirBorderMat',
+    color: 0x3b352e,
+    roughness: 0.9,
+  });
+  const doormatGroup = new THREE.Group();
+  doormatGroup.name = 'simpleHouse.hall.coirDoormat';
+  const dmOuter = new THREE.Mesh(prepGeo(new THREE.BoxGeometry(0.86, 0.008, 0.54)), coirBorderMat);
+  dmOuter.name = 'simpleHouse.hall.coirDoormat.border';
+  dmOuter.position.set(0, FFL_GROUND + 0.004, 3.84);
+  dmOuter.receiveShadow = true;
+  const dmPile = new THREE.Mesh(prepGeo(new THREE.BoxGeometry(0.78, 0.004, 0.46)), coirMat);
+  dmPile.name = 'simpleHouse.hall.coirDoormat.pile';
+  dmPile.position.set(0, FFL_GROUND + 0.009, 3.84);
+  dmPile.receiveShadow = true;
+  doormatGroup.add(dmOuter, dmPile);
+
+  const umbrellaStand = new THREE.Group();
+  umbrellaStand.name = 'simpleHouse.hall.brassUmbrellaStand';
+  umbrellaStand.position.set(-0.88, FFL_GROUND + 0.001, 3.74);
+  const standBase = new THREE.Mesh(sharedCylinderGeometry(0.125, 0.135, 0.028, 18), brass);
+  standBase.name = 'simpleHouse.hall.brassUmbrellaStand.dripBase';
+  standBase.position.y = 0.014;
+  standBase.castShadow = true;
+  const standTopRing = new THREE.Mesh(
+    prepGeo(new THREE.TorusGeometry(0.118, 0.009, 10, 20)),
+    brass
+  );
+  standTopRing.name = 'simpleHouse.hall.brassUmbrellaStand.topRing';
+  standTopRing.rotation.x = Math.PI * 0.5;
+  standTopRing.position.y = 0.54;
+  umbrellaStand.add(standBase, standTopRing);
+  for (let u = 0; u < 4; u++) {
+    const ang = (u * Math.PI) / 2 + Math.PI * 0.25;
+    const upright = new THREE.Mesh(sharedCylinderGeometry(0.007, 0.007, 0.51, 10), brass);
+    upright.name = `simpleHouse.hall.brassUmbrellaStand.upright_${u + 1}`;
+    upright.position.set(Math.cos(ang) * 0.112, 0.28, Math.sin(ang) * 0.112);
+    umbrellaStand.add(upright);
+  }
+  const umbrellaCanopyMat = new THREE.MeshStandardMaterial({
+    name: 'simpleHouse.hall.umbrellaSilk',
+    color: 0x28382f,
+    roughness: 0.72,
+  });
+  for (const [idx, ox, oz, tiltX, tiltZ] of [
+    [1, -0.03, -0.02, 0.09, -0.08],
+    [2, 0.035, 0.025, -0.07, 0.1],
+  ] as const) {
+    const stick = new THREE.Group();
+    stick.name = `simpleHouse.hall.umbrella_${idx}`;
+    stick.position.set(ox, 0.03, oz);
+    stick.rotation.set(tiltX, 0, tiltZ);
+    const shaft = new THREE.Mesh(sharedCylinderGeometry(0.008, 0.006, 0.76, 10), mats.mahogany);
+    shaft.name = `${stick.name}.shaft`;
+    shaft.position.y = 0.38;
+    const canopy = new THREE.Mesh(sharedCylinderGeometry(0.032, 0.012, 0.46, 12), umbrellaCanopyMat);
+    canopy.name = `${stick.name}.furl`;
+    canopy.position.y = 0.36;
+    const pommel = new THREE.Mesh(sharedSphereGeometry(0.017, 12, 10), brass);
+    pommel.name = `${stick.name}.pommel`;
+    pommel.position.y = 0.77;
+    stick.add(shaft, canopy, pommel);
+    umbrellaStand.add(stick);
+  }
+
+  // Tailored oatmeal-linen Roman blind on Galleried Landing South sash window
+  const landingSouthCut = {
+    axis: 'z' as const,
+    coord: HALF_D - EXT_WALL_T * 0.5,
+    minSpan: -HALF_W,
+    maxSpan: HALF_W,
+    floor: 'first' as const,
+    outwardSide: 'south' as const,
+  };
+  deconflictRomanBlind(buildWindowRomanBlind(ctx.scene, tagCutaway, {
+    name: 'simpleHouse.landing.southRomanBlind',
+    zone: 'houseLanding',
+    centerX: 0,
+    width: 1.12,
+    railY: FFL_FIRST + 2.28,
+    bottomY: FFL_FIRST + 1.88,
+    wallFaceZ: HALF_D - EXT_WALL_T - 0.026,
+    facingZ: -1,
+    cutawayWall: landingSouthCut,
+    parentGroup: firstGroup,
+  }), -1);
+
+  groundGroup.add(consoleTable, pierMirror, hurricane, diffuser, doormatGroup, umbrellaStand);
 
   groundGroup.add(
     buildCastIronColumnRadiator({
