@@ -21,7 +21,7 @@ export function bevelledBox(
 ): THREE.BufferGeometry {
   const safeR = Math.max(0.0008, Math.min(radius, w * 0.42, h * 0.42, d * 0.42));
   const minDim = Math.min(w, h, d);
-  const effSegs = minDim < 0.08 ? 1 : 2;
+  const effSegs = minDim < 0.08 ? 1 : Math.min(2, Math.max(1, segments));
   const key = `${w.toFixed(4)}|${h.toFixed(4)}|${d.toFixed(4)}|${safeR.toFixed(4)}|${effSegs}|${tileW.toFixed(3)}|${tileH.toFixed(3)}`;
   const hit = BEVELLED_BOX_CACHE.get(key);
   if (hit) return hit;
