@@ -7,11 +7,19 @@
  * into single draw calls.
  */
 import * as THREE from 'three';
+import {
+  clearMicroSurfaceDetailCache,
+  createThinFabricShadeMaterial,
+  getMicroSurfaceDetailMaps,
+  type MicroSurfaceClass,
+  type ThinFabricShadeOptions,
+} from './micro-surface-detail.ts';
+
+export { createThinFabricShadeMaterial, type MicroSurfaceClass, type ThinFabricShadeOptions };
 
 export type FinishCategory = 'paint-plaster' | 'timber-stone' | 'metal-enamel';
 
 export type FinishSheen =
-  // Paint & Plaster
   | 'lime-wash'
   | 'chalky-matte'
   | 'estate-emulsion'
@@ -19,14 +27,12 @@ export type FinishSheen =
   | 'eggshell'
   | 'satinwood'
   | 'full-gloss'
-  // Timber & Stone
   | 'oiled-oak'
   | 'waxed-walnut'
   | 'fumed-mahogany'
   | 'honed-stone'
   | 'polished-marble'
   | 'riven-slate'
-  // Architectural Metals & Enamel
   | 'unlacquered-brass'
   | 'aged-brass'
   | 'polished-chrome'
@@ -38,6 +44,7 @@ export type FinishSheen =
 export interface FinishSheenDescriptor {
   readonly sheen: FinishSheen;
   readonly category: FinishCategory;
+  readonly surfaceClass: MicroSurfaceClass;
   readonly roughness: number;
   readonly metalness: number;
   readonly defaultColor: `#${string}`;
@@ -46,9 +53,9 @@ export interface FinishSheenDescriptor {
 
 export interface FinishMaterialOptions {
   /**
-   * Attaches a subtle shared procedural micro-grain roughness & normal map (off by default
-   * so flat paint finishes coalesce with zero extra texture binds; uses a single cached
-   * `DataTexture` pair when enabled).
+   * Attaches a subtle shared 256x256 procedural micro-surface roughness & tangent-normal map
+   * cached once per surface class (`plaster-stipple`, `honed-stone`, `timber-pore`,
+   * `brushed-metal`). Off by default so untextured batches coalesce with zero extra binds.
    */
   readonly microGrain?: boolean;
   /** Face culling mode (`THREE.FrontSide` by default). */
@@ -67,256 +74,190 @@ export interface FinishMaterialOptions {
 }
 
 export const FINISH_SHEENS: Readonly<Record<FinishSheen, FinishSheenDescriptor>> = Object.freeze({
-  // Paint & Plaster
   'lime-wash': {
     sheen: 'lime-wash',
     category: 'paint-plaster',
+    surfaceClass: 'plaster-stipple',
     roughness: 0.9,
     metalness: 0.0,
     defaultColor: '#EAE4D7',
-    microGrainScale: 0.06,
+    microGrainScale: 0.09,
   },
   'chalky-matte': {
     sheen: 'chalky-matte',
     category: 'paint-plaster',
+    surfaceClass: 'plaster-stipple',
     roughness: 0.86,
     metalness: 0.0,
     defaultColor: '#F0EDE5',
-    microGrainScale: 0.05,
+    microGrainScale: 0.075,
   },
   'estate-emulsion': {
     sheen: 'estate-emulsion',
     category: 'paint-plaster',
+    surfaceClass: 'plaster-stipple',
     roughness: 0.82,
     metalness: 0.0,
     defaultColor: '#EFECE4',
-    microGrainScale: 0.04,
+    microGrainScale: 0.065,
   },
   'modern-emulsion': {
     sheen: 'modern-emulsion',
     category: 'paint-plaster',
+    surfaceClass: 'plaster-stipple',
     roughness: 0.72,
     metalness: 0.0,
     defaultColor: '#F2EFE8',
-    microGrainScale: 0.035,
+    microGrainScale: 0.055,
   },
   eggshell: {
     sheen: 'eggshell',
     category: 'paint-plaster',
+    surfaceClass: 'plaster-stipple',
     roughness: 0.38,
     metalness: 0.01,
     defaultColor: '#EDEAE2',
-    microGrainScale: 0.025,
+    microGrainScale: 0.048,
   },
   satinwood: {
     sheen: 'satinwood',
     category: 'paint-plaster',
+    surfaceClass: 'plaster-stipple',
     roughness: 0.28,
     metalness: 0.01,
     defaultColor: '#F4F1EA',
-    microGrainScale: 0.02,
+    microGrainScale: 0.042,
   },
   'full-gloss': {
     sheen: 'full-gloss',
     category: 'paint-plaster',
+    surfaceClass: 'plaster-stipple',
     roughness: 0.14,
     metalness: 0.06,
     defaultColor: '#F7F5F0',
-    microGrainScale: 0.012,
+    microGrainScale: 0.04,
   },
-
-  // Timber & Stone
   'oiled-oak': {
     sheen: 'oiled-oak',
     category: 'timber-stone',
+    surfaceClass: 'timber-pore',
     roughness: 0.46,
     metalness: 0.02,
     defaultColor: '#C8A87E',
-    microGrainScale: 0.055,
+    microGrainScale: 0.07,
   },
   'waxed-walnut': {
     sheen: 'waxed-walnut',
     category: 'timber-stone',
+    surfaceClass: 'timber-pore',
     roughness: 0.32,
     metalness: 0.02,
     defaultColor: '#5C3D28',
-    microGrainScale: 0.045,
+    microGrainScale: 0.055,
   },
   'fumed-mahogany': {
     sheen: 'fumed-mahogany',
     category: 'timber-stone',
+    surfaceClass: 'timber-pore',
     roughness: 0.3,
     metalness: 0.03,
     defaultColor: '#4E2A1E',
-    microGrainScale: 0.045,
+    microGrainScale: 0.055,
   },
   'honed-stone': {
     sheen: 'honed-stone',
     category: 'timber-stone',
+    surfaceClass: 'honed-stone',
     roughness: 0.34,
     metalness: 0.01,
     defaultColor: '#D8D1C3',
-    microGrainScale: 0.05,
+    microGrainScale: 0.065,
   },
   'polished-marble': {
     sheen: 'polished-marble',
     category: 'timber-stone',
+    surfaceClass: 'honed-stone',
     roughness: 0.18,
     metalness: 0.02,
     defaultColor: '#F3F0EA',
-    microGrainScale: 0.018,
+    microGrainScale: 0.04,
   },
   'riven-slate': {
     sheen: 'riven-slate',
     category: 'timber-stone',
+    surfaceClass: 'honed-stone',
     roughness: 0.76,
     metalness: 0.03,
     defaultColor: '#3C4146',
-    microGrainScale: 0.08,
+    microGrainScale: 0.095,
   },
-
-  // Architectural Metals & Enamel
   'unlacquered-brass': {
     sheen: 'unlacquered-brass',
     category: 'metal-enamel',
+    surfaceClass: 'brushed-metal',
     roughness: 0.28,
     metalness: 0.88,
     defaultColor: '#C8A14B',
-    microGrainScale: 0.03,
+    microGrainScale: 0.05,
   },
   'aged-brass': {
     sheen: 'aged-brass',
     category: 'metal-enamel',
+    surfaceClass: 'brushed-metal',
     roughness: 0.36,
     metalness: 0.84,
     defaultColor: '#B5914B',
-    microGrainScale: 0.04,
+    microGrainScale: 0.06,
   },
   'polished-chrome': {
     sheen: 'polished-chrome',
     category: 'metal-enamel',
+    surfaceClass: 'brushed-metal',
     roughness: 0.12,
     metalness: 0.94,
     defaultColor: '#DCE2E6',
-    microGrainScale: 0.012,
+    microGrainScale: 0.04,
   },
   'brushed-nickel': {
     sheen: 'brushed-nickel',
     category: 'metal-enamel',
+    surfaceClass: 'brushed-metal',
     roughness: 0.32,
     metalness: 0.86,
     defaultColor: '#C8C6BE',
-    microGrainScale: 0.035,
+    microGrainScale: 0.065,
   },
   'wrought-iron': {
     sheen: 'wrought-iron',
     category: 'metal-enamel',
+    surfaceClass: 'brushed-metal',
     roughness: 0.4,
     metalness: 0.62,
     defaultColor: '#45494C',
-    microGrainScale: 0.065,
+    microGrainScale: 0.08,
   },
   'cast-iron': {
     sheen: 'cast-iron',
     category: 'metal-enamel',
+    surfaceClass: 'brushed-metal',
     roughness: 0.54,
     metalness: 0.55,
     defaultColor: '#2E3134',
-    microGrainScale: 0.075,
+    microGrainScale: 0.095,
   },
   'vitreous-enamel': {
     sheen: 'vitreous-enamel',
     category: 'metal-enamel',
+    surfaceClass: 'brushed-metal',
     roughness: 0.15,
     metalness: 0.08,
     defaultColor: '#F6F5F0',
-    microGrainScale: 0.015,
+    microGrainScale: 0.04,
   },
 });
 
-interface MicroGrainTexturePair {
-  readonly roughnessMap: THREE.DataTexture;
-  readonly normalMap: THREE.DataTexture;
-}
-
 const finishMaterialCache = new Map<string, THREE.MeshStandardMaterial>();
-let sharedMicroGrainMaps: MicroGrainTexturePair | null = null;
 const colorScratch = new THREE.Color();
-
-function hash2d(ix: number, iy: number, seed: number): number {
-  let h = (Math.imul(ix, 374761393) + Math.imul(iy, 668265263) + Math.imul(seed, 1442695041)) | 0;
-  h = Math.imul(h ^ (h >>> 13), 1274126177);
-  return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
-}
-
-function getSharedMicroGrainMaps(): MicroGrainTexturePair {
-  if (sharedMicroGrainMaps !== null) {
-    return sharedMicroGrainMaps;
-  }
-
-  const size = 64;
-  const heightField = new Float32Array(size * size);
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const n0 = hash2d(x, y, 17);
-      const n1 =
-        (hash2d((x + 1) % size, y, 31) +
-          hash2d((x + size - 1) % size, y, 31) +
-          hash2d(x, (y + 1) % size, 31) +
-          hash2d(x, (y + size - 1) % size, 31)) *
-        0.25;
-      heightField[y * size + x] = n0 * 0.45 + n1 * 0.55;
-    }
-  }
-
-  const roughnessData = new Uint8Array(size * size * 4);
-  const normalData = new Uint8Array(size * size * 4);
-
-  for (let y = 0; y < size; y++) {
-    const ym = (y + size - 1) % size;
-    const yp = (y + 1) % size;
-    for (let x = 0; x < size; x++) {
-      const xm = (x + size - 1) % size;
-      const xp = (x + 1) % size;
-      const idx = y * size + x;
-      const hVal = heightField[idx]!;
-      // Subtle ±7% roughness modulation around material.roughness multiplier (neutral near 0.93..1.0)
-      const roughByte = Math.max(0, Math.min(255, Math.round(234 + (hVal - 0.5) * 36)));
-      const p4 = idx * 4;
-      roughnessData[p4] = roughByte;
-      roughnessData[p4 + 1] = roughByte;
-      roughnessData[p4 + 2] = roughByte;
-      roughnessData[p4 + 3] = 255;
-
-      const dx = (heightField[y * size + xp]! - heightField[y * size + xm]!) * 0.55;
-      const dy = (heightField[yp * size + x]! - heightField[ym * size + x]!) * 0.55;
-      const invLen = 1 / Math.hypot(dx, dy, 1);
-      normalData[p4] = Math.round((-dx * invLen * 0.5 + 0.5) * 255);
-      normalData[p4 + 1] = Math.round((-dy * invLen * 0.5 + 0.5) * 255);
-      normalData[p4 + 2] = Math.round((invLen * 0.5 + 0.5) * 255);
-      normalData[p4 + 3] = 255;
-    }
-  }
-
-  const roughnessMap = new THREE.DataTexture(roughnessData, size, size, THREE.RGBAFormat);
-  roughnessMap.name = 'finish:microGrain:roughness';
-  roughnessMap.wrapS = THREE.RepeatWrapping;
-  roughnessMap.wrapT = THREE.RepeatWrapping;
-  roughnessMap.repeat.set(4, 4);
-  roughnessMap.colorSpace = THREE.NoColorSpace;
-  roughnessMap.needsUpdate = true;
-
-  const normalMap = new THREE.DataTexture(normalData, size, size, THREE.RGBAFormat);
-  normalMap.name = 'finish:microGrain:normal';
-  normalMap.wrapS = THREE.RepeatWrapping;
-  normalMap.wrapT = THREE.RepeatWrapping;
-  normalMap.repeat.set(4, 4);
-  normalMap.colorSpace = THREE.NoColorSpace;
-  normalMap.needsUpdate = true;
-
-  sharedMicroGrainMaps = { roughnessMap, normalMap };
-  return sharedMicroGrainMaps;
-}
 
 /**
  * Creates (or returns a deterministically cached) `THREE.MeshStandardMaterial` for a calibrated
@@ -337,7 +278,7 @@ export function createFinishMaterial(
   const side = options?.side ?? THREE.FrontSide;
   const microGrain = options?.microGrain === true;
   const transparent = options?.transparent === true;
-  const opacity = options?.opacity ?? 1;
+  const opacity = THREE.MathUtils.clamp(options?.opacity ?? 1, 0, 1);
   const customName = options?.name;
   const unique = options?.unique === true;
 
@@ -360,13 +301,11 @@ export function createFinishMaterial(
   };
 
   if (microGrain) {
-    const grain = getSharedMicroGrainMaps();
+    const grain = getMicroSurfaceDetailMaps(descriptor.surfaceClass);
+    const scale = THREE.MathUtils.clamp(descriptor.microGrainScale, 0.04, 0.1);
     matParams.roughnessMap = grain.roughnessMap;
     matParams.normalMap = grain.normalMap;
-    matParams.normalScale = new THREE.Vector2(
-      descriptor.microGrainScale,
-      descriptor.microGrainScale
-    );
+    matParams.normalScale = new THREE.Vector2(scale, scale);
   }
 
   const material = new THREE.MeshStandardMaterial(matParams);
@@ -379,4 +318,5 @@ export function createFinishMaterial(
 /** Clears the cached finish-material table (primarily for isolated unit tests). */
 export function clearFinishMaterialCache(): void {
   finishMaterialCache.clear();
+  clearMicroSurfaceDetailCache();
 }

@@ -14,11 +14,9 @@ import {
   abs,
   agxToneMapping,
   clamp,
-  cos,
   dot,
   float,
-  fract,
-  length,
+  getViewPosition,
   max,
   min,
   mix,
@@ -26,12 +24,8 @@ import {
   pow,
   renderGroup,
   rtt,
-  screenCoordinate,
   select,
   type ShaderNodeObject,
-  sin,
-  smoothstep,
-  sqrt,
   sRGBTransferOETF,
   uniform,
   uv,
@@ -41,8 +35,21 @@ import {
 } from 'three/tsl';
 import type { RigCamera } from '../camera/camera-rig.ts';
 import type { GraphicsTier, GraphicsTierSettings } from '../../core/types/twin-ux.ts';
-import { clampPixelRatioForViewport, getTierSettings, isGraphicsTier } from '../perf/tier-settings.ts';
+import {
+  clampPixelRatioForViewport,
+  getTierSettings,
+  isGraphicsTier,
+} from '../perf/tier-settings.ts';
 import { BloomPass } from './bloom-pass.ts';
+import {
+  applyPhotorealismShading,
+  evaluateHalfResGtao,
+  evaluateScreenSpaceContactShadow,
+  reconstructMinDeltaViewNormal,
+  resolvePrimaryDirectionalSunSample,
+  upsampleBilateralGtao,
+} from './contact-shadows-and-gtao.ts';
+import { evaluateMotionBlurOrFxaaCas, sampleClampedHdrRgb } from './fxaa-and-cas.ts';
 
 /** Legacy 3-step preset kept for the existing HUD; each preset maps onto a {@link GraphicsTier}. */
 export type GraphicsQualityPreset = 'ultra' | 'balanced' | 'performance';
@@ -74,14 +81,14 @@ function tierToPreset(tier: GraphicsTier): GraphicsQualityPreset {
   return 'balanced';
 }
 
-/** Vertical projection scale (`P[1][1]`) of the rig's 42° perspective camera; used until one is seen. */
+/** Vertical projection scale (`P[1][1]`) of the rig's 42-degree perspective camera; used until one is seen. */
 const DEFAULT_PERSPECTIVE_PROJ_Y = 1 / Math.tan(THREE.MathUtils.degToRad(21));
 
 /** Matching built-in AgX tone mapping for frames rendered straight to the canvas (post disabled). */
 export const RENDERER_TONE_MAPPING: THREE.ToneMapping = THREE.AgXToneMapping;
 
 const STORAGE_KEY = 'hus_graphics_settings_v3';
-const AO_INTENSITY = 0.42;
+const AO_INTENSITY = 0.48;
 const BLOOM_INTENSITY = 0.12;
 const SHARPEN_INTENSITY = 0.26;
 const MOTION_BLUR_STRENGTH = 0.38;
@@ -97,11 +104,12 @@ export class PostProcessingPipeline {
   private halfResFxRtt: ShaderNodeObject<RTTNode> | null = null;
   private readonly bloom = new BloomPass();
 
-  // Live TSL Uniforms driving the WGSL post-processing node graph
   private readonly uResolution: ShaderNodeObject<UniformNode<THREE.Vector2>>;
   private readonly uTexelSize: ShaderNodeObject<UniformNode<THREE.Vector2>>;
-  private readonly uNear = uniform(0.1).setGroup(renderGroup);
-  private readonly uFar = uniform(120.0).setGroup(renderGroup);
+  private readonly uHalfTexelSize: ShaderNodeObject<UniformNode<THREE.Vector2>>;
+  private readonly uProjMatrix = uniform(new THREE.Matrix4()).setGroup(renderGroup);
+  private readonly uProjMatrixInverse = uniform(new THREE.Matrix4()).setGroup(renderGroup);
+  private readonly uCameraWorldMatrix = uniform(new THREE.Matrix4()).setGroup(renderGroup);
   private readonly uIsOrtho = uniform(0.0).setGroup(renderGroup);
   private readonly uOrthoEquivDepth = uniform(10.0).setGroup(renderGroup);
   private readonly uExposure: ShaderNodeObject<UniformNode<number>>;
@@ -110,9 +118,15 @@ export class PostProcessingPipeline {
   private readonly uMotionBlurEnabled = uniform(1.0).setGroup(renderGroup);
   private readonly uShutterScale = uniform(MOTION_BLUR_STRENGTH).setGroup(renderGroup);
   private readonly uAoIntensity = uniform(AO_INTENSITY).setGroup(renderGroup);
+  private readonly uSunViewDir = uniform(new THREE.Vector3(0.35, 0.88, 0.32)).setGroup(renderGroup);
+  private readonly uSunWorldDir = uniform(new THREE.Vector3(0.35, 0.88, 0.32)).setGroup(
+    renderGroup
+  );
+  private readonly uContactShadowStrength = uniform(0.0).setGroup(renderGroup);
   private readonly uSharpenIntensity = uniform(SHARPEN_INTENSITY).setGroup(renderGroup);
   private readonly uFxaaEnabled = uniform(0.0).setGroup(renderGroup);
   private readonly uHalfResFxWeight = uniform(1.0).setGroup(renderGroup);
+  private readonly uIsWebGPU = uniform(1.0).setGroup(renderGroup);
 
   private readonly currViewProj = new THREE.Matrix4();
   private readonly currInvViewProj = new THREE.Matrix4();
@@ -120,7 +134,6 @@ export class PostProcessingPipeline {
   private hasPrevMatrix = false;
 
   private tier: GraphicsTier = 'low';
-  /** Subtle ~135° shutter camera-velocity motion blur; enabled by default only on 'high'/'ultra'. */
   private motionBlurEnabled = false;
   private motionBlurUserOverride: boolean | null = null;
   private motionBlurStrength = MOTION_BLUR_STRENGTH;
@@ -137,22 +150,20 @@ export class PostProcessingPipeline {
   private halfResRenderedOnce = false;
   private lastPerspectiveProjY = DEFAULT_PERSPECTIVE_PROJ_Y;
 
-  public constructor(
-    renderer: WebGPURenderer,
-    initialWidth = 1,
-    initialHeight = 1
-  ) {
+  public constructor(renderer: WebGPURenderer, initialWidth = 1, initialHeight = 1) {
     this.renderer = renderer;
     this.cssWidth = Math.max(1, initialWidth);
     this.cssHeight = Math.max(1, initialHeight);
 
-    // Start lightweight without allocating >1x buffers or PassNodes before GraphicsService applies the detected tier.
     this.restoreSettings();
     const rtWidth = Math.max(1, Math.round(this.cssWidth * this.currentPixelRatio));
     const rtHeight = Math.max(1, Math.round(this.cssHeight * this.currentPixelRatio));
+    const halfW = Math.max(1, Math.floor(rtWidth * 0.5));
+    const halfH = Math.max(1, Math.floor(rtHeight * 0.5));
 
     this.uResolution = uniform(new THREE.Vector2(rtWidth, rtHeight)).setGroup(renderGroup);
     this.uTexelSize = uniform(new THREE.Vector2(1 / rtWidth, 1 / rtHeight)).setGroup(renderGroup);
+    this.uHalfTexelSize = uniform(new THREE.Vector2(1 / halfW, 1 / halfH)).setGroup(renderGroup);
     this.uExposure = uniform(renderer.toneMappingExposure).setGroup(renderGroup);
   }
 
@@ -164,10 +175,7 @@ export class PostProcessingPipeline {
     this.fxaaEnabled = settings.postProcessing;
     this.bloomEnabled = settings.postProcessing && settings.bloom;
     this.sharpenEnabled = settings.postProcessing && settings.sharpen;
-    // Keep per-pixel velocity motion blur off by default (4K 120 FPS sharp first-person & orbit;
-    // still toggleable on demand via HUD / API).
-    this.motionBlurEnabled =
-      settings.postProcessing && this.motionBlurUserOverride === true;
+    this.motionBlurEnabled = settings.postProcessing && this.motionBlurUserOverride === true;
   }
 
   private syncRendererPixelRatio(): void {
@@ -182,13 +190,14 @@ export class PostProcessingPipeline {
 
     const rtWidth = Math.max(1, Math.round(this.cssWidth * this.currentPixelRatio));
     const rtHeight = Math.max(1, Math.round(this.cssHeight * this.currentPixelRatio));
+    const halfW = Math.max(1, Math.floor(rtWidth * 0.5));
+    const halfH = Math.max(1, Math.floor(rtHeight * 0.5));
     this.uResolution.value.set(rtWidth, rtHeight);
     this.uTexelSize.value.set(1 / rtWidth, 1 / rtHeight);
+    this.uHalfTexelSize.value.set(1 / halfW, 1 / halfH);
     if (this.scenePass) {
       this.scenePass.renderTarget.samples = 1;
     }
-    const halfW = Math.max(1, Math.floor(rtWidth * 0.5));
-    const halfH = Math.max(1, Math.floor(rtHeight * 0.5));
     if (this.halfResFxRtt) {
       const prevRt = this.halfResFxRtt.renderTarget;
       const sizeChanged = !prevRt || prevRt.width !== halfW || prevRt.height !== halfH;
@@ -203,12 +212,6 @@ export class PostProcessingPipeline {
     }
   }
 
-  /**
-   * Toggles zero-resize, zero-recompile interactive scrub mode: keeps `renderer`, `canvas`, and
-   * `scenePass.renderTarget` at 100% immutable resolution & sample count (0 `GPUTexture.destroy`
-   * calls on Dawn WebGPU) while bypassing the `halfResFxRtt` Contact-AO + HDR Bloom pass and
-   * 19-tap FXAA edge search during active scrub, restoring all post-FX on settle.
-   */
   private syncHalfResAutoUpdate(): boolean {
     const shouldUpdateHalfRes =
       (this.bloomEnabled || this.ambientOcclusionEnabled) &&
@@ -264,11 +267,6 @@ export class PostProcessingPipeline {
     };
   }
 
-  /**
-   * Applies a graphics tier (pixel ratio, AO, bloom, sharpen, post on/off). With post disabled the
-   * scene renders straight to the canvas using the renderer's built-in tone mapping, which uses
-   * the same exposure curve as the post shader so lighting looks identical either way.
-   */
   public applyTierSettings(settings: GraphicsTierSettings): void {
     this.assignTierSettings(settings);
     this.syncRendererPixelRatio();
@@ -276,7 +274,6 @@ export class PostProcessingPipeline {
     this.saveSettings();
   }
 
-  /** Legacy preset API: `ultra` → ultra tier, `balanced` → high tier, `performance` → low tier. */
   public setQualityPreset(preset: GraphicsQualityPreset): void {
     this.applyTierSettings(getTierSettings(PRESET_TO_TIER[preset], currentDevicePixelRatio()));
   }
@@ -335,7 +332,7 @@ export class PostProcessingPipeline {
         })
       );
     } catch {
-      // Ignore storage quota / disabled storage errors
+      // Ignore storage quota or disabled storage errors
     }
   }
 
@@ -367,10 +364,7 @@ export class PostProcessingPipeline {
     }
 
     const scenePass = pass(scene, camera, { samples: 1 });
-    // FXAA 3.11 + CAS handles anti-aliasing in post: use 1x sampleCount instead of 4x MSAA rgba16float.
     scenePass.renderTarget.samples = 1;
-    // Ensure PassNode renderTarget dimensions are always exact integers (preventing fractional
-    // viewport/scissor validation errors on fractional DPRs like 0.75, 0.85, 1.25, or 1.5).
     const passInternal = scenePass as unknown as {
       _width: number;
       _height: number;
@@ -382,13 +376,16 @@ export class PostProcessingPipeline {
     passInternal.setSize = function (width: number, height: number): void {
       this._width = width;
       this._height = height;
-      const effectiveWidth = Math.max(1, Math.floor(this._width * this._pixelRatio * this._resolution));
-      const effectiveHeight = Math.max(1, Math.floor(this._height * this._pixelRatio * this._resolution));
+      const effectiveWidth = Math.max(
+        1,
+        Math.floor(this._width * this._pixelRatio * this._resolution)
+      );
+      const effectiveHeight = Math.max(
+        1,
+        Math.floor(this._height * this._pixelRatio * this._resolution)
+      );
       this.renderTarget.setSize(effectiveWidth, effectiveHeight);
     };
-    // Work around Three.js r180 WebGPU RenderTarget.setSize bug: when `renderTarget.setSize`
-    // disposes the underlying GPU textures, increment `.version` on color and depth attachments
-    // so `NodeSampledTexture.update()` rebuilds the composite quad bind group with the new views.
     scenePass.renderTarget.addEventListener('dispose', () => {
       for (const tex of scenePass.renderTarget.textures) {
         tex.version++;
@@ -414,247 +411,41 @@ export class PostProcessingPipeline {
     depthNode: ShaderNodeObject<TextureNode>
   ): ShaderNodeObject<Node> {
     const sampleHdr = (sampleUv: ShaderNodeObject<Node>): ShaderNodeObject<Node> =>
-      (colorNode.sample(clamp(sampleUv, 0.001, 0.999)) as unknown as ShaderNodeObject<TextureNode>).level(float(0)).rgb;
-
-    const perceptualLuma = (rgb: ShaderNodeObject<Node>): ShaderNodeObject<Node> =>
-      sqrt(max(0.0, dot(rgb, vec3(0.299, 0.587, 0.114))));
-
-    const linearizeDepth = (d: ShaderNodeObject<Node>): ShaderNodeObject<Node> => {
-      const orthoLinZ = mix(this.uNear, this.uFar, d);
-      const zNdc = d.mul(2.0).sub(1.0);
-      const perspLinZ = this.uNear
-        .mul(this.uFar)
-        .mul(2.0)
-        .div(max(1e-5, this.uFar.add(this.uNear).sub(zNdc.mul(this.uFar.sub(this.uNear)))));
-      return select(this.uIsOrtho.greaterThan(0.5), orthoLinZ, perspLinZ);
-    };
-
-    const readLinearDepth = (sampleUv: ShaderNodeObject<Node>): ShaderNodeObject<Node> =>
-      linearizeDepth(depthNode.sample(clamp(sampleUv, 0.001, 0.999)).r);
+      sampleClampedHdrRgb(colorNode, sampleUv);
 
     const toneMap = (hdrColor: ShaderNodeObject<Node>): ShaderNodeObject<Node> => {
       const base = agxToneMapping(hdrColor, this.uExposure);
-      // AgX Punchy midtone contrast & natural colour saturation preservation
       const contrasted = pow(max(base, vec3(0.0)), vec3(1.12));
       const agxLuma = dot(contrasted, vec3(0.2126, 0.7152, 0.0722));
       return clamp(vec3(agxLuma).add(contrasted.sub(agxLuma).mul(1.16)), 0.0, 1.0);
     };
 
-    // Directional FXAA 3.11 (3x3 neighborhood edge orientation + tangent span search
-    // + sub-pixel aliasing filter) fused with Contrast-Adaptive Sharpening (CAS).
-    const computeFxaaAndCas = (
-      vUv: ShaderNodeObject<Node>,
-      centerColor: ShaderNodeObject<Node>
-    ): ShaderNodeObject<Node> => {
-      const rgbN = sampleHdr(vUv.add(vec2(0.0, this.uTexelSize.y))).toVar();
-      const rgbS = sampleHdr(vUv.sub(vec2(0.0, this.uTexelSize.y))).toVar();
-      const rgbE = sampleHdr(vUv.add(vec2(this.uTexelSize.x, 0.0))).toVar();
-      const rgbW = sampleHdr(vUv.sub(vec2(this.uTexelSize.x, 0.0))).toVar();
-
-      const lumaM = perceptualLuma(centerColor).toVar();
-      const lumaN = perceptualLuma(rgbN).toVar();
-      const lumaS = perceptualLuma(rgbS).toVar();
-      const lumaE = perceptualLuma(rgbE).toVar();
-      const lumaW = perceptualLuma(rgbW).toVar();
-
-      const lumaMin = min(lumaM, min(min(lumaN, lumaS), min(lumaE, lumaW))).toVar();
-      const lumaMax = max(lumaM, max(max(lumaN, lumaS), max(lumaE, lumaW))).toVar();
-      const lumaRange = lumaMax.sub(lumaMin).toVar();
-
-      const resultColor = vec3(centerColor).toVar();
-
-      If(
-        this.uFxaaEnabled
-          .greaterThan(0.5)
-          .and(lumaRange.greaterThanEqual(max(0.0312, lumaMax.mul(0.125)))),
-        () => {
-          const rgbNW = sampleHdr(vUv.add(vec2(this.uTexelSize.x.negate(), this.uTexelSize.y)));
-          const rgbNE = sampleHdr(vUv.add(vec2(this.uTexelSize.x, this.uTexelSize.y)));
-          const rgbSW = sampleHdr(
-            vUv.add(vec2(this.uTexelSize.x.negate(), this.uTexelSize.y.negate()))
-          );
-          const rgbSE = sampleHdr(vUv.add(vec2(this.uTexelSize.x, this.uTexelSize.y.negate())));
-
-          const lumaNW = perceptualLuma(rgbNW);
-          const lumaNE = perceptualLuma(rgbNE);
-          const lumaSW = perceptualLuma(rgbSW);
-          const lumaSE = perceptualLuma(rgbSE);
-
-          const lumaDownUp = lumaS.add(lumaN);
-          const lumaLeftRight = lumaW.add(lumaE);
-          const lumaLeftCorners = lumaSW.add(lumaNW);
-          const lumaDownCorners = lumaSW.add(lumaSE);
-          const lumaRightCorners = lumaSE.add(lumaNE);
-          const lumaUpCorners = lumaNE.add(lumaNW);
-
-          const edgeHorizontal = abs(lumaW.mul(-2.0).add(lumaLeftCorners))
-            .add(abs(lumaM.mul(-2.0).add(lumaDownUp)).mul(2.0))
-            .add(abs(lumaE.mul(-2.0).add(lumaRightCorners)));
-          const edgeVertical = abs(lumaN.mul(-2.0).add(lumaUpCorners))
-            .add(abs(lumaM.mul(-2.0).add(lumaLeftRight)).mul(2.0))
-            .add(abs(lumaS.mul(-2.0).add(lumaDownCorners)));
-
-          const isHorizontal = edgeHorizontal.greaterThanEqual(edgeVertical).toVar();
-          const luma1 = select(isHorizontal, lumaS, lumaW);
-          const luma2 = select(isHorizontal, lumaN, lumaE);
-          const gradient1 = luma1.sub(lumaM);
-          const gradient2 = luma2.sub(lumaM);
-          const is1Steepest = abs(gradient1).greaterThanEqual(abs(gradient2));
-          const gradientScaled = max(abs(gradient1), abs(gradient2)).mul(0.25).toVar();
-
-          const baseStep = select(isHorizontal, this.uTexelSize.y, this.uTexelSize.x);
-          const stepLength = select(is1Steepest, baseStep.negate(), baseStep).toVar();
-          const lumaLocalAverage = select(
-            is1Steepest,
-            luma1.add(lumaM).mul(0.5),
-            luma2.add(lumaM).mul(0.5)
-          ).toVar();
-
-          const currentUv = vec2(
-            select(isHorizontal, vUv.x, vUv.x.add(stepLength.mul(0.5))),
-            select(isHorizontal, vUv.y.add(stepLength.mul(0.5)), vUv.y)
-          );
-
-          const offset = select(
-            isHorizontal,
-            vec2(this.uTexelSize.x, 0.0),
-            vec2(0.0, this.uTexelSize.y)
-          ).toVar();
-          const uv1 = currentUv.sub(offset).toVar();
-          const uv2 = currentUv.add(offset).toVar();
-
-          const lumaEnd1 = perceptualLuma(sampleHdr(uv1)).sub(lumaLocalAverage).toVar();
-          const lumaEnd2 = perceptualLuma(sampleHdr(uv2)).sub(lumaLocalAverage).toVar();
-          const reached1 = abs(lumaEnd1).greaterThanEqual(gradientScaled).toVar();
-          const reached2 = abs(lumaEnd2).greaterThanEqual(gradientScaled).toVar();
-
-          uv1.assign(select(reached1, uv1, uv1.sub(offset.mul(1.5))));
-          uv2.assign(select(reached2, uv2, uv2.add(offset.mul(1.5))));
-
-          const stepMultipliers: readonly number[] = [2.0, 2.0, 4.0, 8.0];
-          for (const stepMul of stepMultipliers) {
-            If(reached1.and(reached2).not(), () => {
-              If(reached1.not(), () => {
-                lumaEnd1.assign(perceptualLuma(sampleHdr(uv1)).sub(lumaLocalAverage));
-              });
-              If(reached2.not(), () => {
-                lumaEnd2.assign(perceptualLuma(sampleHdr(uv2)).sub(lumaLocalAverage));
-              });
-              reached1.assign(abs(lumaEnd1).greaterThanEqual(gradientScaled));
-              reached2.assign(abs(lumaEnd2).greaterThanEqual(gradientScaled));
-              uv1.assign(select(reached1, uv1, uv1.sub(offset.mul(stepMul))));
-              uv2.assign(select(reached2, uv2, uv2.add(offset.mul(stepMul))));
-            });
-          }
-
-          const distance1 = select(isHorizontal, vUv.x.sub(uv1.x), vUv.y.sub(uv1.y));
-          const distance2 = select(isHorizontal, uv2.x.sub(vUv.x), uv2.y.sub(vUv.y));
-          const isDirection1 = distance1.lessThan(distance2);
-          const distanceFinal = min(distance1, distance2);
-          const edgeThickness = max(1e-5, distance1.add(distance2));
-          const pixelOffset = distanceFinal.negate().div(edgeThickness).add(0.5);
-
-          const isLumaCenterSmaller = lumaM.lessThan(lumaLocalAverage);
-          const chosenEndLuma = select(isDirection1, lumaEnd1, lumaEnd2);
-          const correctVariation = chosenEndLuma.lessThan(0.0).notEqual(isLumaCenterSmaller);
-          const finalOffset = select(correctVariation, pixelOffset, float(0.0)).toVar();
-
-          const lumaAverage = lumaDownUp
-            .add(lumaLeftRight)
-            .mul(2.0)
-            .add(lumaLeftCorners)
-            .add(lumaRightCorners)
-            .mul(1.0 / 12.0);
-          const subPixelOffset1 = clamp(
-            abs(lumaAverage.sub(lumaM)).div(max(1e-5, lumaRange)),
-            0.0,
-            1.0
-          );
-          const subPixelOffset2 = subPixelOffset1
-            .mul(-2.0)
-            .add(3.0)
-            .mul(subPixelOffset1)
-            .mul(subPixelOffset1);
-          const subPixelOffsetFinal = subPixelOffset2.mul(subPixelOffset2).mul(0.75);
-
-          finalOffset.assign(max(finalOffset, subPixelOffsetFinal));
-          const finalUv = vec2(
-            select(isHorizontal, vUv.x, vUv.x.add(finalOffset.mul(stepLength))),
-            select(isHorizontal, vUv.y.add(finalOffset.mul(stepLength)), vUv.y)
-          );
-          resultColor.assign(sampleHdr(finalUv));
-        }
-      );
-
-      If(this.uSharpenIntensity.greaterThan(0.001), () => {
-        const neighborAvg = rgbN.add(rgbS).add(rgbE).add(rgbW).mul(0.25);
-        const detailWeight = float(1.0)
-          .sub(smoothstep(0.25, 0.85, lumaRange))
-          .mul(this.uSharpenIntensity);
-        resultColor.assign(
-          max(vec3(0.0), resultColor.add(centerColor.sub(neighborAvg).mul(detailWeight)))
-        );
-      });
-
-      return resultColor;
+    const gtaoUniforms = {
+      uProjMatrix: this.uProjMatrix,
+      uProjMatrixInverse: this.uProjMatrixInverse,
+      uCameraWorldMatrix: this.uCameraWorldMatrix,
+      uTexelSize: this.uTexelSize,
+      uHalfTexelSize: this.uHalfTexelSize,
+      uIsOrtho: this.uIsOrtho,
+      uOrthoEquivDepth: this.uOrthoEquivDepth,
+      uAoIntensity: this.uAoIntensity,
+      uSunViewDir: this.uSunViewDir,
+      uSunWorldDir: this.uSunWorldDir,
+      uContactShadowStrength: this.uContactShadowStrength,
     };
 
-    // Bilateral Screen-Space Ambient Occlusion (SSAO): 4 rotated symmetric pairs (8 depth taps total).
-    // Radius and distance fade are driven by the on-screen scale (world units per pixel), so an
-    // orthographic view produces the same AO as a perspective view at the same apparent zoom.
-    const computeContactAO = (
-      vUv: ShaderNodeObject<Node>,
-      centerLinZ: ShaderNodeObject<Node>,
-      noise: ShaderNodeObject<Node>
-    ): ShaderNodeObject<Node> => {
-      const scaleZ = select(
-        this.uIsOrtho.greaterThan(0.5),
-        this.uOrthoEquivDepth,
-        centerLinZ
-      ).toVar();
-      const aoResult = float(1.0).toVar();
-
-      If(this.uAoIntensity.greaterThan(0.001).and(scaleZ.lessThan(20.0)), () => {
-        const radiusPx = clamp(float(21.0).div(max(1.2, scaleZ)), 2.5, 14.5);
-        const aspectStep = this.uTexelSize.mul(radiusPx).toVar();
-        const baseAngle = noise.mul(6.2831853);
-        const c0 = cos(baseAngle).toVar();
-        const s0 = sin(baseAngle).toVar();
-
-        const rotDirs: readonly [ShaderNodeObject<Node>, number][] = [
-          [vec2(c0, s0), 0.42],
-          [vec2(s0.negate(), c0), 0.65],
-          [vec2(c0.sub(s0), c0.add(s0)).mul(0.70710678), 0.85],
-          [vec2(c0.negate().sub(s0), c0.sub(s0)).mul(0.70710678), 1.0],
-        ];
-
-        const occlusion = float(0.0).toVar();
-        for (const [unitDir, ringScale] of rotDirs) {
-          const dir = unitDir.mul(aspectStep).mul(ringScale);
-          const zPlus = readLinearDepth(vUv.add(dir));
-          const zMinus = readLinearDepth(vUv.sub(dir));
-
-          const pairAvgZ = zPlus.add(zMinus).mul(0.5);
-          const delta = centerLinZ.sub(pairAvgZ);
-          const maxSpan = max(abs(zPlus.sub(centerLinZ)), abs(zMinus.sub(centerLinZ)));
-
-          const rangeCheck = smoothstep(0.55, 0.08, maxSpan);
-          const crease = smoothstep(0.004, 0.14, delta).mul(rangeCheck);
-          occlusion.addAssign(crease);
-        }
-
-        const distanceFade = float(1.0).sub(smoothstep(13.0, 20.0, scaleZ));
-        const ao = float(1.0).sub(
-          occlusion.mul(0.18).mul(this.uAoIntensity).mul(distanceFade)
-        );
-        aoResult.assign(clamp(ao, 0.68, 1.0));
-      });
-
-      return aoResult;
+    const fxaaUniforms = {
+      uTexelSize: this.uTexelSize,
+      uFxaaEnabled: this.uFxaaEnabled,
+      uSharpenIntensity: this.uSharpenIntensity,
+      uResolution: this.uResolution,
+      uCurrInvViewProj: this.uCurrInvViewProj,
+      uPrevViewProj: this.uPrevViewProj,
+      uMotionBlurEnabled: this.uMotionBlurEnabled,
+      uShutterScale: this.uShutterScale,
+      uIsWebGPU: this.uIsWebGPU,
     };
 
-    // Fused Half-Resolution (0.5x) HDR Bloom (rgb) + Bilateral Screen-Space Contact AO (a) RTT pass:
-    // cuts 4K (3840x2160) AO & Bloom shading by 4x (8.3 MP -> 2.07 MP) with hardware bilinear upsample.
     const rtWidth = Math.max(1, Math.round(this.cssWidth * this.currentPixelRatio));
     const rtHeight = Math.max(1, Math.round(this.cssHeight * this.currentPixelRatio));
     const initHalfW = Math.max(1, Math.floor(rtWidth * 0.5));
@@ -667,10 +458,7 @@ export class PostProcessingPipeline {
       const hBloom = this.bloom.buildNode(colorNode, hUv).toVar();
       const hAo = float(1.0).toVar();
       If(hRawDepth.lessThan(0.9999), () => {
-        const magicXY = vec2(0.06711056, 0.00583715);
-        const hNoise = fract(float(52.9829189).mul(fract(dot(screenCoordinate.xy, magicXY)))).toVar();
-        const hCenterLinZ = linearizeDepth(hRawDepth).toVar();
-        hAo.assign(computeContactAO(hUv, hCenterLinZ, hNoise));
+        hAo.assign(evaluateHalfResGtao(depthNode, hUv, hRawDepth, gtaoUniforms));
       });
       return vec4(hBloom, hAo);
     });
@@ -703,11 +491,9 @@ export class PostProcessingPipeline {
 
     const compositeShader = Fn(() => {
       const vUv = uv();
-      // Sample base color and depth in outer scope so WGSL textureDimensions vars are top-level
       const rawDepth = depthNode.sample(vUv).r.toVar();
       const centerColor = sampleHdr(vUv).toVar();
       const bloomColor = vec3(0.0).toVar();
-      const aoHalf = float(1.0).toVar();
       If(this.uHalfResFxWeight.greaterThan(0.001), () => {
         const halfFx = (
           halfResFxRtt.sample(clamp(vUv, 0.001, 0.999)) as unknown as ShaderNodeObject<TextureNode>
@@ -715,7 +501,6 @@ export class PostProcessingPipeline {
           .level(float(0))
           .toVar();
         bloomColor.assign(halfFx.rgb.mul(this.uHalfResFxWeight));
-        aoHalf.assign(halfFx.a);
       });
       const ldrOut = vec3(0.0).toVar();
 
@@ -724,70 +509,68 @@ export class PostProcessingPipeline {
       });
 
       If(rawDepth.lessThan(0.9999), () => {
-        const hdrColor = vec3(centerColor).toVar();
-        const speedPx = float(0.0).toVar();
-        const velocity = vec2(0.0).toVar();
+        const { hdrColor, speedPx } = evaluateMotionBlurOrFxaaCas(colorNode, vUv, rawDepth, centerColor, fxaaUniforms);
 
-        If(this.uMotionBlurEnabled.greaterThan(0.5), () => {
-          const ndcZ = rawDepth.mul(2.0).sub(1.0);
-          const ndcXY = vec2(vUv.x, float(1.0).sub(vUv.y)).mul(2.0).sub(1.0);
-          const clipPos = vec4(ndcXY, ndcZ, 1.0);
-          const worldPos = this.uCurrInvViewProj.mul(clipPos).toVar();
-          worldPos.divAssign(max(1e-6, worldPos.w));
-
-          const prevClipPos = this.uPrevViewProj.mul(worldPos).toVar();
-          If(prevClipPos.w.greaterThan(1e-4), () => {
-            const prevNdc = prevClipPos.xy.div(prevClipPos.w);
-            const prevUv = vec2(
-              prevNdc.x.mul(0.5).add(0.5),
-              float(0.5).sub(prevNdc.y.mul(0.5))
-            );
-            const rawVel = vUv.sub(prevUv).mul(this.uShutterScale).toVar();
-            const velMag = length(rawVel);
-            const maxRadius = float(0.012);
-            velocity.assign(
-              select(
-                velMag.greaterThan(maxRadius),
-                rawVel.mul(maxRadius.div(max(1e-6, velMag))),
-                rawVel
-              )
-            );
-            speedPx.assign(length(velocity.mul(this.uResolution)));
-          });
-        });
-
-        const applyBlur = this.uMotionBlurEnabled.greaterThan(0.5).and(speedPx.greaterThan(2.2));
-        If(applyBlur, () => {
-          const magicXY = vec2(0.06711056, 0.00583715);
-          const noise = fract(float(52.9829189).mul(fract(dot(screenCoordinate.xy, magicXY)))).toVar();
-          const accumColor = centerColor.mul(1.5).toVar();
-          const totalWeight = float(1.5).toVar();
-          const sampleCount = 4;
-          for (let i = 0; i < sampleCount; i++) {
-            const fi = float(i).add(noise).div(float(sampleCount)).sub(0.5);
-            const sampleUv = clamp(vUv.add(velocity.mul(fi)), 0.001, 0.999);
-            const w = float(1.0).sub(abs(fi).mul(0.75));
-            accumColor.addAssign(sampleHdr(sampleUv).mul(w));
-            totalWeight.addAssign(w);
-          }
-          const blurBlend = smoothstep(2.2, 6.5, speedPx);
-          hdrColor.assign(mix(centerColor, accumColor.div(totalWeight), blurBlend));
-        });
-
-        If(
-          applyBlur
-            .not()
-            .and(this.uFxaaEnabled.greaterThan(0.5).or(this.uSharpenIntensity.greaterThan(0.001))),
-          () => {
-            hdrColor.assign(computeFxaaAndCas(vUv, centerColor));
-          }
-        );
+        const centerViewPos = getViewPosition(vUv, rawDepth, this.uProjMatrixInverse).toVar();
+        const scaleDist = select(
+          this.uIsOrtho.greaterThan(0.5),
+          this.uOrthoEquivDepth,
+          max(0.1, centerViewPos.z.negate())
+        ).toVar();
+        const centerViewNormal = reconstructMinDeltaViewNormal(
+          depthNode,
+          vUv,
+          centerViewPos,
+          this.uTexelSize,
+          this.uProjMatrixInverse
+        ).toVar();
 
         const motionFade = float(1.0).sub(clamp(speedPx.sub(4.0).div(18.0), 0.0, 0.65));
-        const ao = mix(float(1.0), aoHalf, motionFade.mul(this.uHalfResFxWeight));
-        hdrColor.mulAssign(ao);
-        hdrColor.addAssign(bloomColor);
-        ldrOut.assign(toneMap(hdrColor));
+        const gtaoVis = float(1.0).toVar();
+        const contactVis = float(1.0).toVar();
+
+        If(this.uHalfResFxWeight.greaterThan(0.001).and(this.uAoIntensity.greaterThan(0.001)), () => {
+          const upsampledAo = upsampleBilateralGtao(
+            halfResFxRtt,
+            depthNode,
+            vUv,
+            centerViewPos,
+            centerViewNormal,
+            gtaoUniforms
+          );
+          gtaoVis.assign(mix(float(1.0), upsampledAo, motionFade.mul(this.uHalfResFxWeight)));
+          const rawContact = evaluateScreenSpaceContactShadow(
+            depthNode,
+            centerViewPos,
+            centerViewNormal,
+            scaleDist,
+            gtaoUniforms
+          );
+          contactVis.assign(mix(float(1.0), rawContact, motionFade.mul(this.uHalfResFxWeight)));
+        });
+
+        const neighborE = sampleHdr(vUv.add(vec2(this.uTexelSize.x, 0.0)));
+        const neighborN = sampleHdr(vUv.add(vec2(0.0, this.uTexelSize.y)));
+        const lumaC = dot(centerColor, vec3(0.2126, 0.7152, 0.0722));
+        const lumaE = dot(neighborE, vec3(0.2126, 0.7152, 0.0722));
+        const lumaN = dot(neighborN, vec3(0.2126, 0.7152, 0.0722));
+        const localLumaSpan = max(abs(lumaC.sub(lumaE)), abs(lumaC.sub(lumaN))).div(
+          max(0.08, max(lumaC, max(lumaE, lumaN)))
+        );
+
+        const shadedHdr = applyPhotorealismShading(
+          hdrColor,
+          gtaoVis,
+          contactVis,
+          centerViewPos,
+          centerViewNormal,
+          scaleDist,
+          min(1.0, localLumaSpan),
+          this.uCameraWorldMatrix,
+          this.uSunWorldDir
+        );
+
+        ldrOut.assign(toneMap(shadedHdr.add(bloomColor)));
       });
 
       return sRGBTransferOETF(vec4(ldrOut, 1.0));
@@ -796,16 +579,6 @@ export class PostProcessingPipeline {
     return compositeShader();
   }
 
-  /**
-   * Renders the 3D scene through the WebGPU TSL HDR velocity-motion-blur + contact-AO + bloom pipeline,
-   * or directly to the canvas when the active tier or feature flags disable post-processing.
-   */
-  /**
-   * Configures the exact render target, tone-mapping, and color-space state used during
-   * `PostProcessing.render()` (or direct swapchain rendering when `!postEnabled`) so
-   * `renderer.compileAsync(...)` precompiles the exact WebGPU `GPURenderPipeline` cache keys
-   * (`rgba16float` + MSAA + `NoToneMapping` + `workingColorSpace`) with zero Frame-0 cache misses.
-   */
   public async withSceneCompileState(
     scene: THREE.Scene,
     camera: THREE.Camera,
@@ -818,9 +591,7 @@ export class PostProcessingPipeline {
       }
     )._getFrameBufferTarget;
     const frameBufferTarget =
-      typeof getFrameBufferTarget === "function"
-        ? getFrameBufferTarget.call(this.renderer)
-        : null;
+      typeof getFrameBufferTarget === 'function' ? getFrameBufferTarget.call(this.renderer) : null;
     const rtSetter = this.renderer as unknown as {
       getRenderTarget: () => THREE.RenderTarget | null;
       setRenderTarget: (rt: THREE.RenderTarget | null) => void;
@@ -828,7 +599,7 @@ export class PostProcessingPipeline {
       setMRT?: (mrt: unknown) => void;
     };
     const prevRenderTarget = rtSetter.getRenderTarget();
-    const prevMRT = typeof rtSetter.getMRT === "function" ? rtSetter.getMRT() : null;
+    const prevMRT = typeof rtSetter.getMRT === 'function' ? rtSetter.getMRT() : null;
 
     if (!this.postEnabled) {
       try {
@@ -856,7 +627,7 @@ export class PostProcessingPipeline {
     const getColorBufferType = (
       this.renderer as unknown as { getColorBufferType?: () => THREE.TextureDataType }
     ).getColorBufferType;
-    if (typeof getColorBufferType === "function") {
+    if (typeof getColorBufferType === 'function') {
       scenePass.renderTarget.texture.type = getColorBufferType.call(this.renderer);
     }
     const size = new THREE.Vector2();
@@ -871,7 +642,10 @@ export class PostProcessingPipeline {
     if (this.halfResFxRtt) {
       const fullW = Math.max(1, Math.floor(size.x * passInternal._pixelRatio));
       const fullH = Math.max(1, Math.floor(size.y * passInternal._pixelRatio));
-      this.halfResFxRtt.setSize(Math.max(1, Math.floor(fullW * 0.5)), Math.max(1, Math.floor(fullH * 0.5)));
+      const halfW = Math.max(1, Math.floor(fullW * 0.5));
+      const halfH = Math.max(1, Math.floor(fullH * 0.5));
+      this.halfResFxRtt.setSize(halfW, halfH);
+      this.uHalfTexelSize.value.set(1 / halfW, 1 / halfH);
     }
 
     const prevToneMapping = this.renderer.toneMapping;
@@ -881,13 +655,13 @@ export class PostProcessingPipeline {
       this.renderer.toneMapping = THREE.NoToneMapping;
       this.renderer.outputColorSpace = THREE.ColorManagement.workingColorSpace;
       rtSetter.setRenderTarget(scenePass.renderTarget);
-      if (typeof rtSetter.setMRT === "function") {
+      if (typeof rtSetter.setMRT === 'function') {
         rtSetter.setMRT(passInternal._mrt ?? null);
       }
       await compileFn();
 
       if (compileCompositeQuad && postInternal._quadMesh && postInternal._quadMesh.camera) {
-        if (typeof rtSetter.setMRT === "function") {
+        if (typeof rtSetter.setMRT === 'function') {
           rtSetter.setMRT(prevMRT);
         }
         rtSetter.setRenderTarget(frameBufferTarget);
@@ -919,7 +693,7 @@ export class PostProcessingPipeline {
     } finally {
       this.renderer.toneMapping = prevToneMapping;
       this.renderer.outputColorSpace = prevColorSpace;
-      if (typeof rtSetter.setMRT === "function") {
+      if (typeof rtSetter.setMRT === 'function') {
         rtSetter.setMRT(prevMRT);
       }
       rtSetter.setRenderTarget(prevRenderTarget);
@@ -927,9 +701,6 @@ export class PostProcessingPipeline {
   }
 
   public render(scene: THREE.Scene, camera: RigCamera | THREE.Camera, dtSeconds: number): void {
-    // On 'low' tier (`!this.postEnabled`), render directly to the canvas swapchain with zero
-    // offscreen Float16 PassNode and zero depth tile-flush (eliminating TBDR DRAM bandwidth kills
-    // on Mali-G710 / mobile GPUs). Build `this.postProcessing` lazily only when post is enabled.
     if (!this.postEnabled) {
       this.renderer.setRenderTarget(null);
       this.renderer.render(scene, camera);
@@ -956,36 +727,39 @@ export class PostProcessingPipeline {
     const cameraMoved = maxMatrixDelta > 1e-5;
 
     const isOrtho = (camera as THREE.OrthographicCamera).isOrthographicCamera === true;
-    const near = (camera as THREE.PerspectiveCamera | THREE.OrthographicCamera).near ?? 0.1;
-    const far = (camera as THREE.PerspectiveCamera | THREE.OrthographicCamera).far ?? 120.0;
     const projElements = camera.projectionMatrix.elements;
     const projY = projElements[5]!;
     if (!isOrtho && projY > 1e-6) {
       this.lastPerspectiveProjY = projY;
     }
 
-    this.uNear.value = near;
-    this.uFar.value = far;
+    this.uProjMatrix.value.copy(camera.projectionMatrix);
+    this.uProjMatrixInverse.value.copy(camera.projectionMatrixInverse);
+    this.uCameraWorldMatrix.value.copy(camera.matrixWorld);
     this.uIsOrtho.value = isOrtho ? 1.0 : 0.0;
-    // Distance at which the perspective camera would show the same world-units-per-pixel as the
-    // ortho camera: perspective scale = P11 / z, ortho scale = P11_ortho.
     this.uOrthoEquivDepth.value = isOrtho
       ? this.lastPerspectiveProjY / Math.max(1e-6, projY)
       : 0.0;
-    // Exposure comes only from the renderer (never from the camera type, zoom or position).
+    this.uIsWebGPU.value =
+      this.renderer.coordinateSystem === THREE.WebGPUCoordinateSystem ? 1.0 : 0.0;
     this.uExposure.value = this.renderer.toneMappingExposure;
+
+    const rawContactStrength = resolvePrimaryDirectionalSunSample(
+      scene,
+      camera,
+      this.uSunViewDir.value,
+      this.uSunWorldDir.value
+    );
 
     if (cameraMoved) {
       this.uCurrInvViewProj.value.copy(this.currInvViewProj);
       this.uPrevViewProj.value.copy(this.prevViewProj);
     }
 
-    // Normalize shutter exposure scale across variable refresh rates (60Hz–144Hz)
     const fpsNorm = THREE.MathUtils.clamp(1.0 / (Math.max(0.004, dtSeconds) * 60.0), 0.45, 1.65);
     const postActive = this.postEnabled;
     const scrubBypass = this.interactiveScrubActive;
     const hasHalfResFx = this.bloomEnabled || this.ambientOcclusionEnabled;
-    // Ensure postProcessing + halfResFxRtt exist before configuring autoUpdate
     const postProcessing = this.ensurePostProcessing(this.renderer, scene, camera);
     const shouldUpdateHalfRes = hasHalfResFx && (!scrubBypass || !this.halfResRenderedOnce);
     if (this.halfResFxRtt) {
@@ -1001,22 +775,20 @@ export class PostProcessingPipeline {
     this.uMotionBlurEnabled.value =
       postActive && !scrubBypass && this.motionBlurEnabled && !isOrtho && cameraMoved ? 1.0 : 0.0;
     this.uShutterScale.value = this.motionBlurStrength * fpsNorm;
-    // AO is identical for ortho and perspective (shader scales by apparent on-screen size).
-    this.uAoIntensity.value =
-      postActive && !scrubBypass && this.ambientOcclusionEnabled ? AO_INTENSITY : 0.0;
+    const aoActive = postActive && !scrubBypass && this.ambientOcclusionEnabled;
+    this.uAoIntensity.value = aoActive ? AO_INTENSITY : 0.0;
+    this.uContactShadowStrength.value = aoActive ? rawContactStrength : 0.0;
     this.bloom.setIntensity(
       postActive && !scrubBypass && this.bloomEnabled ? BLOOM_INTENSITY : 0.0
     );
     this.uSharpenIntensity.value = postActive && this.sharpenEnabled ? SHARPEN_INTENSITY : 0.0;
     this.uFxaaEnabled.value = postActive && !scrubBypass && this.fxaaEnabled ? 1.0 : 0.0;
 
-    // Render scene pass + single-pass WebGPU TSL composite to screen
     postProcessing.render();
     if (this.halfResFxRtt && this.halfResFxRtt.autoUpdate !== false) {
       this.halfResRenderedOnce = true;
     }
 
-    // Store current ViewProj matrix for next frame's velocity vectors
     this.prevViewProj.copy(this.currViewProj);
   }
 

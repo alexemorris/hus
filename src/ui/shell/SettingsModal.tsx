@@ -153,7 +153,7 @@ export function SettingsModal(): JSX.Element | null {
             <div class="shell-toggle-row" style={{ marginTop: '8px' }}>
               <span class="shell-radio-text">
                 <span>Ambient occlusion (SSAO)</span>
-                <span class="shell-muted">Soft contact shadows in corners and crevices</span>
+                <span class="shell-muted">Softens crevices and grounds furniture where it meets the floor</span>
               </span>
               <button
                 type="button"
