@@ -82,7 +82,7 @@ describe('Slope-Driven Arid Terrain Biome & Stahl House Rocky Cliff Escarpment',
     expect(custom.triplanarScaleM).toBe(5.5);
   });
 
-  it('wires slope + triplanar cliff TSL nodes (colorNode, roughnessNode, normalNode) for arid/rocky biomes without touching lush-meadow', () => {
+  it('wires slope + triplanar cliff TSL nodes for arid/rocky biomes while preserving lush-meadow turf TSL shading', () => {
     const footprint = { centerX: 0, centerZ: 0, radius: 25 };
     const lushSampler = createTerrainSampler({
       base: (x, z) => -0.02 * x - 0.01 * z,
@@ -90,10 +90,12 @@ describe('Slope-Driven Arid Terrain Biome & Stahl House Rocky Cliff Escarpment',
     });
     expect(lushSampler.biome).toBeUndefined();
     const lushGround = createSiteGround(footprint, lushSampler);
-    const lushMat = lushGround.mesh.material as unknown as Record<string, unknown>;
+    const lushMat = lushGround.mesh.material as THREE.MeshStandardMaterial & Record<string, unknown>;
     expect(lushMat.colorNode).toBeTruthy();
-    expect(lushMat.roughnessNode).toBeFalsy();
-    expect(lushMat.normalNode).toBeFalsy();
+    expect(lushMat.roughnessNode).toBeTruthy();
+    expect(lushMat.normalNode).toBeTruthy();
+    expect(lushMat.vertexColors).toBe(true);
+    expect(lushMat.userData.terrainBiomePreset).toBeUndefined();
     lushGround.dispose();
 
     const rockyGround = createSiteGround(footprint, stahlTerrainSampler);

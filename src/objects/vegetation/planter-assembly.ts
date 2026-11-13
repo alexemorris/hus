@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { MeshStandardNodeMaterial } from 'three/webgpu';
 import type { AssetMetadata } from '../../core/assets/asset-metadata.ts';
 import {
   getExposureEnvelope,
@@ -10,6 +11,7 @@ import type { BarkTextureStyle } from '../../engine/vegetation/vegetation-textur
 import type { VegetationUniforms } from '../../engine/vegetation/vegetation-uniforms.ts';
 import type { OrganCollector } from './organ-geometry.ts';
 import { getSharedPhenologyMaterial } from './phenology-material.ts';
+import { createSoilBed, createSoilMaterial } from './soil-bed.ts';
 
 export type PlanterStyle =
   | 'terracotta'
@@ -19,7 +21,6 @@ export type PlanterStyle =
   | 'woven-basket';
 
 const PLANTER_MATERIAL_CACHE = new Map<string, THREE.MeshStandardMaterial>();
-let sharedSoilMaterial: THREE.MeshStandardMaterial | null = null;
 
 function getPlanterMaterial(style: PlanterStyle): THREE.MeshStandardMaterial {
   let mat = PLANTER_MATERIAL_CACHE.get(style);
@@ -43,16 +44,8 @@ function getPlanterMaterial(style: PlanterStyle): THREE.MeshStandardMaterial {
   return mat;
 }
 
-export function getMulchSoilMaterial(): THREE.MeshStandardMaterial {
-  if (!sharedSoilMaterial) {
-    sharedSoilMaterial = new THREE.MeshStandardMaterial({
-      name: 'husjs.vegetation.mulchSoil',
-      color: 0x2c2017,
-      roughness: 0.95,
-      metalness: 0.0,
-    });
-  }
-  return sharedSoilMaterial;
+export function getMulchSoilMaterial(): MeshStandardNodeMaterial {
+  return createSoilMaterial({ substrate: 'bark-mulch' });
 }
 
 export function buildPlanterAssembly(opts: {
@@ -61,19 +54,23 @@ export function buildPlanterAssembly(opts: {
   readonly radiusBottom: number;
   readonly height: number;
   readonly namePrefix: string;
+  readonly exposure?: VegetationExposure;
+  readonly uniforms?: VegetationUniforms;
+  readonly seed?: number;
 }): { readonly group: THREE.Group; readonly soilY: number } {
   const group = new THREE.Group();
   group.name = `${opts.namePrefix}.planter`;
   const h = opts.height;
   const rTop = opts.radiusTop;
   const rBot = opts.radiusBottom;
+  const exposure = opts.exposure ?? 'outdoor';
   const mat = getPlanterMaterial(opts.style);
 
   if (opts.style === 'lead-cube') {
     const w = rTop * 1.88;
     const wall = Math.max(0.02, w * 0.07);
-    const rimH = wall * 0.9;
-    const bodyH = Math.max(0.05, h - rimH - 0.002);
+    const rimH = Math.max(0.026, wall * 1.15);
+    const bodyH = Math.max(0.05, h - rimH);
     const body = new THREE.Mesh(new THREE.BoxGeometry(w, bodyH, w), mat);
     body.name = `${opts.namePrefix}.planterBox`;
     body.position.y = bodyH * 0.5;
@@ -81,26 +78,47 @@ export function buildPlanterAssembly(opts: {
     body.receiveShadow = true;
     group.add(body);
 
-    const rim = new THREE.Mesh(new THREE.BoxGeometry(w + wall * 0.8, wall * 0.9, w + wall * 0.8), mat);
-    rim.name = `${opts.namePrefix}.planterRim`;
-    rim.position.y = h - wall * 0.45;
-    rim.castShadow = true;
-    group.add(rim);
+    const outerW = w + wall * 0.8;
+    const innerOpening = Math.max(0.08, w - wall * 1.2);
+    const barThick = (outerW - innerOpening) * 0.5;
+    const rimY = h - rimH * 0.5;
+    const rimOffset = (innerOpening + barThick) * 0.5;
+    for (const [barSuffix, bx, bz, bw, bd] of [
+      ['N', 0, -rimOffset, outerW, barThick],
+      ['S', 0, rimOffset, outerW, barThick],
+      ['W', -rimOffset, 0, barThick, innerOpening],
+      ['E', rimOffset, 0, barThick, innerOpening],
+    ] as const) {
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(bw, rimH, bd), mat);
+      bar.name = `${opts.namePrefix}.planterRim${barSuffix}`;
+      bar.position.set(bx, rimY, bz);
+      bar.castShadow = true;
+      bar.receiveShadow = true;
+      group.add(bar);
+    }
 
-    const soilY = h - wall * 0.85;
-    const soil = new THREE.Mesh(
-      new THREE.BoxGeometry(w - wall * 1.4, 0.025, w - wall * 1.4),
-      getMulchSoilMaterial()
-    );
-    soil.name = `${opts.namePrefix}.soil`;
-    soil.position.y = soilY;
-    soil.receiveShadow = true;
-    tagCollisionRole(soil, 'ignore');
-    group.add(soil);
-    return { group, soilY };
+    const baseLipY = bodyH + rimH * 0.42;
+    const innerSpan = Math.max(0.07, innerOpening - 0.008);
+    const soilBed = createSoilBed({
+      substrate: 'potting-compost',
+      exposure,
+      width: innerSpan,
+      depth: innerSpan,
+      baseY: baseLipY,
+      crownHeightM: 0.016,
+      edgeRecessM: 0.004,
+      gridStepM: Math.max(0.04, innerSpan * 0.2),
+      plantings: [{ x: 0, z: 0, stemRadius: 0.03, moundRadius: 0.11, moundHeight: 0.012 }],
+      uniforms: opts.uniforms,
+      seed: opts.seed,
+      name: `${opts.namePrefix}.soil`,
+    });
+    group.add(soilBed.group);
+    return { group, soilY: soilBed.samplePlantingY(0, 0) };
   }
 
   const wallT = Math.max(0.014, rTop * 0.08);
+  const innerFloorY = Math.max(0.02, h - wallT * 1.6 - 0.024);
   const profile: THREE.Vector2[] = [
     new THREE.Vector2(0.001, 0),
     new THREE.Vector2(rBot, 0),
@@ -109,8 +127,8 @@ export function buildPlanterAssembly(opts: {
     new THREE.Vector2(rTop + wallT * 0.55, h * 0.94),
     new THREE.Vector2(rTop + wallT * 0.55, h),
     new THREE.Vector2(Math.max(0.02, rTop - wallT), h),
-    new THREE.Vector2(Math.max(0.02, rTop - wallT), h - wallT * 1.6),
-    new THREE.Vector2(0.001, h - wallT * 1.6),
+    new THREE.Vector2(Math.max(0.02, rTop - wallT), innerFloorY),
+    new THREE.Vector2(0.001, innerFloorY),
   ];
   const potGeo = new THREE.LatheGeometry(profile, 18);
   const potMesh = new THREE.Mesh(potGeo, mat);
@@ -119,21 +137,25 @@ export function buildPlanterAssembly(opts: {
   potMesh.receiveShadow = true;
   group.add(potMesh);
 
-  const soilY = h - wallT * 1.55;
-  const soilGeo = new THREE.CylinderGeometry(
-    Math.max(0.02, rTop - wallT * 0.95),
-    Math.max(0.02, rTop - wallT * 1.1),
-    0.02,
-    16
-  );
-  const soilMesh = new THREE.Mesh(soilGeo, getMulchSoilMaterial());
-  soilMesh.name = `${opts.namePrefix}.soil`;
-  soilMesh.position.y = soilY;
-  soilMesh.receiveShadow = true;
-  tagCollisionRole(soilMesh, 'ignore');
-  group.add(soilMesh);
+  const baseLipY = h - wallT * 1.45;
+  const innerRadius = Math.max(0.04, rTop - wallT * 0.96);
+  const soilBed = createSoilBed({
+    substrate: 'potting-compost',
+    exposure,
+    radius: innerRadius,
+    radialSegments: 18,
+    baseY: baseLipY,
+    crownHeightM: 0.018,
+    edgeRecessM: 0.006,
+    gridStepM: Math.max(0.04, innerRadius * 0.32),
+    plantings: [{ x: 0, z: 0, stemRadius: 0.03, moundRadius: 0.11, moundHeight: 0.014 }],
+    uniforms: opts.uniforms,
+    seed: opts.seed,
+    name: `${opts.namePrefix}.soil`,
+  });
+  group.add(soilBed.group);
 
-  return { group, soilY };
+  return { group, soilY: soilBed.samplePlantingY(0, 0) };
 }
 
 export function assembleBotanicalMeshes(opts: {

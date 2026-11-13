@@ -21,8 +21,10 @@ import {
 import {
   createClimber,
   createFlowerBed,
+  createGrassPatch,
   createHedge,
   createShrub,
+  createSoilBed,
   createTopiary,
   createTree,
 } from 'husjs/vegetation';
@@ -457,6 +459,7 @@ export function buildCourtyardGrounds(
       path: hSpec.path,
       height: 1.25,
       thickness: 0.62,
+      mulchStrip: true,
       exposure: 'outdoor',
       seed: hSpec.seed,
       name: hSpec.name,
@@ -494,6 +497,60 @@ export function buildCourtyardGrounds(
   });
   courtyardBorder.position.set(2.55, -0.259, 8.16);
   grounds.add(courtyardBorder);
+
+  for (const [stripTag, stripX, stripSeed] of [
+    ['west', -2.62, 463],
+    ['east', -0.34, 467],
+  ] as const) {
+    const lavBed = createSoilBed({
+      width: 0.56,
+      depth: 2.25,
+      crownHeightM: 0.024,
+      edgeRecessM: 0.01,
+      substrate: 'gravel-mulch',
+      exposure: 'outdoor',
+      plantings: [
+        { x: 0, z: -0.65, radius: 0.24 },
+        { x: 0, z: 0.65, radius: 0.24 },
+      ],
+      seed: stripSeed,
+      name: `simpleFlat.grounds.lavenderSoilStrip_${stripTag}`,
+    });
+    lavBed.group.position.set(stripX, -0.237, 6.1);
+    grounds.add(lavBed.group);
+  }
+
+  for (const vergeSpec of [
+    {
+      id: 'terraceEastVerge',
+      path: [
+        [5.74, 3.95],
+        [5.74, 7.65],
+      ] as const,
+      seed: 561,
+    },
+    {
+      id: 'terraceWestVerge',
+      path: [
+        [-5.74, 3.95],
+        [-5.74, 7.65],
+      ] as const,
+      seed: 577,
+    },
+  ]) {
+    const verge = createGrassPatch({
+      style: 'lawn-edge',
+      ribbonPath: vergeSpec.path,
+      ribbonWidth: 0.26,
+      bladeHeight: 0.052,
+      density: 1.1,
+      exposure: 'outdoor',
+      seed: vergeSpec.seed,
+      name: `simpleFlat.grounds.grassVerge.${vergeSpec.id}`,
+    });
+    verge.position.y = -0.261;
+    grounds.add(verge);
+  }
 
   for (const [lIdx, lx, lz] of [
     [1, -2.62, 5.45],

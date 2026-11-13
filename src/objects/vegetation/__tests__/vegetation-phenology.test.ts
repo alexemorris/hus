@@ -9,6 +9,7 @@ import {
   classifyClimateZone,
   computeYearPhase,
   evaluateOrganPhenology,
+  evaluateSeasonalTurfPhenology,
   getExposureEnvelope,
 } from '../../../core/geo/climate-phenology.ts';
 import {
@@ -18,7 +19,11 @@ import {
   VegetationPhenologyController,
   createClimber,
   createFlowerBed,
+  createGrassPatch,
   createHedge,
+  createLawnTurf,
+  createSoilBed,
+  createSoilMaterial,
   createHouseplant,
   createShrub,
   createTopiary,
@@ -426,5 +431,202 @@ describe('husjs/vegetation climate classification, seasonal phenology & batching
     }
     expect(env.getSkyWeatherSnapshot().solar.dayOfYear).toBeCloseTo(288, 1);
     expect(env.isTransitioning()).toBe(false);
+  });
+
+  it('retains full canopy in late September, 85-95% in October, 55-80% in mid-November with rich autumn pigmentation, and bare branches in mid-January', () => {
+    const baseGreen: readonly [number, number, number] = [0.22, 0.42, 0.16];
+    const evalTree = (day: number, variantParam = 0.5) =>
+      evaluateOrganPhenology({
+        organ: 'deciduous-leaf',
+        yearPhase: computeYearPhase(day, 52.2),
+        climateZone: 'temperate-maritime',
+        exposure: 'outdoor',
+        baseColorRgb: baseGreen,
+        variantParam,
+      });
+
+    // Late September (day 270): > 0.92 full lush green canopy
+    const lateSept = evalTree(270, 0.32);
+    expect(lateSept.organScale).toBeGreaterThan(0.92);
+    expect(lateSept.colorRgb[1]).toBeGreaterThan(lateSept.colorRgb[0]);
+
+    // Mid-October (day 290): > 0.85 canopy retained with progressive autumn transition
+    const midOct = evalTree(290, 0.32);
+    expect(midOct.organScale).toBeGreaterThan(0.85);
+    expect(midOct.autumnSenescence).toBeGreaterThan(0.35);
+
+    // Mid-November (13 Nov = day 317): 0.50 .. 0.85 canopy retained with warm autumn pigmentation
+    const midNovDefault = evalTree(317, 0.5);
+    const midNovBirch = evalTree(317, 0.08);
+    const midNovOak = evalTree(317, 0.32);
+    const midNovCherry = evalTree(317, 0.72);
+    for (const s of [midNovDefault, midNovBirch, midNovOak, midNovCherry]) {
+      expect(s.organScale).toBeGreaterThanOrEqual(0.50);
+      expect(s.organScale).toBeLessThanOrEqual(0.85);
+      expect(s.autumnSenescence).toBeGreaterThan(0.65);
+      expect(s.colorRgb[0]).toBeGreaterThan(s.colorRgb[1]);
+    }
+    // English Oak holds slightly more russet foliage in mid-Nov than early-dropping Virginia Creeper
+    const octCreeper = evalTree(286, 0.92);
+    const midNovCreeper = evalTree(317, 0.92);
+    expect(octCreeper.autumnSenescence).toBeGreaterThan(0.75);
+    expect(octCreeper.colorRgb[0]).toBeGreaterThan(octCreeper.colorRgb[1] * 1.6);
+    expect(midNovOak.organScale).toBeGreaterThan(midNovCreeper.organScale);
+
+    // Mid-December (day 350) & Mid-January (day 15): < 0.05 bare deciduous branches
+    const midDec = evalTree(352, 0.5);
+    const midJan = evalTree(15, 0.5);
+    expect(midDec.organScale).toBeLessThan(0.05);
+    expect(midJan.organScale).toBeLessThan(0.05);
+
+    // Copper Beech marcescent leaves retain ~75% bronze canopy all winter
+    const midJanBeech = evaluateOrganPhenology({
+      organ: 'marcescent-leaf',
+      yearPhase: computeYearPhase(15, 52.2),
+      climateZone: 'temperate-maritime',
+      exposure: 'outdoor',
+      baseColorRgb: [0.29, 0.13, 0.17],
+    });
+    expect(midJanBeech.organScale).toBeCloseTo(0.75, 2);
+  });
+
+  it('produces dense species-distinct climbers, lush summer pergola grapes, natural British hedgerows, 3D grass tufts & crowned soil beds', () => {
+    const ivyStd = createClimber({ species: 'english-ivy', width: 2.0, height: 2.2, density: 1.0, seed: 41 });
+    const ivyLush = createClimber({ species: 'english-ivy', width: 2.0, height: 2.2, density: 2.2, seed: 41 });
+    const countVerts = (root: THREE.Object3D): number => {
+      let n = 0;
+      root.traverse((o) => {
+        if (o instanceof THREE.Mesh) {
+          n += o.geometry.getAttribute('position')?.count ?? 0;
+        }
+      });
+      return n;
+    };
+    expect(countVerts(ivyLush)).toBeGreaterThan(countVerts(ivyStd) * 1.45);
+
+    // Summer pergola grapevine has plump 100% fruit scale from June solstice (d172) through October (d280)
+    const grapeJune = evaluateOrganPhenology({
+      organ: 'fruit',
+      yearPhase: computeYearPhase(172, 52.0),
+      climateZone: 'temperate-maritime',
+      exposure: 'outdoor',
+      variantParam: 0.25,
+    });
+    const grapeSept = evaluateOrganPhenology({
+      organ: 'fruit',
+      yearPhase: computeYearPhase(255, 52.0),
+      climateZone: 'temperate-maritime',
+      exposure: 'outdoor',
+      variantParam: 0.25,
+    });
+    expect(grapeJune.organScale).toBeGreaterThan(0.92);
+    expect(grapeSept.organScale).toBeGreaterThan(0.95);
+
+    const pergolaGrape = createClimber({
+      species: 'grapevine',
+      support: 'pergola-wire',
+      width: 2.6,
+      height: 2.4,
+      depth: 1.4,
+      density: 1.8,
+      seed: 77,
+    });
+    expect(countVerts(pergolaGrape)).toBeGreaterThan(2200);
+
+    // Natural country hedgerows & mulch strips
+    for (const hSpecies of ['mixed-field-hedgerow', 'blackthorn-sloe', 'bramble'] as const) {
+      const h = createHedge({ species: hSpecies, length: 3.2, mulchStrip: true, seed: 91 });
+      expect(h.children.length).toBeGreaterThanOrEqual(2);
+    }
+    for (const sSpecies of ['blackthorn-sloe', 'bramble'] as const) {
+      expect(createShrub({ species: sSpecies, seed: 97 }).children.length).toBeGreaterThan(0);
+    }
+
+    // Continuous seasonal turf phenology (UK verdant autumn vs Mediterranean golden summer dormancy)
+    const ukSpringTurf = evaluateSeasonalTurfPhenology({
+      yearPhase: computeYearPhase(125, 52.2),
+      climateZone: 'temperate-maritime',
+    });
+    const ukNovTurf = evaluateSeasonalTurfPhenology({
+      yearPhase: computeYearPhase(317, 52.2),
+      climateZone: 'temperate-maritime',
+    });
+    const medAugTurf = evaluateSeasonalTurfPhenology({
+      yearPhase: computeYearPhase(225, 34.1),
+      climateZone: 'mediterranean',
+    });
+    expect(ukSpringTurf.tintRgb[1]).toBeGreaterThan(ukSpringTurf.tintRgb[0]);
+    expect(ukNovTurf.tintRgb[1]).toBeGreaterThan(0.95);
+    expect(medAugTurf.summerDormancyMix).toBeGreaterThan(0.7);
+    expect(medAugTurf.tintRgb[0]).toBeGreaterThan(medAugTurf.tintRgb[1]);
+
+    // 3D grass tufts & clover/daisy lawn turf exclude raycast & walkthrough collision
+    const turf = createLawnTurf({
+      style: 'clover-daisy-turf',
+      width: 1.8,
+      depth: 0.5,
+      density: 1.2,
+      seed: 123,
+    });
+    const ribbonGrass = createGrassPatch({
+      style: 'meadow-verge',
+      ribbonPath: [
+        [-1.5, 0],
+        [1.5, 0.4],
+      ],
+      ribbonWidth: 0.35,
+      seed: 131,
+    });
+    expect(turf.userData['excludeFromRaycast']).toBe(true);
+    expect(turf.userData['ignoreWalkthroughCollision']).toBe(true);
+    expect(countVerts(ribbonGrass)).toBeGreaterThan(150);
+
+    // Physical Soil & Planting Bed System: crowned profile, concave polygon containment & stem grounding
+    for (const substrate of [
+      'garden-loam',
+      'bark-mulch',
+      'tilled-veg-earth',
+      'potting-compost',
+      'gravel-mulch',
+      'decomposed-granite',
+    ] as const) {
+      const mat = createSoilMaterial({ substrate, exposure: 'outdoor' });
+      expect(mat.userData['isSoilMaterial']).toBe(true);
+    }
+
+    const lPolygon: readonly [number, number][] = [
+      [-2.0, -1.0],
+      [2.0, -1.0],
+      [2.0, 0.0],
+      [0.0, 0.0],
+      [0.0, 1.5],
+      [-2.0, 1.5],
+    ];
+    const soilBed = createSoilBed({
+      polygon: lPolygon,
+      crownHeightM: 0.038,
+      edgeRecessM: 0.018,
+      substrate: 'garden-loam',
+      plantings: [{ x: -1.0, z: 0.25, radius: 0.4 }],
+      seed: 311,
+    });
+    expect(soilBed.sampleHeight(-1.0, 0.25)).toBeGreaterThan(soilBed.sampleHeight(-1.98, -0.98));
+    expect(soilBed.samplePlantingY(-1.0, 0.25)).toBeCloseTo(soilBed.sampleHeight(-1.0, 0.25) - 0.02, 4);
+
+    // Verify zero triangles cross into the concave notch (x > 0.02 && z > 0.02)
+    soilBed.group.traverse((o) => {
+      if (!(o instanceof THREE.Mesh)) return;
+      const pos = o.geometry.getAttribute('position') as THREE.BufferAttribute;
+      const idx = o.geometry.getIndex();
+      const triCount = idx ? idx.count / 3 : pos.count / 3;
+      for (let t = 0; t < triCount; t++) {
+        const i0 = idx ? idx.getX(t * 3) : t * 3;
+        const i1 = idx ? idx.getX(t * 3 + 1) : t * 3 + 1;
+        const i2 = idx ? idx.getX(t * 3 + 2) : t * 3 + 2;
+        const cx = (pos.getX(i0) + pos.getX(i1) + pos.getX(i2)) / 3;
+        const cz = (pos.getZ(i0) + pos.getZ(i1) + pos.getZ(i2)) / 3;
+        expect(cx > 0.02 && cz > 0.02).toBe(false);
+      }
+    });
   });
 });

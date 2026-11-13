@@ -21,8 +21,11 @@ import {
 import {
   createClimber,
   createFlowerBed,
+  createGrassPatch,
   createHedge,
   createShrub,
+  createSoilBed,
+  createSoilMaterial,
   createTopiary,
   createTree,
 } from 'husjs/vegetation';
@@ -132,6 +135,7 @@ function addHedgeRunWithCollider(
     path,
     height,
     thickness,
+    mulchStrip: true,
     exposure: 'outdoor',
     seed,
     name,
@@ -306,10 +310,10 @@ export function buildSimpleHouseGrounds(
   });
   const copingMat = createStoneMasonryMaterial('sawn-yorkstone-coping');
   const stripedLawnMat = createRollerMownStripedLawnMaterial();
-  const soilMat = new THREE.MeshStandardMaterial({
+  const soilMat = createSoilMaterial({
+    substrate: 'garden-loam',
+    exposure: 'outdoor',
     name: 'simpleHouse.grounds.mulchSoil',
-    color: 0x382d23,
-    roughness: 0.96,
   });
 
   addMetricBox(root, 'simpleHouse.grounds.subPlinthEarth', [15.16, 0.08, 9.36], [0, -0.365, 0], soilMat, 2.0).castShadow = false;
@@ -512,6 +516,90 @@ export function buildSimpleHouseGrounds(
     root.add(bed);
   }
 
+  for (const [bSide, bSign, bSeed] of [
+    ['west', -1, 1081],
+    ['east', 1, 1093],
+  ] as const) {
+    const frontShrubSoil = createSoilBed({
+      width: 2.35,
+      depth: 0.92,
+      crownHeightM: 0.032,
+      edgeRecessM: 0.014,
+      substrate: 'garden-loam',
+      exposure: 'outdoor',
+      plantings: [
+        { x: -0.55 * bSign, z: -0.03, radius: 0.36 },
+        { x: 0.55 * bSign, z: 0.04, radius: 0.30 },
+      ],
+      seed: bSeed,
+      name: `simpleHouse.grounds.frontShrubSoil.${bSide}`,
+    });
+    frontShrubSoil.group.position.set(bSign * 9.8, FORMAL_LAWN_TOP_Y + 0.002, 9.58);
+    root.add(frontShrubSoil.group);
+  }
+
+  for (const turfSpec of [
+    {
+      id: 'rearTerraceVerge',
+      style: 'clover-daisy-turf' as const,
+      path: [
+        [-7.35, -8.72],
+        [0, -8.72],
+        [7.35, -8.72],
+      ] as const,
+      width: 0.34,
+      bladeHeight: 0.055,
+      seed: 5101,
+    },
+    {
+      id: 'westForecourtVerge',
+      style: 'lawn-edge' as const,
+      path: [
+        [-7.74, 4.75],
+        [-7.74, 10.05],
+      ] as const,
+      width: 0.28,
+      bladeHeight: 0.052,
+      seed: 5113,
+    },
+    {
+      id: 'eastForecourtVerge',
+      style: 'lawn-edge' as const,
+      path: [
+        [7.74, 4.75],
+        [7.74, 10.05],
+      ] as const,
+      width: 0.28,
+      bladeHeight: 0.052,
+      seed: 5129,
+    },
+    {
+      id: 'northOrchardMeadowVerge',
+      style: 'meadow-verge' as const,
+      path: [
+        [-10.8, -13.85],
+        [0, -13.85],
+        [10.8, -13.85],
+      ] as const,
+      width: 0.48,
+      bladeHeight: 0.085,
+      seed: 5147,
+    },
+  ]) {
+    const grass = createGrassPatch({
+      style: turfSpec.style,
+      ribbonPath: turfSpec.path,
+      ribbonWidth: turfSpec.width,
+      bladeHeight: turfSpec.bladeHeight,
+      density: 1.15,
+      exposure: 'outdoor',
+      seed: turfSpec.seed,
+      name: `simpleHouse.grounds.grassVerge.${turfSpec.id}`,
+    });
+    grass.position.y = FORMAL_LAWN_TOP_Y + 0.001;
+    root.add(grass);
+  }
+
   for (const s of [
     { id: 'frontBorderWest_1', species: 'english-rose-shrub' as const, x: -10.35, z: 9.55, r: 0.52, h: 0.72, seed: 1101 },
     { id: 'frontBorderWest_2', species: 'lavender' as const, x: -9.25, z: 9.62, r: 0.4, h: 0.48, seed: 1109 },
@@ -590,6 +678,7 @@ export function buildSimpleHouseGrounds(
       support: 'wall-plane',
       width: 2.1,
       height: 2.72,
+      density: 1.35,
       exposure: 'outdoor',
       seed: 4311,
       name: 'simpleHouse.grounds.climber.westGableIvy',

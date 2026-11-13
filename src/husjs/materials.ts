@@ -104,3 +104,8 @@ export {
   type RoomPaintSchemeOptions,
   type RoomPaintSurfaceSpec,
 } from '../engine/textures/paint-system.ts';
+
+export {
+  createEvergreenFoliagePbrMaterial,
+  createRollerMownStripedLawnMaterial,
+} from '../objects/architectural/lawn-and-foliage-materials.ts';

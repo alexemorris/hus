@@ -1,5 +1,7 @@
 export * from './phenology-material.ts';
 export * from './organ-geometry.ts';
+export * from './soil-bed.ts';
+export * from './grass-and-turf.ts';
 export * from './trees.ts';
 export * from './topiary-and-hedges.ts';
 export * from './climbers.ts';

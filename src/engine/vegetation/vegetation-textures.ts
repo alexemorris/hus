@@ -147,12 +147,15 @@ export function getOrCreateBarkTextures(style: BarkTextureStyle = 'fissured-oak'
         g = greyTone * 1.0;
         b = greyTone * 0.92;
       } else if (style === 'fibrous-vine') {
-        const strand = valueNoiseTile(u, v, 24, 4, 197);
-        const micro = valueNoiseTile(u, v, 32, 16, 211);
-        h = strand * 0.7 + micro * 0.3;
-        r = THREE.MathUtils.lerp(0.26, 0.44, h);
-        g = THREE.MathUtils.lerp(0.21, 0.35, h);
-        b = THREE.MathUtils.lerp(0.16, 0.26, h);
+        const twist = (valueNoiseTile(u, v, 5, 7, 193) - 0.5) * 0.14;
+        const peelRibbon = valueNoiseTile(u + twist, v, 28, 4, 197);
+        const deepCleft = valueNoiseTile(u - twist * 0.6, v, 11, 3, 203);
+        const micro = valueNoiseTile(u, v, 36, 18, 211);
+        const shred = THREE.MathUtils.smoothstep(peelRibbon, 0.24, 0.78);
+        h = shred * 0.64 + THREE.MathUtils.smoothstep(deepCleft, 0.30, 0.74) * 0.22 + micro * 0.14;
+        r = THREE.MathUtils.lerp(0.21, 0.47, h);
+        g = THREE.MathUtils.lerp(0.16, 0.36, h);
+        b = THREE.MathUtils.lerp(0.12, 0.26, h);
       } else {
         const warp = (valueNoiseTile(u, v, 5, 6, 229) - 0.5) * 0.09;
         const fissure = valueNoiseTile(u + warp, v, 16, 4, 241);
@@ -214,3 +217,9 @@ export function getOrCreateLeafVeinNormalMap(): THREE.DataTexture {
   leafVeinNormalCache = buildNormalFromHeightField(heights, size, 1.85);
   return leafVeinNormalCache;
 }
+
+export {
+  getOrCreateSoilTextures,
+  type SoilSubstrate,
+  type SoilTextureSet,
+} from './soil-textures.ts';
