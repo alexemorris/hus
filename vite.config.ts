@@ -64,14 +64,6 @@ export default defineConfig({
   },
   test: {
     testTimeout: 30_000,
-    maxConcurrency: 4,
-    fileParallelism: true,
-    pool: 'forks',
-    poolOptions: {
-      forks: {
-        maxForks: 2,
-      },
-    },
   },
   build: {
     chunkSizeWarningLimit: 2500,

@@ -21,7 +21,7 @@ if (typeof globalThis.document === 'undefined') {
   };
 }
 import * as THREE from 'three';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { CircuitBus } from 'husjs';
 import { assertNoZFighting, runArchitecturalAudit } from 'husjs/testing';
 import {
