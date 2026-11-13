@@ -425,6 +425,13 @@ function classifyUserData(u: Readonly<Record<string, unknown>>): TradeCategory |
   }
   if (readBool(u, 'ufhZoneId')) return 'heating';
   if (readBool(u, 'isCarGate')) return 'external';
+  if (u['vegetationExposure'] === 'indoor') return 'decor';
+  if (
+    u['vegetationExposure'] === 'outdoor' ||
+    u['vegetationExposure'] === 'greenhouse'
+  ) {
+    return 'external';
+  }
   if (readBool(u, 'isFrameTV') || readBool(u, 'isGolfSimulatorDynamic')) return 'furniture';
   if (readBool(u, 'circuitId')) return 'lighting';
   if (readBool(u, 'isBifoldDoor') || u['bifoldRole'] !== undefined) return 'envelope';

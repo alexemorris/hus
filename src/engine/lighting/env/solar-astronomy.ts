@@ -351,7 +351,7 @@ export function computeSolarPosition(
   const year = options.year ?? 2026;
   const daysInYear = isLeapYear(year) ? 366 : 365;
   const normCivilHour = ((civilHour % 24.0) + 24.0) % 24.0;
-  const clampedDay = Math.max(1, Math.min(daysInYear, Math.round(dayOfYear)));
+  const clampedDay = Math.max(1, Math.min(daysInYear + 0.9999, dayOfYear));
   const isImplicitDefault =
     options.latitudeDeg === undefined &&
     options.longitudeDeg === undefined &&
@@ -505,7 +505,7 @@ export function computeLunarPosition(
   const year = options.year ?? referenceYear;
   const daysInYear = isLeapYear(year) ? 366 : 365;
   const normCivilHour = ((civilHour % 24.0) + 24.0) % 24.0;
-  const clampedDay = Math.max(1, Math.min(daysInYear, Math.round(dayOfYear)));
+  const clampedDay = Math.max(1, Math.min(daysInYear + 0.9999, dayOfYear));
   const isImplicitDefault =
     options.latitudeDeg === undefined &&
     options.longitudeDeg === undefined &&

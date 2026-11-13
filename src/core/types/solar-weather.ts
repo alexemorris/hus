@@ -1,3 +1,4 @@
+import type { ClimateZone } from "../geo/climate-phenology.ts";
 import type {
   HouseClimateCapabilities,
   Season,
@@ -37,7 +38,12 @@ export interface HouseLocation {
   readonly label?: string;
   readonly timezone?: string;
   readonly elevationM?: number;
+  /** Optional explicit botanical climate override (`classifyClimateZone` honors this first). */
+  readonly climateOverride?: ClimateZone;
 }
+
+/** Alias for `HouseLocation` accepted by `classifyClimateZone` and `husjs/vegetation`. */
+export type HomeLocation = HouseLocation;
 
 /**
  * Resolves the True-North compass bearing (degrees clockwise from True North) of Twin `+X`

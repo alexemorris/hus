@@ -18,6 +18,7 @@ export {
 
 export * from '../core/electrical/index.ts';
 export * from '../core/entities.ts';
+export * from '../core/geo/climate-phenology.ts';
 export * from '../core/geo/frame2d.ts';
 export * from '../core/geo/terrain-modifiers.ts';
 export * from '../core/geo/terrain-sculpt.ts';

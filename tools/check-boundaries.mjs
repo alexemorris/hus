@@ -45,6 +45,7 @@ export const PUBLIC_HUSJS_ENTRYPOINTS = new Set([
   'src/husjs/index.ts',
   'src/husjs/viewer.ts',
   'src/husjs/materials.ts',
+  'src/husjs/vegetation.ts',
   'src/husjs/objects.ts',
   'src/husjs/audio.ts',
   'src/husjs/knx.ts',

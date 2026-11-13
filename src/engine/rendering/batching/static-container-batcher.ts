@@ -683,6 +683,16 @@ export function batchContainerSubtree(
           posArr[p + 2] = posArr[p + 2]! - cz;
         }
         posAttr.needsUpdate = true;
+        const vegPivotAttr = mergedGeo.getAttribute('aVegPivot') as THREE.BufferAttribute | undefined;
+        if (vegPivotAttr) {
+          const pivArr = vegPivotAttr.array as Float32Array;
+          for (let p = 0; p < pivArr.length; p += 3) {
+            pivArr[p] = pivArr[p]! - cx;
+            pivArr[p + 1] = pivArr[p + 1]! - cy;
+            pivArr[p + 2] = pivArr[p + 2]! - cz;
+          }
+          vegPivotAttr.needsUpdate = true;
+        }
         const subBounds = mergedGeo.userData?.subBounds as Float32Array | undefined;
         if (subBounds) {
           for (let b = 0; b < subBounds.length; b += 6) {

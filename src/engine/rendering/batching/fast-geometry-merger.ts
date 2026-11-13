@@ -80,10 +80,20 @@ export class FastGeometryMerger {
         break;
       }
     }
+    let anyVegPivot = false;
+    let anyVegMeta = false;
+    for (let i = 0; i < list.length; i++) {
+      const g = list[i]!.mesh.geometry;
+      if (g.getAttribute("aVegPivot")) anyVegPivot = true;
+      if (g.getAttribute("aVegMeta")) anyVegMeta = true;
+      if (anyVegPivot && anyVegMeta) break;
+    }
     const posOut = new Float32Array(totalVerts * 3);
     const normInt16x4 = new Int16Array(totalVerts * 4);
     const uvOut = new Float32Array(totalVerts * 2);
     const colorOut = anyColor ? new Float32Array(totalVerts * 3) : null;
+    const vegPivotOut = anyVegPivot ? new Float32Array(totalVerts * 3) : null;
+    const vegMetaOut = anyVegMeta ? new Float32Array(totalVerts * 4) : null;
     let minUv = Number.POSITIVE_INFINITY;
     let maxUv = Number.NEGATIVE_INFINITY;
     const idxOut =
@@ -144,6 +154,18 @@ export class FastGeometryMerger {
       const colorAttr = colorOut
         ? (g.getAttribute('color') as THREE.BufferAttribute | undefined)
         : undefined;
+      const vegPivotAttr = vegPivotOut
+        ? (g.getAttribute('aVegPivot') as THREE.BufferAttribute | undefined)
+        : undefined;
+      const vegMetaAttr = vegMetaOut
+        ? (g.getAttribute('aVegMeta') as THREE.BufferAttribute | undefined)
+        : undefined;
+      const vegPivotArr =
+        vegPivotAttr && vegPivotAttr.itemSize >= 3 ? vegPivotAttr.array : undefined;
+      const vegPivotStride = vegPivotAttr ? vegPivotAttr.itemSize : 3;
+      const vegMetaArr =
+        vegMetaAttr && vegMetaAttr.itemSize >= 4 ? vegMetaAttr.array : undefined;
+      const vegMetaStride = vegMetaAttr ? vegMetaAttr.itemSize : 4;
       const posArr = posAttr.array;
       const normArr = normAttr?.array;
       const uvArr = uvAttr && uvAttr.itemSize === 2 ? uvAttr.array : undefined;
@@ -181,6 +203,49 @@ export class FastGeometryMerger {
         posOut[out3] = wx;
         posOut[out3 + 1] = wy;
         posOut[out3 + 2] = wz;
+
+        if (vegPivotOut) {
+          if (vegPivotArr && !vegPivotAttr!.normalized) {
+            const pv = srcV * vegPivotStride;
+            const lpx = vegPivotArr[pv]!;
+            const lpy = vegPivotArr[pv + 1]!;
+            const lpz = vegPivotArr[pv + 2]!;
+            vegPivotOut[out3] = m00 * lpx + m01 * lpy + m02 * lpz + tx;
+            vegPivotOut[out3 + 1] = m10 * lpx + m11 * lpy + m12 * lpz + ty;
+            vegPivotOut[out3 + 2] = m20 * lpx + m21 * lpy + m22 * lpz + tz;
+          } else if (vegPivotAttr) {
+            const lpx = vegPivotAttr.getX(srcV);
+            const lpy = vegPivotAttr.getY(srcV);
+            const lpz = vegPivotAttr.getZ(srcV);
+            vegPivotOut[out3] = m00 * lpx + m01 * lpy + m02 * lpz + tx;
+            vegPivotOut[out3 + 1] = m10 * lpx + m11 * lpy + m12 * lpz + ty;
+            vegPivotOut[out3 + 2] = m20 * lpx + m21 * lpy + m22 * lpz + tz;
+          } else {
+            vegPivotOut[out3] = wx;
+            vegPivotOut[out3 + 1] = wy;
+            vegPivotOut[out3 + 2] = wz;
+          }
+        }
+
+        if (vegMetaOut) {
+          if (vegMetaArr && !vegMetaAttr!.normalized) {
+            const mv = srcV * vegMetaStride;
+            vegMetaOut[out4] = vegMetaArr[mv]!;
+            vegMetaOut[out4 + 1] = vegMetaArr[mv + 1]!;
+            vegMetaOut[out4 + 2] = vegMetaArr[mv + 2]!;
+            vegMetaOut[out4 + 3] = vegMetaArr[mv + 3]!;
+          } else if (vegMetaAttr) {
+            vegMetaOut[out4] = vegMetaAttr.getX(srcV);
+            vegMetaOut[out4 + 1] = vegMetaAttr.getY(srcV);
+            vegMetaOut[out4 + 2] = vegMetaAttr.getZ(srcV);
+            vegMetaOut[out4 + 3] = vegMetaAttr.getW(srcV);
+          } else {
+            vegMetaOut[out4] = 0;
+            vegMetaOut[out4 + 1] = 0.5;
+            vegMetaOut[out4 + 2] = 1;
+            vegMetaOut[out4 + 3] = 0.5;
+          }
+        }
 
         if (wx < sMinX) sMinX = wx;
         if (wx > sMaxX) sMaxX = wx;
@@ -293,6 +358,12 @@ export class FastGeometryMerger {
     merged.setAttribute('uv', uvBufferAttr);
     if (colorOut) {
       merged.setAttribute('color', new THREE.BufferAttribute(colorOut, 3));
+    }
+    if (vegPivotOut) {
+      merged.setAttribute('aVegPivot', new THREE.BufferAttribute(vegPivotOut, 3));
+    }
+    if (vegMetaOut) {
+      merged.setAttribute('aVegMeta', new THREE.BufferAttribute(vegMetaOut, 4));
     }
     merged.setIndex(new THREE.BufferAttribute(idxOut, 1));
 

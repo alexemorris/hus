@@ -604,40 +604,80 @@ export function SkyWeatherHud(): JSX.Element | null {
       });
     }
   };
-  const renderSeasonSelector = (testIdPrefix: string): JSX.Element => (
-    <div class="skyhud-season-row" data-testid={`${testIdPrefix}-season-row`}>
-      <span class="skyhud-season-row-label" title={(climate.seasonNote ?? undefined)}>
-        Season · {SEASON_LABELS[effectiveSeason]}
-      </span>
-      <div class="skyhud-season-chips" role="group" aria-label="Season selector">
-        {SEASON_SELECTIONS.map((opt) => {
-          const isActive =
-            seasonSelection === opt.id ||
-            (seasonSelection === 'auto' && opt.id === 'auto');
-          const isDerivedMatch = seasonSelection === 'auto' && opt.id === effectiveSeason;
-          const tip =
-            opt.id === 'auto'
-              ? `Auto season from calendar date (${SEASON_LABELS[effectiveSeason]})`
-              : !climate.hasDistinctFoliageSeasons
-                ? `${opt.label} solar angle · ${(climate.seasonNote ?? undefined)}`
-                : opt.id === 'winter' && climate.snowSupportedAtLocation
-                  ? 'Winter season (snow enabled)'
-                  : `${opt.label} season`;
-          return (
-            <button
-              key={opt.id}
-              type="button"
-              data-testid={`${testIdPrefix}-season-${opt.id}`}
-              class={`skyhud-mini-chip${isActive ? ' is-active' : isDerivedMatch ? ' is-derived' : ''}`}
-              aria-pressed={isActive}
-              title={tip}
-              onClick={() => selectSeason(opt.id)}
-            >
-              {opt.label}
-            </button>
-          );
-        })}
+  const dayFillPct = `${(((Math.min(365, Math.max(1, solar.dayOfYear)) - 1) / 364) * 100).toFixed(1)}%`;
+  const scrubDate = (nextDay: number): void => {
+    if (!Number.isFinite(nextDay)) return;
+    const hr = solar.civilHour;
+    const yr = solar.year;
+    scheduleCoalescedSlider('day', () => {
+      ctl.setSolarDateTime({
+        civilHour: hr,
+        dayOfYear: nextDay,
+        year: yr,
+      });
+    });
+  };
+  const renderSeasonSelector = (
+    testIdPrefix: string,
+    includeCompactDateScrubber = false
+  ): JSX.Element => (
+    <div class="skyhud-season-block" data-testid={`${testIdPrefix}-season-block`}>
+      <div class="skyhud-season-row" data-testid={`${testIdPrefix}-season-row`}>
+        <span class="skyhud-season-row-label" title={(climate.seasonNote ?? undefined)}>
+          Season · {SEASON_LABELS[effectiveSeason]}
+        </span>
+        <div class="skyhud-season-chips" role="group" aria-label="Season selector">
+          {SEASON_SELECTIONS.map((opt) => {
+            const isActive =
+              seasonSelection === opt.id ||
+              (seasonSelection === 'auto' && opt.id === 'auto');
+            const isDerivedMatch = seasonSelection === 'auto' && opt.id === effectiveSeason;
+            const tip =
+              opt.id === 'auto'
+                ? `Auto season from calendar date (${SEASON_LABELS[effectiveSeason]})`
+                : !climate.hasDistinctFoliageSeasons
+                  ? `${opt.label} solar angle · ${(climate.seasonNote ?? undefined)}`
+                  : opt.id === 'winter' && climate.snowSupportedAtLocation
+                    ? 'Winter season (snow enabled)'
+                    : `${opt.label} season`;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                data-testid={`${testIdPrefix}-season-${opt.id}`}
+                class={`skyhud-mini-chip${isActive ? ' is-active' : isDerivedMatch ? ' is-derived' : ''}`}
+                aria-pressed={isActive}
+                title={tip}
+                onClick={() => selectSeason(opt.id)}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
+      {includeCompactDateScrubber && (
+        <div class="skyhud-season-date-row" data-testid={`${testIdPrefix}-date-row`}>
+          <label class="skyhud-slider-label">
+            <span>Date (1 Jan – 31 Dec)</span>
+            <strong data-testid={`${testIdPrefix}-date-label`}>{dateStr}</strong>
+          </label>
+          <input
+            type="range"
+            class="shell-range"
+            data-testid={`${testIdPrefix}-date-slider`}
+            min="1"
+            max="365"
+            step="0.25"
+            value={solar.dayOfYear}
+            style={{ '--fill': dayFillPct } as Record<string, string>}
+            aria-label="Date of year"
+            onPointerDown={handleSliderPointerDown}
+            onKeyUp={finishPointerScrub}
+            onInput={(e) => scrubDate(Number(e.currentTarget.value))}
+          />
+        </div>
+      )}
     </div>
   );
 
@@ -651,7 +691,6 @@ export function SkyWeatherHud(): JSX.Element | null {
   };
 
   const hourFillPct = `${((solar.civilHour / 24) * 100).toFixed(1)}%`;
-  const dayFillPct = `${(((solar.dayOfYear - 1) / 364) * 100).toFixed(1)}%`;
   const cloudFillPct = `${effCloudPct}%`;
   const precipPct = Math.round(weather.precipIntensity * 100);
   const fogPct = Math.round(weather.fogIntensity * 100);
@@ -819,36 +858,24 @@ export function SkyWeatherHud(): JSX.Element | null {
             />
           </div>
 
-          <div class="skyhud-slider-group">
+          <div class="skyhud-slider-group" data-testid="sun-date-row">
             <label class="skyhud-slider-label">
-              <span>Date / Solar Declination ({solar.declinationDeg >= 0 ? '+' : ''}{solar.declinationDeg.toFixed(1)}°)</span>
-              <strong>{dateStr}</strong>
+              <span>Date (1 Jan – 31 Dec · {solar.declinationDeg >= 0 ? '+' : ''}{solar.declinationDeg.toFixed(1)}°)</span>
+              <strong data-testid="sun-date-label">{dateStr}</strong>
             </label>
             <input
               type="range"
               class="shell-range"
+              data-testid="sun-date-slider"
               min="1"
               max="365"
-              step="1"
+              step="0.25"
               value={solar.dayOfYear}
               style={{ '--fill': dayFillPct } as Record<string, string>}
               aria-label="Day of year"
               onPointerDown={handleSliderPointerDown}
               onKeyUp={finishPointerScrub}
-              onInput={(e) => {
-                const nextDay = Number(e.currentTarget.value);
-                if (Number.isFinite(nextDay)) {
-                  const hr = solar.civilHour;
-                  const yr = solar.year;
-                  scheduleCoalescedSlider('day', () => {
-                    ctl.setSolarDateTime({
-                      civilHour: hr,
-                      dayOfYear: nextDay,
-                      year: yr,
-                    });
-                  });
-                }
-              }}
+              onInput={(e) => scrubDate(Number(e.currentTarget.value))}
             />
           </div>
 
@@ -918,7 +945,7 @@ export function SkyWeatherHud(): JSX.Element | null {
             </div>
           </div>
 
-          {renderSeasonSelector('weather')}
+          {renderSeasonSelector('weather', true)}
 
           <div class="skyhud-preset-grid" role="group" aria-label="Weather presets">
             {WEATHER_PRESETS.map((p) => {

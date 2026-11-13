@@ -322,6 +322,7 @@ export function isBatchableMesh(
   allowChildren = false
 ): boolean {
   if (!mesh.visible) return false;
+  if ((mesh as THREE.InstancedMesh).isInstancedMesh) return false;
   if (mesh.userData?.[SHADOW_PASS_HOOK_FLAG]) return false;
   if (protectedObjects.has(mesh)) return false;
   if (!allowChildren && mesh.children.length > 0) return false;
@@ -340,6 +341,7 @@ export function isBatchableMultiMaterialMesh(
   allowChildren = false
 ): boolean {
   if (!mesh.visible) return false;
+  if ((mesh as THREE.InstancedMesh).isInstancedMesh) return false;
   if (mesh.userData?.[SHADOW_PASS_HOOK_FLAG]) return false;
   if (protectedObjects.has(mesh)) return false;
   if (!allowChildren && mesh.children.length > 0) return false;

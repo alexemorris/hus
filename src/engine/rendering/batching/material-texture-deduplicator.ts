@@ -476,7 +476,19 @@ export class MaterialTextureDeduplicator {
       _isInteriorScope = false
     ): { readonly material: THREE.Material; readonly geometry: THREE.BufferGeometry } => {
       const mat = rawMat as THREE.MeshPhysicalMaterial;
-      if (isDynamicMaterial(mat, mutableMaterials)) {
+      const rawNode = rawMat as THREE.Material & {
+        readonly isNodeMaterial?: boolean;
+        readonly positionNode?: unknown;
+        readonly colorNode?: unknown;
+      };
+      if (
+        rawNode.isNodeMaterial === true ||
+        rawNode.positionNode != null ||
+        rawNode.colorNode != null ||
+        Boolean(rawMat.userData?.skipMaterialDedupe) ||
+        Boolean(rawMat.userData?.isVegetationMaterial) ||
+        isDynamicMaterial(mat, mutableMaterials)
+      ) {
         return { material: rawMat, geometry: geo };
       }
 
@@ -882,7 +894,8 @@ export class MaterialTextureDeduplicator {
         }
 
         if (node.castShadow) {
-          if (isHighLod || isLeafOrPlant) {
+          const allowFoliageShadow = Boolean(u?.allowFoliageShadow);
+          if (isHighLod || (isLeafOrPlant && !allowFoliageShadow)) {
             node.castShadow = false;
           } else {
             const sphere = node.geometry.boundingSphere;

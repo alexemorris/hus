@@ -549,6 +549,9 @@ export function prepareMaterialForGlbExport(
         ? new THREE.MeshPhysicalMaterial()
         : new THREE.MeshStandardMaterial();
     copyCommonMaterialState(src, pbr);
+    if (Boolean(src.userData?.isVegetationMaterial)) {
+      pbr.vertexColors = true;
+    }
     if (isColor(src.color)) pbr.color.copy(src.color);
     pbr.map = normalizeTextureForGlbExport(src.map, THREE.SRGBColorSpace, session);
     pbr.roughness = typeof src.roughness === 'number' ? src.roughness : 1;

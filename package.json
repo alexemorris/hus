@@ -29,6 +29,7 @@
     "./viewer": "./src/husjs/viewer.ts",
     "./objects": "./src/husjs/objects.ts",
     "./materials": "./src/husjs/materials.ts",
+    "./vegetation": "./src/husjs/vegetation.ts",
     "./audio": "./src/husjs/audio.ts",
     "./knx": "./src/husjs/knx.ts",
     "./unifi": "./src/husjs/unifi.ts",
@@ -67,6 +68,9 @@
       ],
       "materials": [
         "./src/husjs/materials.ts"
+      ],
+      "vegetation": [
+        "./src/husjs/vegetation.ts"
       ],
       "audio": [
         "./src/husjs/audio.ts"

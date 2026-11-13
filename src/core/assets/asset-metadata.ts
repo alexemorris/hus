@@ -24,7 +24,8 @@ export type AssetCategory =
   | 'architectural'
   | 'decor'
   | 'device'
-  | 'vehicle';
+  | 'vehicle'
+  | 'vegetation';
 
 export interface AssetPrice {
   readonly amount: number;

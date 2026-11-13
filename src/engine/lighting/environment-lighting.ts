@@ -31,7 +31,12 @@ import type {
   SkyWeatherSnapshot,
   SolarDateTimeInput,
 } from '../../core/types/solar-weather.ts';
+import {
+  shortestDayOfYearDelta,
+  wrapDayOfYear,
+} from '../../core/geo/climate-phenology.ts';
 import { SoundscapeController } from '../audio/soundscape-controller.ts';
+import { VegetationPhenologyController } from '../vegetation/vegetation-uniforms.ts';
 import {
   AtmosphereEphemerisSolver,
   MODE_TO_MINUTES,
@@ -61,6 +66,7 @@ export type { ShadowFrustumDiagnostics };
 
 /** Duration (ms) of the eased cross-fade between time-of-day presets. */
 const TRANSITION_MS = 900;
+const SEASON_EASE_MS = 750;
 
 /**
  * Interval (ms) between real-time local solar clock evaluations in `liveClockSync` mode.
@@ -78,6 +84,7 @@ const LIVE_SOLAR_TICK_MS = 30_000;
 export class EnvironmentLighting {
   public currentMinutes: number = MODE_TO_MINUTES.dusk;
   public readonly weather: WeatherController;
+  public readonly vegetationPhenology = new VegetationPhenologyController();
 
   private readonly scene: THREE.Scene;
   private readonly hemiLight: THREE.HemisphereLight;
@@ -105,6 +112,13 @@ export class EnvironmentLighting {
   private transitioning = false;
   private transitionElapsedMs = 0;
   private lastTransitionShadowMs = -1000;
+  private seasonEasing = false;
+  private seasonEaseElapsedMs = 0;
+  private seasonEaseFromDoy = 172;
+  private seasonEaseDeltaDoy = 0;
+  private seasonEaseFromHour = 12;
+  private seasonEaseToHour = 12;
+  private lastSeasonShadowMs = -1000;
   private hdrClockMs = 0;
 
   private buildHdrApplyOptions(animate: boolean) {
@@ -214,6 +228,7 @@ export class EnvironmentLighting {
     }
 
     this.solver.syncWeatherLightingContext(this.weather, this.state.sunDirection);
+    this.syncVegetationPhenology(false, 0);
   }
 
   /**
@@ -387,6 +402,36 @@ export class EnvironmentLighting {
       });
       this.ground.setSeasonalStyle(seasonalStyle.tintRgb, seasonalStyle.snowCover);
     }
+    this.syncVegetationPhenology(this.weather.isAnimating(), 0);
+  }
+  private syncVegetationPhenology(windAnimating = false, dtSeconds = 0): void {
+    const loc = this.solver.getLocation();
+    const caps = this.solver.getClimateCapabilities();
+    const w = this.weather.getState();
+    const weatherRegime = this.solver.getWeatherRegime(this.weather);
+    const effectiveSeason = this.solver.getEffectiveSeason();
+    const snowAmount =
+      caps.zone !== 'warm' && effectiveSeason === 'winter' && weatherRegime === 'snow'
+        ? THREE.MathUtils.clamp(0.45 + 0.55 * w.precipIntensity, 0, 1)
+        : 0;
+    const rainWetness = THREE.MathUtils.clamp(
+      Math.max(w.surfaceWetness ?? 0, w.precipType === 'rain' ? w.precipIntensity * 0.85 : 0),
+      0,
+      1
+    );
+    const doy = this.solver.latestSolar?.dayOfYear ?? this.solver.solarInput.dayOfYear;
+    const climateOverride =
+      typeof this.solver.climateInput === 'string' ? undefined : loc.climateOverride;
+    this.vegetationPhenology.syncFromEnvironment({
+      location: climateOverride ? { ...loc, climateOverride } : loc,
+      dayOfYear: doy,
+      snowAmount,
+      rainWetness,
+      windSpeedKph: w.windSpeedKph,
+      windDirDeg: w.windDirDeg,
+      windAnimating,
+      dtSeconds,
+    });
   }
 
   public updateShadowFrustumForCamera(
@@ -514,24 +559,50 @@ export class EnvironmentLighting {
     options?: { readonly animate?: boolean }
   ): SkyWeatherSnapshot {
     const prevSunDir = this.state.sunDirection.clone();
+    const prevDoy = this.solver.latestSolar?.dayOfYear ?? this.solver.solarInput.dayOfYear;
+    const prevHour = this.solver.solarInput.civilHour;
     this.solver.seasonSelection = selection;
+
+    let targetInput = this.solver.solarInput;
     if (selection !== 'auto') {
       this.setLiveClockSyncInternal(false);
       if (this.solver.isContinuousSolarMode) {
         const doy = canonicalDayOfYearForSeason(selection, this.solver.getLocation().lat);
-        this.solver.solarInput = {
+        targetInput = {
           civilHour: this.solver.solarInput.civilHour,
           dayOfYear: doy,
           year: this.solver.solarInput.year,
         };
       } else {
-        this.solver.solarInput = this.solver.resolvePresetSolarInputForSeason(
+        targetInput = this.solver.resolvePresetSolarInputForSeason(
           this.solver.currentMode,
           this.weather
         );
       }
     } else if (!this.solver.isContinuousSolarMode) {
-      this.solver.solarInput = { ...CANONICAL_SOLAR_PRESETS[this.solver.currentMode] };
+      targetInput = { ...CANONICAL_SOLAR_PRESETS[this.solver.currentMode] };
+    }
+
+    const canAnimate =
+      (options?.animate ?? true) && this.hasAppliedMode && Boolean(this.renderer);
+    const doyDelta = shortestDayOfYearDelta(prevDoy, targetInput.dayOfYear);
+
+    if (canAnimate && selection !== 'auto' && Math.abs(doyDelta) > 0.25) {
+      this.seasonEasing = true;
+      this.seasonEaseElapsedMs = 0;
+      this.seasonEaseFromDoy = prevDoy;
+      this.seasonEaseDeltaDoy = doyDelta;
+      this.seasonEaseFromHour = prevHour;
+      this.seasonEaseToHour = targetInput.civilHour;
+      this.lastSeasonShadowMs = -1000;
+      this.solver.solarInput = {
+        civilHour: prevHour,
+        dayOfYear: prevDoy,
+        year: targetInput.year,
+      };
+    } else {
+      this.seasonEasing = false;
+      this.solver.solarInput = targetInput;
     }
 
     this.currentMinutes = this.solver.refreshEphemerisFromInput(this.weather);
@@ -542,8 +613,6 @@ export class EnvironmentLighting {
       this.solver.currentMode = alt >= 12.0 ? 'day' : alt >= -3.0 ? 'dusk' : 'night';
     }
 
-    const canAnimateHdr =
-      (options?.animate ?? true) && this.hasAppliedMode && Boolean(this.renderer);
     this.hasAppliedMode = true;
     this.transitioning = false;
     this.uFogClearRadius.value = this.solver.recomputeCurrentTargetState(this.state, this.weather);
@@ -557,7 +626,7 @@ export class EnvironmentLighting {
       this.solver.activeHdrBucket,
       this.state.sunDirection,
       this.state.fogColor,
-      this.buildHdrApplyOptions(canAnimateHdr)
+      this.buildHdrApplyOptions(canAnimate)
     );
     this.applyState(bakeShadow);
     this.solver.syncWeatherLightingContext(this.weather, this.state.sunDirection);
@@ -693,8 +762,8 @@ export class EnvironmentLighting {
     }
     const year = input.year ?? this.solver.solarInput.year;
     const normHour = ((input.civilHour % 24.0) + 24.0) % 24.0;
-    const clampedDay = Math.max(1, Math.min(366, Math.round(input.dayOfYear)));
-    const dayChanged = clampedDay !== this.solver.solarInput.dayOfYear;
+    const clampedDay = Math.max(1, Math.min(366, input.dayOfYear));
+    const dayChanged = Math.abs(clampedDay - this.solver.solarInput.dayOfYear) > 1e-4;
     if (dayChanged && this.solver.seasonSelection !== 'auto') {
       // Scrubbing the calendar date slider returns season tracking to calendar-derived 'auto'
       this.solver.seasonSelection = 'auto';
@@ -815,6 +884,7 @@ export class EnvironmentLighting {
   public isTransitioning(): boolean {
     return (
       this.transitioning ||
+      this.seasonEasing ||
       this.hdrManager.isHdrTransitioning() ||
       this.hdrManager.hasPendingBakes()
     );
@@ -832,6 +902,45 @@ export class EnvironmentLighting {
       ? this.hdrManager.tickTransition(this.hdrClockMs)
       : false;
     const steppedHdr = wasHdrTransitioning || hdrStillAnimating;
+
+    if (this.seasonEasing) {
+      this.seasonEaseElapsedMs += dtMs;
+      const st = Math.min(1, this.seasonEaseElapsedMs / SEASON_EASE_MS);
+      const sEased = st * st * (3 - 2 * st);
+      const nextDoy = wrapDayOfYear(this.seasonEaseFromDoy + this.seasonEaseDeltaDoy * sEased);
+      const nextHour = THREE.MathUtils.lerp(this.seasonEaseFromHour, this.seasonEaseToHour, sEased);
+      this.solver.solarInput = {
+        civilHour: nextHour,
+        dayOfYear: nextDoy,
+        year: this.solver.solarInput.year,
+      };
+      this.currentMinutes = this.solver.refreshEphemerisFromInput(this.weather);
+      if (this.solver.isContinuousSolarMode) {
+        const alt = this.solver.latestSolar.altitudeDeg;
+        this.solver.currentMode = alt >= 12.0 ? 'day' : alt >= -3.0 ? 'dusk' : 'night';
+      }
+      this.uFogClearRadius.value = this.solver.recomputeCurrentTargetState(this.state, this.weather);
+      const isSeasonFinal = st >= 1;
+      const dueForSeasonShadow =
+        isSeasonFinal || this.seasonEaseElapsedMs - this.lastSeasonShadowMs >= 75;
+      if (dueForSeasonShadow) {
+        this.lastSeasonShadowMs = this.seasonEaseElapsedMs;
+      }
+      const bakeSeasonShadow = dueForSeasonShadow && this.hasActiveSunShadow();
+      if (dueForSeasonShadow && !this.hasActiveSunShadow()) {
+        this.shadowController.markStaleWhileExtinct();
+      }
+      if (isSeasonFinal) {
+        this.seasonEasing = false;
+      }
+      this.applyState(bakeSeasonShadow);
+      this.solver.syncWeatherLightingContext(this.weather, this.state.sunDirection);
+      this.emitSkySnapshot();
+      this.onEnvUpdated?.(bakeSeasonShadow);
+      if (!this.transitioning) {
+        return true;
+      }
+    }
 
     if (!this.transitioning) {
       if (steppedHdr) {
@@ -866,6 +975,7 @@ export class EnvironmentLighting {
 
   private cancelTransition(): void {
     this.transitioning = false;
+    this.seasonEasing = false;
     this.hdrManager.cancelHdrTransition();
   }
 
@@ -875,7 +985,9 @@ export class EnvironmentLighting {
     cameraTarget: THREE.Vector3,
     cameraQuaternion?: THREE.Quaternion
   ): boolean {
-    return this.weather.update(dtSeconds, cameraPosition, cameraTarget, cameraQuaternion);
+    const active = this.weather.update(dtSeconds, cameraPosition, cameraTarget, cameraQuaternion);
+    this.syncVegetationPhenology(active, active ? dtSeconds : 0);
+    return active;
   }
 
   public setSoundscape(descriptor: SoundscapeDescriptor): void {

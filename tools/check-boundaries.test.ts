@@ -7,7 +7,8 @@ describe('tools/check-boundaries.mjs layer boundary rules', () => {
     expect(ALLOWED.homes).toEqual(['husjs']);
     expect(ALLOWED.examples).toEqual(['husjs']);
     expect(ALLOWED.app).toEqual(['husjs', 'homes', 'examples']);
-    expect(PUBLIC_HUSJS_ENTRYPOINTS.size).toBe(27);
+    expect(PUBLIC_HUSJS_ENTRYPOINTS.size).toBe(28);
+    expect(PUBLIC_HUSJS_ENTRYPOINTS.has('src/husjs/vegetation.ts')).toBe(true);
     expect(PUBLIC_HUSJS_ENTRYPOINTS.has('src/husjs/testing.ts')).toBe(true);
     expect(PUBLIC_HUSJS_ENTRYPOINTS.has('src/husjs/materials.ts')).toBe(true);
     expect(checkBoundaries()).toEqual([]);

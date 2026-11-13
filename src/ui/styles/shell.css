@@ -2776,6 +2776,18 @@ body.is-annotating .shell-toast {
 }
 
 
+.skyhud-season-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skyhud-season-date-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .skyhud-season-row {
   display: flex;
   align-items: center;
