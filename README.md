@@ -12,7 +12,7 @@
   <a href="./LICENSE">MIT License</a>
 </p>
 
-Hus (`husjs`) is a TypeScript library for modelling buildings, rooms, lighting, and interiors in code and exploring them in the browser.
+Hus (`husjs`) is a TypeScript library for modelling buildings, rooms, lighting, vegetation, and interiors in code and exploring them in the browser.
 
 [![Georgian Country House](./docs/images/georgian-house.webp)](https://alexemorris.github.io/hus/)
 
@@ -60,10 +60,19 @@ await mountHouse(house, document);
 
 ## What's included
 
-- **Architecture & interiors**: helpers for walls, openings, roofs, stairs, joinery, paint colours, brick/stone textures, and a built-in furniture and fixture catalog (`husjs/objects`, `husjs/materials`, `husjs/catalog/*`).
-- **Viewer & walkthrough**: orbit, floor-plan, and first-person walking modes, automatic wall cutaways, and room annotations (`husjs/viewer`, `husjs/ui`).
-- **Environment & lighting**: sun/moon position by date and location, sky/weather presets, terrain heightmaps, and room switches/dimmers with optional KNX and UniFi adapters (`husjs/knx`, `husjs/unifi`).
-- **Checks & schedules**: `npx husjs audit` checks for coplanar z-fighting, blocked door swings, and stair headroom; `npx husjs schedule` exports placed fixtures to Markdown, CSV, or JSON; `npx husjs export` writes `.glb`.
+- **Architecture & CAD**: helpers for walls, openings, pitched and hipped roofs, slabs, solid-section cutaway wall caps, stairs, joinery, and metric masonry UV layout (`husjs/objects`).
+- **Materials & micro-surfaces**: procedural PBR brick bonds, cobblestones, stone masonry, Welsh slate, physical paint sheen and LRV evaluation, and micro-surface normal and roughness maps (`husjs/materials`).
+- **Vegetation & phenology**: procedural trees, hedges, topiary, climbers, shrubs, flowerbeds, xerophytes, and houseplants with seasonal phenology (bud, leaf, flower, fruit, autumn senescence, bare) driven on the GPU by date, latitude, and weather exposure (`husjs/vegetation`).
+- **Furniture & fixtures catalog**: modular catalog modules for appliances, architectural elements, bathroom, electrical, hardware, joinery, kitchen, lighting, radiators, sanitaryware, soft furnishings, and vehicles (`husjs/catalog/*`).
+- **Viewer & walkthrough**: orbit, floor-plan, and first-person walkthrough modes, automatic cutaways, horizon GTAO, screen-space contact shadows, spatial audio occlusion, and room annotations (`husjs/viewer`, `husjs/audio`, `husjs/ui`).
+- **Environment & automation**: sun and moon ephemeris by date and coordinates, sky and weather presets, terrain heightmaps, and room switching with optional KNX and UniFi network adapters (`husjs/knx`, `husjs/unifi`).
+- **CLI & diagnostics**:
+  - `husjs audit` checks for coplanar z-fighting, blocked door swings, cutaway containment, and first-person walkthrough reachability (`husjs/testing`).
+  - `husjs zfight` inspects coplanar triangle overlaps across scene geometries.
+  - `husjs schedule` exports FF&E, sanitaryware, joinery, and appliance schedules to Markdown, CSV, or JSON.
+  - `husjs export` converts scenes to binary glTF (`.glb`) or Blender (`.blend`).
+  - `husjs terrain` fetches elevation tiles and writes `.husgrid.json` terrain heightmaps.
+  - `husjs hdri` generates 360-degree environment panoramas.
 
 ## Development
 
