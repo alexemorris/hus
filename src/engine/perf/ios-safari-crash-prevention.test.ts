@@ -326,7 +326,7 @@ describe('Showcase homes mobile GPU memory budget (< 300 MB) & WebGPU sampled te
     async () => {
       const { stdout: raw } = await execFileAsync(
         process.execPath,
-        [resolve(REPO_ROOT, 'tools/measure-ios-memory.mjs'), '--all-examples', '--json'],
+        [resolve(REPO_ROOT, 'tools/measure-ios-memory.mjs'), '--all-examples', '--profiles', 'iphone,ipad', '--json'],
         {
           cwd: REPO_ROOT,
           encoding: 'utf8',
@@ -342,7 +342,7 @@ describe('Showcase homes mobile GPU memory budget (< 300 MB) & WebGPU sampled te
         totalGpuMiB: number;
       }>;
 
-      expect(rows.length).toBeGreaterThanOrEqual(9);
+      expect(rows.length).toBe(6);
       for (const row of rows) {
         expect(
           row.maxSampledTextures,

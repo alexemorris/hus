@@ -214,6 +214,9 @@ async function runBatchProfileMeasurements(houseSpecs, profileKey, cwd) {
   });
   const allowedRoots = [...new Set([cwd, REPO_ROOT, ...resolvedSpecs.map((r) => r.targetRepoRoot)])];
   const targetRepoRoot = resolvedSpecs[0]?.targetRepoRoot ?? REPO_ROOT;
+  const threeDir = existsSync(join(REPO_ROOT, "node_modules/three/build/three.module.js"))
+    ? join(REPO_ROOT, "node_modules/three")
+    : join(targetRepoRoot, "node_modules/three");
 
   const { createServer } = await import('vite');
   const server = await createServer({
@@ -236,14 +239,14 @@ async function runBatchProfileMeasurements(houseSpecs, profileKey, cwd) {
       alias: [
         { find: /^husjs\/(.+)$/, replacement: join(REPO_ROOT, 'src/husjs/$1.ts') },
         { find: /^husjs$/, replacement: join(REPO_ROOT, 'src/husjs/index.ts') },
-        { find: /^three\/(.+)$/, replacement: join(REPO_ROOT, 'node_modules/three/$1') },
-        { find: /^three$/, replacement: join(REPO_ROOT, 'node_modules/three/build/three.module.js') },
+        { find: /^three\/(.+)$/, replacement: join(threeDir, "$1") },
+        { find: /^three$/, replacement: join(threeDir, "build/three.module.js") },
       ],
     },
   });
 
   try {
-    const THREE = await server.ssrLoadModule(join(REPO_ROOT, 'node_modules/three/build/three.module.js'));
+    const THREE = await server.ssrLoadModule(join(threeDir, 'build/three.module.js'));
     const headlessCanvasMod = await server.ssrLoadModule(
       join(REPO_ROOT, 'src/engine/textures/headless-canvas.ts')
     );
@@ -502,21 +505,26 @@ async function main() {
     }
   }
 
-  const profiles = ["desktop", "iphone", "ipad"];
+  let profiles = ["desktop", "iphone", "ipad"];
+  const profFlagIdx = argv.indexOf("--profiles");
+  if (profFlagIdx !== -1 && argv[profFlagIdx + 1]) {
+    profiles = argv[profFlagIdx + 1]
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => Boolean(DEVICE_PROFILES[s]));
+  }
   const byProfile = new Map();
   const selfPath = fileURLToPath(import.meta.url);
 
-  await Promise.all(
-    profiles.map(async (prof) => {
-      const { stdout } = await execFileAsync(
-        process.execPath,
-        [selfPath, "--worker-profile", prof, ...houses],
-        { cwd: process.cwd(), encoding: "utf8", maxBuffer: 32 * MIB }
-      );
-      const lines = stdout.trim().split("\n");
-      byProfile.set(prof, JSON.parse(lines[lines.length - 1]));
-    })
-  );
+  for (const prof of profiles) {
+    const { stdout } = await execFileAsync(
+      process.execPath,
+      [selfPath, "--worker-profile", prof, ...houses],
+      { cwd: process.cwd(), encoding: "utf8", maxBuffer: 32 * MIB }
+    );
+    const lines = stdout.trim().split("\n");
+    byProfile.set(prof, JSON.parse(lines[lines.length - 1]));
+  }
 
   const rows = [];
   for (let i = 0; i < houses.length; i++) {

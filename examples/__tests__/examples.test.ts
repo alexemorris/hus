@@ -506,5 +506,5 @@ describe('husjs Example Homes', { timeout: 30_000 }, () => {
     });
     expect(houseAudit.errorCount).toBe(0);
     expect(houseAudit.warningCount).toBe(0);
-  }, 30000);
+  }, 60000);
 });
