@@ -256,20 +256,30 @@ export function derivePbrNormalAndRoughnessMaps(
 
   const isRecording = isRecordingCanvasStub(heightCanvas);
   const probeCtx = !isRecording ? heightCanvas.getContext('2d', { willReadFrequently: true }) : null;
+  const noopProbe = probeCtx as unknown as {
+    __husNoopProbeA?: unknown;
+    __husNoopProbeB?: unknown;
+  } | null;
+  const isNoopProxyStub =
+    !isRecording &&
+    noopProbe !== null &&
+    typeof noopProbe.__husNoopProbeA === 'function' &&
+    noopProbe.__husNoopProbeA === noopProbe.__husNoopProbeB;
   const isLegacyPixelCanvasStub =
     !isRecording &&
+    !isNoopProxyStub &&
     srcW <= maxDimension &&
     srcH <= maxDimension &&
     probeCtx !== null &&
     typeof (probeCtx as unknown as { drawImage?: unknown }).drawImage !== 'function';
 
-  if (isRecording || isLegacyPixelCanvasStub) {
+  if (isRecording || isNoopProxyStub || isLegacyPixelCanvasStub) {
     const [normalCanvas, roughnessCanvas] = getOrCreateCachedCanvasPair(
       `${key}:pbr-nr`,
       srcW,
       srcH,
       (nCtx, rCtx) => {
-        if (isRecording) {
+        if (isRecording || isNoopProxyStub) {
           nCtx.fillStyle = `normalMap:${key}:s=${normalStrength}`;
           nCtx.drawImage(heightCanvas, 0, 0);
           rCtx.fillStyle = `roughnessMap:${key}:m=${mortarThreshold}:${mortarRoughness}:${surfaceRoughnessMin}:${surfaceRoughnessMax}`;

@@ -143,12 +143,22 @@ export function buildFloorPbrTextureBundle(
   const probe = createRuntimeOrHeadlessCanvas(width, height);
   const probeCtx = probe.getContext('2d');
   const isRecording = isRecordingCanvasStub(probe);
+  const noopProbe = probeCtx as unknown as {
+    __husNoopProbeA?: unknown;
+    __husNoopProbeB?: unknown;
+  } | null;
+  const isNoopProxyStub =
+    !isRecording &&
+    noopProbe !== null &&
+    typeof noopProbe.__husNoopProbeA === 'function' &&
+    noopProbe.__husNoopProbeA === noopProbe.__husNoopProbeB;
   const isUnitPixelStub =
     !isRecording &&
+    !isNoopProxyStub &&
     probeCtx !== null &&
     typeof (probeCtx as unknown as { drawImage?: unknown }).drawImage !== 'function';
 
-  if (isRecording) {
+  if (isRecording || isNoopProxyStub) {
     if (probeCtx) {
       probeCtx.fillStyle = `floorPbr:${key}:${width}x${height}:color`;
       probeCtx.fillRect(0, 0, width, height);
