@@ -8,6 +8,10 @@ import {
   tagDynamicBatch,
   type InteractionTarget,
 } from '../../engine/geometry/mesh-traits.ts';
+import {
+  applyTimberPieceUVs,
+  createTimberBoxGeometry,
+} from '../../engine/geometry/timber-piece-uvs.ts';
 import type { AnimatedInteractable } from '../../engine/interaction/handlers/animated-interactable.ts';
 import { InteractionRegistry } from '../../engine/interaction/interaction-registry.ts';
 import {
@@ -1066,13 +1070,23 @@ export function createGeorgianSashWindow(
     const zLiningMid = (zLiningStart + zLiningEnd) * 0.5;
 
     // Left, right & head timber reveal linings (side linings land on top of the window board)
+    const sashSeed = [
+      options.position?.[0] ?? 0,
+      options.position?.[1] ?? 0,
+      options.position?.[2] ?? 0,
+      baseName,
+    ] as const;
     const boardThickness = 0.024;
     const sideRevY0 = boardThickness + 2 * EPS;
     const sideRevY1 = height - 0.015;
     for (const side of ['left', 'right'] as const) {
       const sign = side === 'left' ? -1 : 1;
       const rev = new THREE.Mesh(
-        sharedBoxGeometry(liningThickness, sideRevY1 - sideRevY0, liningDepth),
+        createTimberBoxGeometry(liningThickness, sideRevY1 - sideRevY0, liningDepth, {
+          grainAxis: 'y',
+          material: architraveMat,
+          seed: [...sashSeed, 'rev', side],
+        }),
         architraveMat
       );
       rev.name = `${baseName}.revealLining_${side}`;
@@ -1085,7 +1099,11 @@ export function createGeorgianSashWindow(
     }
 
     const headRev = new THREE.Mesh(
-      sharedBoxGeometry(width - 2 * liningThickness - 2 * EPS, liningThickness, liningDepth),
+      createTimberBoxGeometry(width - 2 * liningThickness - 2 * EPS, liningThickness, liningDepth, {
+        grainAxis: 'x',
+        material: architraveMat,
+        seed: [...sashSeed, 'revHead'],
+      }),
       architraveMat
     );
     headRev.name = `${baseName}.revealLining_head`;
@@ -1101,7 +1119,11 @@ export function createGeorgianSashWindow(
     const boardFlatDepth = Math.max(0.02, zBoardFront - zBoardBack);
 
     const cillBoard = new THREE.Mesh(
-      sharedBoxGeometry(boardWidth, boardThickness, boardFlatDepth),
+      createTimberBoxGeometry(boardWidth, boardThickness, boardFlatDepth, {
+        grainAxis: 'x',
+        material: architraveMat,
+        seed: [...sashSeed, 'cillBoard'],
+      }),
       architraveMat
     );
     cillBoard.name = `${baseName}.interiorWindowBoard`;
@@ -1116,7 +1138,14 @@ export function createGeorgianSashWindow(
 
     const boardNoseR = boardThickness * 0.5;
     const boardBullnoseGeo = prepGeo(
-      new THREE.CylinderGeometry(boardNoseR, boardNoseR, boardWidth, 12, 1, false, 0, Math.PI)
+      applyTimberPieceUVs(
+        new THREE.CylinderGeometry(boardNoseR, boardNoseR, boardWidth, 12, 1, false, 0, Math.PI),
+        {
+          grainAxis: 'y',
+          material: architraveMat,
+          seed: [...sashSeed, 'cillBoard'],
+        }
+      )
     );
     const boardBullnose = new THREE.Mesh(boardBullnoseGeo, architraveMat);
     boardBullnose.name = `${baseName}.interiorWindowBoardNose`;
@@ -1134,7 +1163,11 @@ export function createGeorgianSashWindow(
     for (const side of ['left', 'right'] as const) {
       const sign = side === 'left' ? -1 : 1;
       const archLeg = new THREE.Mesh(
-        sharedBoxGeometry(architraveWidth, legH, architraveProud),
+        createTimberBoxGeometry(architraveWidth, legH, architraveProud, {
+          grainAxis: 'y',
+          material: architraveMat,
+          seed: [...sashSeed, 'archLeg', side],
+        }),
         architraveMat
       );
       archLeg.name = `${baseName}.architraveLeg_${side}`;
@@ -1149,7 +1182,11 @@ export function createGeorgianSashWindow(
 
     const headSpan = width + 2 * (architraveWidth - liningThickness);
     const archHead = new THREE.Mesh(
-      sharedBoxGeometry(headSpan, architraveWidth, architraveProud),
+      createTimberBoxGeometry(headSpan, architraveWidth, architraveProud, {
+        grainAxis: 'x',
+        material: architraveMat,
+        seed: [...sashSeed, 'archHead'],
+      }),
       architraveMat
     );
     archHead.name = `${baseName}.architraveHead`;

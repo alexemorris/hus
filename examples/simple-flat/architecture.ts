@@ -160,10 +160,11 @@ export function buildSimpleFlatArchitecture(ctx: SceneBuilderContext): SimpleFla
   const oakTex = createEngineeredOakFloorTextures();
   const bedroomOakMat = new THREE.MeshStandardMaterial({
     name: 'simpleFlat.floor.bedroomWideOak',
-    map: createSharedSourceTextureVariant(oakTex.colorMap, { repeat: [1.0, 1.0] }),
-    bumpMap: createSharedSourceTextureVariant(oakTex.bumpMap, { repeat: [1.0, 1.0] }),
-    bumpScale: 0.004,
-    roughness: 0.54,
+    map: createSharedSourceTextureVariant(oakTex.colorMap, { repeat: [1 / 4.2, 1 / 1.9] }),
+    normalMap: createSharedSourceTextureVariant(oakTex.normalMap, { repeat: [1 / 4.2, 1 / 1.9] }),
+    normalScale: new THREE.Vector2(0.42, 0.42),
+    roughnessMap: createSharedSourceTextureVariant(oakTex.roughnessMap, { repeat: [1 / 4.2, 1 / 1.9] }),
+    roughness: 1.0,
   });
   const cabochonTex = createParisianManoirCabochonTextures();
   const bathCabochonMat = new THREE.MeshStandardMaterial({
@@ -202,7 +203,7 @@ export function buildSimpleFlatArchitecture(ctx: SceneBuilderContext): SimpleFla
     'simpleFlat.floor.bedroomOak',
     [[-4.2, -3.4], [SPINE_WEST_X - 0.002, -3.4], [SPINE_WEST_X - 0.002, 1.098], [-4.2, 1.098]],
     bedroomOakMat,
-    0.85
+    1.0
   );
   addFloorPoly(
     'simpleFlat.floor.bathroomCabochon',

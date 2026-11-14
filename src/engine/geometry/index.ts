@@ -58,4 +58,16 @@ export {
   createSkirtingCapProfile,
   createWallSkirtingBoardProfile,
   type SolidOakWindowTrimOptions,
+  type SweptMouldingUvOptions,
 } from './swept-moulding.ts';
+export {
+  applyTimberPieceUVs,
+  createTimberBoxGeometry,
+  hashTimberSeed,
+  resolveMaterialTextureGrainAxis,
+  sampleTimberSliceTransform,
+  type TimberGrainAxis,
+  type TimberPieceUvOptions,
+  type TimberSeedInput,
+  type TimberSliceTransform,
+} from './timber-piece-uvs.ts';

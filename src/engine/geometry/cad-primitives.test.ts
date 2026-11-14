@@ -13,6 +13,8 @@ import {
   sweepMouldingAlongPath,
   transformFrame2DPoint,
 } from './cad-primitives.ts';
+import { buildMitredArchitraveSegments } from './swept-moulding.ts';
+import { applyTimberPieceUVs, createTimberBoxGeometry } from './timber-piece-uvs.ts';
 
 function verifyEveryTriangleMatchesVertexNormals(geo: THREE.BufferGeometry): number {
   const pos = geo.getAttribute('position');
@@ -377,6 +379,102 @@ describe('cad-primitives', () => {
       const localPt = new THREE.Vector3(2.3, 0.9, -4.1).applyMatrix4(group.matrixWorld);
       const helperPt = transformFrame2DPoint(frame, 2.3, 0.9, -4.1);
       expect(helperPt.distanceTo(localPt)).toBeLessThan(1e-12);
+    });
+  });
+
+  describe('applyTimberPieceUVs & carpenter grain orientation', () => {
+    it('orients fibers along each member axis and decorrelates distinct seeds', () => {
+      const rotTex = new THREE.Texture();
+      rotTex.rotation = Math.PI * 0.5;
+      const vertDoorMat = new THREE.MeshStandardMaterial({ map: rotTex });
+
+      // Vertical stile (grainAxis: y) vs horizontal rail (grainAxis: x) with texture fiber on V
+      const stile = createTimberBoxGeometry(0.1, 2.0, 0.044, {
+        grainAxis: 'y',
+        material: vertDoorMat,
+        scalePerMetre: 0.5,
+        seed: ['doorA', 'stileL'],
+      });
+      const rail = createTimberBoxGeometry(0.64, 0.16, 0.044, {
+        grainAxis: 'x',
+        material: vertDoorMat,
+        scalePerMetre: 0.5,
+        seed: ['doorA', 'railLock'],
+      });
+      const stileDoorB = createTimberBoxGeometry(0.1, 2.0, 0.044, {
+        grainAxis: 'y',
+        material: vertDoorMat,
+        scalePerMetre: 0.5,
+        seed: ['doorB', 'stileL'],
+      });
+
+      const frontFaceUvSpan = (geo: THREE.BufferGeometry) => {
+        const norm = geo.getAttribute('normal');
+        const uv = geo.getAttribute('uv');
+        const us: number[] = [];
+        const vs: number[] = [];
+        for (let i = 0; i < norm.count; i++) {
+          if (norm.getZ(i) > 0.9) {
+            us.push(uv.getX(i));
+            vs.push(uv.getY(i));
+          }
+        }
+        return {
+          uMin: Math.min(...us),
+          uMax: Math.max(...us),
+          vMin: Math.min(...vs),
+          vMax: Math.max(...vs),
+        };
+      };
+
+      const stileSpan = frontFaceUvSpan(stile);
+      const railSpan = frontFaceUvSpan(rail);
+      const stileBSpan = frontFaceUvSpan(stileDoorB);
+
+      // Stile long axis (2.0m * 0.5 = 1.0) maps to texture V; rail long axis (0.64m * 0.5 = 0.32) also maps to texture V!
+      expect(stileSpan.vMax - stileSpan.vMin).toBeCloseTo(1.0, 4);
+      expect(stileSpan.uMax - stileSpan.uMin).toBeCloseTo(0.05, 4);
+      expect(railSpan.vMax - railSpan.vMin).toBeCloseTo(0.32, 4);
+      expect(railSpan.uMax - railSpan.uMin).toBeCloseTo(0.08, 4);
+
+      // Adjacent doors A & B sample distinct UV slices
+      const sameSlice =
+        Math.abs(stileSpan.uMin - stileBSpan.uMin) < 1e-3 &&
+        Math.abs(stileSpan.vMin - stileBSpan.vMin) < 1e-3;
+      expect(sameSlice).toBe(false);
+
+      // Shared primitive guard: never mutates shared geometry in-place
+      const shared = new THREE.BoxGeometry(0.2, 0.8, 0.04);
+      shared.userData.isSharedPrimitive = true;
+      const beforeUv0 = shared.getAttribute('uv').getX(0);
+      const cloned = applyTimberPieceUVs(shared, { grainAxis: 'y', seed: 'testShared' });
+      expect(cloned).not.toBe(shared);
+      expect(shared.getAttribute('uv').getX(0)).toBe(beforeUv0);
+
+      // Mitred architrave segments scale U physically by segment length and orient grain lengthwise
+      const archSegs = buildMitredArchitraveSegments(
+        -0.45,
+        0.45,
+        0,
+        0,
+        2.05,
+        'x',
+        0,
+        1,
+        0.068,
+        0.022,
+        8,
+        { scalePerMetre: 0.5, seed: 'archTest' }
+      );
+      expect(archSegs).toHaveLength(3);
+      const legUv = archSegs[0]!.getAttribute('uv');
+      let legMinU = Infinity;
+      let legMaxU = -Infinity;
+      for (let i = 0; i < legUv.count; i++) {
+        legMinU = Math.min(legMinU, legUv.getX(i));
+        legMaxU = Math.max(legMaxU, legUv.getX(i));
+      }
+      expect(legMaxU - legMinU).toBeGreaterThan(0.95);
     });
   });
 });

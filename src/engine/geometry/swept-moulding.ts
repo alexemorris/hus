@@ -1,4 +1,18 @@
 import * as THREE from 'three';
+import {
+  applyTimberPieceUVs,
+  resolveMaterialTextureGrainAxis,
+  sampleTimberSliceTransform,
+  type TimberSeedInput,
+} from './timber-piece-uvs.ts';
+
+export interface SweptMouldingUvOptions {
+  readonly scalePerMetre?: number;
+  readonly crossScalePerMetre?: number;
+  readonly material?: THREE.Material | null;
+  readonly materialGrainAxis?: 'u' | 'v';
+  readonly seed?: TimberSeedInput;
+}
 
 /**
  * Sweeps a 2D moulding cross-section along a polyline drawn in a wall's vertical plane, with true mitred
@@ -15,8 +29,12 @@ export function buildSweptMouldingGeometry(
   profile: THREE.Shape,
   path: ReadonlyArray<readonly [number, number]>,
   toSpace: (a: number, y: number, d: number) => THREE.Vector3,
-  curveSegments = 6
+  curveSegments = 6,
+  uvOptions?: SweptMouldingUvOptions
 ): THREE.BufferGeometry {
+  const scaleAlong = uvOptions?.scalePerMetre ?? 1 / 2.2;
+  const scaleAcross = uvOptions?.crossScalePerMetre ?? scaleAlong;
+  const texAxis = resolveMaterialTextureGrainAxis(uvOptions?.material, uvOptions?.materialGrainAxis);
   const segs: Array<{ p0: THREE.Vector2; t: THREE.Vector2; n: THREE.Vector2; len: number }> = [];
   for (let i = 0; i + 1 < path.length; i++) {
     const [a0, y0] = path[i];
@@ -45,18 +63,33 @@ export function buildSweptMouldingGeometry(
     const endK = next ? -seg.n.dot(next.t) / (1 + seg.t.dot(next.t)) : 0;
 
     // Handedness of the (out, n, t) basis in the target space decides whether winding must flip.
-    const o3 = toSpace(seg.p0.x, seg.p0.y, 1).sub(toSpace(seg.p0.x, seg.p0.y, 0));
-    const n3 = toSpace(seg.p0.x + seg.n.x, seg.p0.y + seg.n.y, 0).sub(toSpace(seg.p0.x, seg.p0.y, 0));
-    const t3 = toSpace(seg.p0.x + seg.t.x, seg.p0.y + seg.t.y, 0).sub(toSpace(seg.p0.x, seg.p0.y, 0));
+    const pStart3 = toSpace(seg.p0.x, seg.p0.y, 0);
+    const pEnd3 = toSpace(seg.p0.x + seg.t.x * seg.len, seg.p0.y + seg.t.y * seg.len, 0);
+    const slice = sampleTimberSliceTransform([
+      uvOptions?.seed ?? 'swept',
+      pStart3.x,
+      pStart3.y,
+      pStart3.z,
+      pEnd3.x,
+      pEnd3.y,
+      pEnd3.z,
+      i,
+    ]);
+    const o3 = toSpace(seg.p0.x, seg.p0.y, 1).sub(pStart3);
+    const n3 = toSpace(seg.p0.x + seg.n.x, seg.p0.y + seg.n.y, 0).sub(pStart3);
+    const t3 = toSpace(seg.p0.x + seg.t.x, seg.p0.y + seg.t.y, 0).sub(pStart3);
     const flip = o3.dot(n3.clone().cross(t3)) < 0;
 
     for (let v = 0; v < src.count; v += 3) {
       const s0 = src.getZ(v);
       const s1 = src.getZ(v + 1);
       const s2 = src.getZ(v + 2);
+      const isStartCap = s0 < 0.5 && s1 < 0.5 && s2 < 0.5;
+      const isEndCap = s0 > 0.5 && s1 > 0.5 && s2 > 0.5;
       // Omit internal cap faces at intermediate mitred corners so only outer ends are capped.
-      if (prev && s0 < 0.5 && s1 < 0.5 && s2 < 0.5) continue;
-      if (next && s0 > 0.5 && s1 > 0.5 && s2 > 0.5) continue;
+      if (prev && isStartCap) continue;
+      if (next && isEndCap) continue;
+      const isCap = isStartCap || isEndCap;
       const order = flip ? [v, v + 2, v + 1] : [v, v + 1, v + 2];
       for (const idx of order) {
         const d = src.getX(idx);
@@ -68,7 +101,15 @@ export function buildSweptMouldingGeometry(
         tmp.copy(toSpace(a, y, d));
         positions.push(tmp.x, tmp.y, tmp.z);
         if (srcUv) {
-          uvs.push(srcUv.getX(idx), srcUv.getY(idx) * (s < 0.5 ? 1 : seg.len));
+          const rawCross = isCap ? h : srcUv.getX(idx);
+          const rawAlong = isCap ? along + d : along;
+          const fiberU = rawAlong * scaleAlong * slice.uSign + slice.uOffset;
+          const crossV = rawCross * scaleAcross * slice.vSign + slice.vOffset;
+          if (texAxis === 'u') {
+            uvs.push(fiberU, crossV);
+          } else {
+            uvs.push(crossV, fiberU);
+          }
         }
       }
     }
@@ -159,6 +200,10 @@ export function createProfiledSkirtingCapGeometry(
     geo.rotateY(Math.PI);
   }
   geo.computeVertexNormals();
+  applyTimberPieceUVs(geo, {
+    grainAxis: isAlongX ? 'x' : 'z',
+    seed: ['profiledSkirtingCap', span, isAlongX, inwardSign],
+  });
   geo.computeBoundingSphere();
   return geo;
 }
@@ -200,13 +245,15 @@ export function createWallSkirtingBoardProfile(): THREE.Shape {
  */
 export function buildMitredWallSkirtingGeometry(
   path: ReadonlyArray<readonly [number, number]>,
-  floorY = 0
+  floorY = 0,
+  uvOptions?: SweptMouldingUvOptions
 ): THREE.BufferGeometry {
   return buildSweptMouldingGeometry(
     createWallSkirtingBoardProfile(),
     path,
     (x, z, y) => new THREE.Vector3(x, floorY + y, z),
-    8
+    8,
+    uvOptions
   );
 }
 
@@ -219,8 +266,12 @@ export function buildMitredWallSkirtingGeometry(
 export function buildMitredWallSkirtingSegments(
   path: ReadonlyArray<readonly [number, number]>,
   floorY = 0,
-  curveSegments = 8
+  curveSegments = 8,
+  uvOptions?: SweptMouldingUvOptions
 ): THREE.BufferGeometry[] {
+  const scaleAlong = uvOptions?.scalePerMetre ?? 1 / 2.2;
+  const scaleAcross = uvOptions?.crossScalePerMetre ?? scaleAlong;
+  const texAxis = resolveMaterialTextureGrainAxis(uvOptions?.material, uvOptions?.materialGrainAxis);
   const profile = createWallSkirtingBoardProfile();
   const toSpace = (x: number, z: number, y: number): THREE.Vector3 =>
     new THREE.Vector3(x, floorY + y, z);
@@ -250,17 +301,32 @@ export function buildMitredWallSkirtingSegments(
     const startK = prev ? -seg.n.dot(prev.t) / (1 + seg.t.dot(prev.t)) : 0;
     const endK = next ? -seg.n.dot(next.t) / (1 + seg.t.dot(next.t)) : 0;
 
-    const o3 = toSpace(seg.p0.x, seg.p0.y, 1).sub(toSpace(seg.p0.x, seg.p0.y, 0));
-    const n3 = toSpace(seg.p0.x + seg.n.x, seg.p0.y + seg.n.y, 0).sub(toSpace(seg.p0.x, seg.p0.y, 0));
-    const t3 = toSpace(seg.p0.x + seg.t.x, seg.p0.y + seg.t.y, 0).sub(toSpace(seg.p0.x, seg.p0.y, 0));
+    const pStart3 = toSpace(seg.p0.x, seg.p0.y, 0);
+    const pEnd3 = toSpace(seg.p0.x + seg.t.x * seg.len, seg.p0.y + seg.t.y * seg.len, 0);
+    const slice = sampleTimberSliceTransform([
+      uvOptions?.seed ?? 'wallSkirtingSeg',
+      pStart3.x,
+      pStart3.y,
+      pStart3.z,
+      pEnd3.x,
+      pEnd3.y,
+      pEnd3.z,
+      i,
+    ]);
+    const o3 = toSpace(seg.p0.x, seg.p0.y, 1).sub(pStart3);
+    const n3 = toSpace(seg.p0.x + seg.n.x, seg.p0.y + seg.n.y, 0).sub(pStart3);
+    const t3 = toSpace(seg.p0.x + seg.t.x, seg.p0.y + seg.t.y, 0).sub(pStart3);
     const flip = o3.dot(n3.clone().cross(t3)) < 0;
 
     for (let v = 0; v < src.count; v += 3) {
       const s0 = src.getZ(v);
       const s1 = src.getZ(v + 1);
       const s2 = src.getZ(v + 2);
-      if (prev && s0 < 0.5 && s1 < 0.5 && s2 < 0.5) continue;
-      if (next && s0 > 0.5 && s1 > 0.5 && s2 > 0.5) continue;
+      const isStartCap = s0 < 0.5 && s1 < 0.5 && s2 < 0.5;
+      const isEndCap = s0 > 0.5 && s1 > 0.5 && s2 > 0.5;
+      if (prev && isStartCap) continue;
+      if (next && isEndCap) continue;
+      const isCap = isStartCap || isEndCap;
       const order = flip ? [v, v + 2, v + 1] : [v, v + 1, v + 2];
       for (const idx of order) {
         const d = src.getX(idx);
@@ -272,7 +338,15 @@ export function buildMitredWallSkirtingSegments(
         tmp.copy(toSpace(a, y, d));
         positions.push(tmp.x, tmp.y, tmp.z);
         if (srcUv) {
-          uvs.push(srcUv.getX(idx), srcUv.getY(idx) * (s < 0.5 ? 1 : seg.len));
+          const rawCross = isCap ? h : srcUv.getX(idx);
+          const rawAlong = isCap ? along + d : along;
+          const fiberU = rawAlong * scaleAlong * slice.uSign + slice.uOffset;
+          const crossV = rawCross * scaleAcross * slice.vSign + slice.vOffset;
+          if (texAxis === 'u') {
+            uvs.push(fiberU, crossV);
+          } else {
+            uvs.push(crossV, fiberU);
+          }
         }
       }
     }
@@ -346,8 +420,12 @@ export function buildMitredArchitraveSegments(
   normalSign: 1 | -1,
   archW = 0.068,
   archT = 0.022,
-  curveSegments = 8
+  curveSegments = 8,
+  uvOptions?: SweptMouldingUvOptions
 ): [THREE.BufferGeometry, THREE.BufferGeometry, THREE.BufferGeometry] {
+  const scaleAlong = uvOptions?.scalePerMetre ?? 1 / 2.2;
+  const scaleAcross = uvOptions?.crossScalePerMetre ?? scaleAlong;
+  const texAxis = resolveMaterialTextureGrainAxis(uvOptions?.material, uvOptions?.materialGrainAxis);
   const profile = createArchitraveProfile(archW, archT);
   const path: ReadonlyArray<readonly [number, number]> = [
     [uLeft, yLeftBot],
@@ -385,17 +463,32 @@ export function buildMitredArchitraveSegments(
     const startK = prev ? -seg.n.dot(prev.t) / (1 + seg.t.dot(prev.t)) : 0;
     const endK = next ? -seg.n.dot(next.t) / (1 + seg.t.dot(next.t)) : 0;
 
-    const o3 = toSpace(seg.p0.x, seg.p0.y, 1).sub(toSpace(seg.p0.x, seg.p0.y, 0));
-    const n3 = toSpace(seg.p0.x + seg.n.x, seg.p0.y + seg.n.y, 0).sub(toSpace(seg.p0.x, seg.p0.y, 0));
-    const t3 = toSpace(seg.p0.x + seg.t.x, seg.p0.y + seg.t.y, 0).sub(toSpace(seg.p0.x, seg.p0.y, 0));
+    const pStart3 = toSpace(seg.p0.x, seg.p0.y, 0);
+    const pEnd3 = toSpace(seg.p0.x + seg.t.x * seg.len, seg.p0.y + seg.t.y * seg.len, 0);
+    const slice = sampleTimberSliceTransform([
+      uvOptions?.seed ?? 'architraveSeg',
+      pStart3.x,
+      pStart3.y,
+      pStart3.z,
+      pEnd3.x,
+      pEnd3.y,
+      pEnd3.z,
+      i,
+    ]);
+    const o3 = toSpace(seg.p0.x, seg.p0.y, 1).sub(pStart3);
+    const n3 = toSpace(seg.p0.x + seg.n.x, seg.p0.y + seg.n.y, 0).sub(pStart3);
+    const t3 = toSpace(seg.p0.x + seg.t.x, seg.p0.y + seg.t.y, 0).sub(pStart3);
     const flip = o3.dot(n3.clone().cross(t3)) < 0;
 
     for (let v = 0; v < src.count; v += 3) {
       const s0 = src.getZ(v);
       const s1 = src.getZ(v + 1);
       const s2 = src.getZ(v + 2);
-      if (prev && s0 < 0.5 && s1 < 0.5 && s2 < 0.5) continue;
-      if (next && s0 > 0.5 && s1 > 0.5 && s2 > 0.5) continue;
+      const isStartCap = s0 < 0.5 && s1 < 0.5 && s2 < 0.5;
+      const isEndCap = s0 > 0.5 && s1 > 0.5 && s2 > 0.5;
+      if (prev && isStartCap) continue;
+      if (next && isEndCap) continue;
+      const isCap = isStartCap || isEndCap;
       const order = flip ? [v, v + 2, v + 1] : [v, v + 1, v + 2];
       for (const idx of order) {
         const d = src.getX(idx);
@@ -407,7 +500,15 @@ export function buildMitredArchitraveSegments(
         tmp.copy(toSpace(a, y, d));
         positions.push(tmp.x, tmp.y, tmp.z);
         if (srcUv) {
-          uvs.push(srcUv.getX(idx), srcUv.getY(idx) * (s < 0.5 ? 1 : seg.len));
+          const rawCross = isCap ? h : srcUv.getX(idx);
+          const rawAlong = isCap ? along + d : along;
+          const fiberU = rawAlong * scaleAlong * slice.uSign + slice.uOffset;
+          const crossV = rawCross * scaleAcross * slice.vSign + slice.vOffset;
+          if (texAxis === 'u') {
+            uvs.push(fiberU, crossV);
+          } else {
+            uvs.push(crossV, fiberU);
+          }
         }
       }
     }
@@ -502,6 +603,8 @@ export interface CasedArchitravePortalOptions {
   backArchitraveMaterial?: THREE.Material;
   /** Optional base name prefix for the generated meshes. */
   namePrefix?: string;
+  /** Optional deterministic world seed override when building inside a local wall group. */
+  seed?: TimberSeedInput;
 }
 
 function sampleArchitraveOuterCurve(
@@ -565,7 +668,8 @@ function buildScribedPortalArchitraveGeometry(
   legBotY: number,
   yArchHead: number,
   toSpace: (u: number, y: number, d: number) => THREE.Vector3,
-  topW: number = fullWidth
+  topW: number = fullWidth,
+  uvOptions?: SweptMouldingUvOptions
 ): THREE.BufferGeometry {
   const clampedLeftW = Math.max(0, Math.min(fullWidth, leftW));
   const clampedRightW = Math.max(0, Math.min(fullWidth, rightW));
@@ -584,9 +688,13 @@ function buildScribedPortalArchitraveGeometry(
         [uArchRight, legBotY],
       ],
       toSpace,
-      4
+      4,
+      uvOptions
     );
   }
+  const scaleAlong = uvOptions?.scalePerMetre ?? 1 / 2.2;
+  const scaleAcross = uvOptions?.crossScalePerMetre ?? scaleAlong;
+  const texAxis = resolveMaterialTextureGrainAxis(uvOptions?.material, uvOptions?.materialGrainAxis);
 
   const outerPts = sampleArchitraveOuterCurve(
     fullWidth,
@@ -611,6 +719,7 @@ function buildScribedPortalArchitraveGeometry(
   const uvs: number[] = [];
   const tmp = new THREE.Vector3();
 
+  let scribedSegIdx = 0;
   const appendSegment = (
     shape: THREE.Shape,
     segLen: number,
@@ -621,17 +730,34 @@ function buildScribedPortalArchitraveGeometry(
     basisAlong: readonly [number, number],
     basisOutwardH: readonly [number, number]
   ): void => {
+    const curSegIdx = scribedSegIdx++;
     const unit = new THREE.ExtrudeGeometry(shape, { depth: 1, bevelEnabled: false, curveSegments: 1 });
     const unitFlat = unit.index ? unit.toNonIndexed() : unit;
     const src = unitFlat.getAttribute('position');
     const srcUv = unitFlat.getAttribute('uv');
 
-    const o3 = toSpace(basisOrigin[0], basisOrigin[1], 1).sub(toSpace(basisOrigin[0], basisOrigin[1], 0));
+    const pStart3 = toSpace(basisOrigin[0], basisOrigin[1], 0);
+    const pEnd3 = toSpace(
+      basisOrigin[0] + basisAlong[0] * segLen,
+      basisOrigin[1] + basisAlong[1] * segLen,
+      0
+    );
+    const slice = sampleTimberSliceTransform([
+      uvOptions?.seed ?? 'scribedArch',
+      pStart3.x,
+      pStart3.y,
+      pStart3.z,
+      pEnd3.x,
+      pEnd3.y,
+      pEnd3.z,
+      curSegIdx,
+    ]);
+    const o3 = toSpace(basisOrigin[0], basisOrigin[1], 1).sub(pStart3);
     const n3 = toSpace(basisOrigin[0] + basisOutwardH[0], basisOrigin[1] + basisOutwardH[1], 0).sub(
-      toSpace(basisOrigin[0], basisOrigin[1], 0)
+      pStart3
     );
     const t3 = toSpace(basisOrigin[0] + basisAlong[0], basisOrigin[1] + basisAlong[1], 0).sub(
-      toSpace(basisOrigin[0], basisOrigin[1], 0)
+      pStart3
     );
     const flip = o3.dot(n3.clone().cross(t3)) < 0;
 
@@ -642,18 +768,30 @@ function buildScribedPortalArchitraveGeometry(
       const h0 = src.getY(v);
       const h1 = src.getY(v + 1);
       const h2 = src.getY(v + 2);
-      if (s0 < 0.5 && s1 < 0.5 && s2 < 0.5 && omitStartCap(h0, h1, h2)) continue;
-      if (s0 > 0.5 && s1 > 0.5 && s2 > 0.5 && omitEndCap(h0, h1, h2)) continue;
+      const isStartCap = s0 < 0.5 && s1 < 0.5 && s2 < 0.5;
+      const isEndCap = s0 > 0.5 && s1 > 0.5 && s2 > 0.5;
+      if (isStartCap && omitStartCap(h0, h1, h2)) continue;
+      if (isEndCap && omitEndCap(h0, h1, h2)) continue;
+      const isCap = isStartCap || isEndCap;
       const order = flip ? [v, v + 2, v + 1] : [v, v + 1, v + 2];
       for (const idx of order) {
         const d = src.getX(idx);
         const h = src.getY(idx);
         const s = src.getZ(idx);
         const [u, y] = mapPoint(h, s);
+        const along = (u - basisOrigin[0]) * basisAlong[0] + (y - basisOrigin[1]) * basisAlong[1];
         tmp.copy(toSpace(u, y, d));
         positions.push(tmp.x, tmp.y, tmp.z);
         if (srcUv) {
-          uvs.push(srcUv.getX(idx), srcUv.getY(idx) * (s < 0.5 ? 1 : segLen));
+          const rawCross = isCap ? h : srcUv.getX(idx);
+          const rawAlong = isCap ? along + d : along;
+          const fiberU = rawAlong * scaleAlong * slice.uSign + slice.uOffset;
+          const crossV = rawCross * scaleAcross * slice.vSign + slice.vOffset;
+          if (texAxis === 'u') {
+            uvs.push(fiberU, crossV);
+          } else {
+            uvs.push(crossV, fiberU);
+          }
         }
       }
     }
@@ -795,6 +933,7 @@ export function addCasedArchitravePortal(
   const yArchHead = innerHeadY + quirk;
   const slope = options.slopeXPerZ ?? 0;
   const prefix = options.namePrefix ?? 'architravePortal';
+  const baseSeed: TimberSeedInput = options.seed ?? [options.axis, options.wallCoord, options.openingCenter, options.headY];
 
   const halfWall = options.wallThickness / 2;
   const frontWallN = halfWall + (options.frontFaceOffset ?? 0);
@@ -839,12 +978,16 @@ export function addCasedArchitravePortal(
     for (const [sliceDepth, sliceCenterN, sliceMat, sliceSuffix] of revealSlices) {
       for (const side of [-1, 1] as const) {
         const uJamb = side < 0 ? uClearLeft - liningT / 2 : uClearRight + liningT / 2;
-        const revealJamb = new THREE.Mesh(
+        const jambGeo =
           options.axis === 'x'
             ? new THREE.BoxGeometry(liningT, jambH, sliceDepth)
-            : new THREE.BoxGeometry(sliceDepth, jambH, liningT),
-          sliceMat
-        );
+            : new THREE.BoxGeometry(sliceDepth, jambH, liningT);
+        applyTimberPieceUVs(jambGeo, {
+          grainAxis: 'y',
+          material: sliceMat,
+          seed: [baseSeed, uJamb, jambY, sliceCenterN, 'revealJamb'],
+        });
+        const revealJamb = new THREE.Mesh(jambGeo, sliceMat);
         revealJamb.name = `${prefix}.revealJamb${sliceSuffix}`;
         if (options.axis === 'x') {
           revealJamb.position.set(uJamb, jambY, options.wallCoord + sliceCenterN);
@@ -876,6 +1019,11 @@ export function addCasedArchitravePortal(
           headGeo.computeVertexNormals();
         }
       }
+      applyTimberPieceUVs(headGeo, {
+        grainAxis: options.axis,
+        material: sliceMat,
+        seed: [baseSeed, innerHeadY, sliceCenterN, 'revealHead'],
+      });
       const revealHead = new THREE.Mesh(headGeo, sliceMat);
       revealHead.name = `${prefix}.revealHead${sliceSuffix}`;
       if (options.axis === 'x') {
@@ -907,12 +1055,16 @@ export function addCasedArchitravePortal(
       for (const side of [-1, 1] as const) {
         const uStop =
           side < 0 ? uClearLeft + stopThickness * 0.5 : uClearRight - stopThickness * 0.5;
-        const stopJamb = new THREE.Mesh(
+        const stopJambGeo =
           options.axis === 'x'
             ? new THREE.BoxGeometry(stopThickness, stopJambH, stopW)
-            : new THREE.BoxGeometry(stopW, stopJambH, stopThickness),
-          stopMat
-        );
+            : new THREE.BoxGeometry(stopW, stopJambH, stopThickness);
+        applyTimberPieceUVs(stopJambGeo, {
+          grainAxis: 'y',
+          material: stopMat,
+          seed: [baseSeed, uStop, stopJambMidY, stopCenterN, 'stopJamb'],
+        });
+        const stopJamb = new THREE.Mesh(stopJambGeo, stopMat);
         stopJamb.name = `${prefix}.doorStopJamb.${side < 0 ? 'left' : 'right'}`;
         if (options.axis === 'x') {
           stopJamb.position.set(uStop, stopJambMidY, options.wallCoord + stopCenterN);
@@ -944,6 +1096,11 @@ export function addCasedArchitravePortal(
           stopHeadGeo.computeVertexNormals();
         }
       }
+      applyTimberPieceUVs(stopHeadGeo, {
+        grainAxis: options.axis,
+        material: stopMat,
+        seed: [baseSeed, innerHeadY, stopCenterN, 'stopHead'],
+      });
       const stopHead = new THREE.Mesh(stopHeadGeo, stopMat);
       stopHead.name = `${prefix}.doorStopHead`;
       if (options.axis === 'x') {
@@ -1006,6 +1163,11 @@ export function addCasedArchitravePortal(
           normalSign,
           slope
         );
+        applyTimberPieceUVs(plinthGeo, {
+          grainAxis: 'y',
+          material: faceMat,
+          seed: [baseSeed, uBlockMid, faceFloorY, normalSign, 'plinth'],
+        });
         const plinthMesh = new THREE.Mesh(plinthGeo, faceMat);
         plinthMesh.name = `${prefix}.${faceLabel}PlinthBlock.${sideTag}`;
         const baseN = options.wallCoord + faceWallN + normalSign * archWallClear;
@@ -1045,7 +1207,11 @@ export function addCasedArchitravePortal(
               y,
               u
             ),
-      topHeadW
+      topHeadW,
+      {
+        material: faceMat,
+        seed: [baseSeed, yArchHead, normalSign, faceLabel],
+      }
     );
     const archMesh = new THREE.Mesh(archGeo, faceMat);
     archMesh.name = `${prefix}.${faceLabel}Architrave`;
@@ -1163,6 +1329,8 @@ export interface SolidOakWindowTrimOptions {
   readonly skipUnderApron?: boolean;
   /** Whether to omit the 3-sided 45°-mitred window architrave (default `false`). */
   readonly skipArchitrave?: boolean;
+  /** Optional deterministic world seed override. */
+  readonly seed?: TimberSeedInput;
 }
 
 /**
@@ -1227,6 +1395,11 @@ export function addSolidOakWindowTrim(
     }
   }
   boardGeo.computeVertexNormals();
+  applyTimberPieceUVs(boardGeo, {
+    grainAxis: options.axis,
+    material: options.material,
+    seed: [options.seed ?? options.namePrefix, options.axis, options.openingCenter, boardBotY, effWallFace, 'windowBoard'],
+  });
   boardGeo.computeBoundingSphere();
 
   const windowBoard = new THREE.Mesh(boardGeo, options.material);
@@ -1262,7 +1435,11 @@ export function addSolidOakWindowTrim(
               y,
               u
             ),
-      6
+      6,
+      {
+        material: options.material,
+        seed: [options.seed ?? options.namePrefix, options.axis, options.openingCenter, options.headY, effWallFace, 'windowArch'],
+      }
     );
     const oakArchitrave = new THREE.Mesh(archGeo, options.material);
     oakArchitrave.name = `${options.namePrefix}.oakArchitrave`;
@@ -1309,6 +1486,11 @@ export function addSolidOakWindowTrim(
       }
     }
     apronGeo.computeVertexNormals();
+    applyTimberPieceUVs(apronGeo, {
+      grainAxis: options.axis,
+      material: options.material,
+      seed: [options.seed ?? options.namePrefix, options.axis, options.openingCenter, boardBotY - apronH, effWallFace, 'windowApron'],
+    });
     apronGeo.computeBoundingSphere();
 
     const oakApron = new THREE.Mesh(apronGeo, options.material);

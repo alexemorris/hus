@@ -4,7 +4,6 @@ import {
   clampByte,
   fastCosTurn,
   fastSinTurn,
-  hash2Periodic,
   type FloorPbrTextureBundle,
   valueNoise2Periodic,
 } from './floor-pbr-lut.ts';
@@ -182,48 +181,120 @@ export function createPolishedChromeTexture(): THREE.CanvasTexture {
 export function createEngineeredOakFloorTextures(): FloorPbrTextureBundle {
   return getOrCreateCachedTexture('engineered-oak-floor', () => {
     const size = 1024;
+    const PHI = 0.6180339887498949;
+    // Warm European oak palette (wheaten oat, biscuit, golden honey, warm heartwood)
     const oakPlankPalette: ReadonlyArray<readonly [number, number, number]> = [
-      [188, 159, 125],
-      [172, 143, 110],
-      [198, 170, 136],
-      [164, 136, 104],
-      [193, 165, 131],
-      [179, 150, 117],
-      [168, 140, 108],
-      [202, 175, 141],
-      [175, 147, 114],
-      [184, 156, 122],
+      [192, 160, 121],
+      [176, 143, 104],
+      [204, 174, 135],
+      [168, 135, 97],
+      [198, 167, 128],
+      [183, 150, 111],
+      [172, 139, 101],
+      [209, 180, 142],
+      [187, 155, 116],
+      [179, 147, 109],
+      [201, 170, 131],
+      [165, 133, 96],
     ];
 
-    const numRows = 8;
-    const rowH = size / numRows;
-    const rowJointLayouts: ReadonlyArray<ReadonlyArray<number>> = [
-      [0, 512, size],
-      [0, 320, 832, size],
-      [0, 144, 451, 656, size],
-      [0, 416, 928, size],
-      [0, 192, 704, size],
-      [0, 464, 976, size],
-      [0, 240, 470, 752, size],
-      [0, 96, 608, size],
+    const hashBoard = (row: number, board: number, salt: number): number => {
+      let h = (Math.imul(row + 11, 374761393) + Math.imul(board + 7, 668265263) + Math.imul(salt, 1442695041)) | 0;
+      h = Math.imul(h ^ (h >>> 13), 1274126177);
+      return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+    };
+
+    // 10 staggered courses with 2-3 unequal board lengths per course and golden-ratio phase offsets
+    // + explicit repulsion from neighboring courses so header end-joints never align or form diagonal steps.
+    const numRows = 10;
+    const rowBoundsY: number[] = [];
+    for (let r = 0; r <= numRows; r++) {
+      rowBoundsY.push(Math.round((r * size) / numRows));
+    }
+
+    const rawCourseProportions: ReadonlyArray<ReadonlyArray<number>> = [
+      [0.44, 0.31, 0.25],
+      [0.61, 0.39],
+      [0.29, 0.43, 0.28],
+      [0.36, 0.26, 0.38],
+      [0.57, 0.43],
+      [0.33, 0.41, 0.26],
+      [0.47, 0.24, 0.29],
+      [0.63, 0.37],
+      [0.27, 0.38, 0.35],
+      [0.41, 0.33, 0.26],
     ];
+
+    const courseInteriorJoints: number[][] = [];
+    for (let row = 0; row < numRows; row++) {
+      const props = rawCourseProportions[row]!;
+      let phase = (row * PHI + (hashBoard(row, 0, 19) - 0.5) * 0.09 + 10) % 1;
+      const prevJoints = row > 0 ? courseInteriorJoints[row - 1]! : [];
+      const firstJoints = row === numRows - 1 ? courseInteriorJoints[0]! : [];
+
+      let bestJoints: number[] = [];
+      let bestMinClearance = -1;
+      for (let attempt = 0; attempt < 11; attempt++) {
+        const candPhase = (phase + attempt * 0.083) % 1;
+        let acc = candPhase;
+        const pts: number[] = [];
+        for (let k = 0; k < props.length; k++) {
+          const px = Math.round((acc % 1) * size);
+          const clamped = Math.max(24, Math.min(size - 24, px));
+          pts.push(clamped);
+          acc += props[k]!;
+        }
+        pts.sort((a, b) => a - b);
+        // Ensure minimum board length >= 180px inside tile
+        let valid = true;
+        for (let k = 1; k < pts.length; k++) {
+          if (pts[k]! - pts[k - 1]! < 176) valid = false;
+        }
+        if (pts[0]! + (size - pts[pts.length - 1]!) < 176) valid = false;
+        if (!valid) continue;
+
+        let minClear = 9999;
+        for (const x of pts) {
+          for (const px of prevJoints) {
+            const d = Math.abs(x - px);
+            minClear = Math.min(minClear, Math.min(d, size - d));
+          }
+          for (const fx of firstJoints) {
+            const d = Math.abs(x - fx);
+            minClear = Math.min(minClear, Math.min(d, size - d));
+          }
+        }
+        if (minClear > bestMinClearance) {
+          bestMinClearance = minClear;
+          bestJoints = pts;
+        }
+      }
+      courseInteriorJoints.push(bestJoints);
+    }
 
     interface PlankSegInfo {
       readonly plankId: number;
-      readonly seed: number;
       readonly baseR: number;
       readonly baseG: number;
       readonly baseB: number;
       readonly heightBias: number;
       readonly roughBias: number;
       readonly sapSide: number;
-      readonly cathedralY: number;
+      readonly phaseU: number;
+      readonly phaseV: number;
+      readonly isQuarterSawn: boolean;
+      readonly logCenterY: number;
+      readonly logDepth: number;
+      readonly logSlope: number;
+      readonly ringFreq: number;
       readonly hasRayFleck: boolean;
-      readonly hasKnot: boolean;
+      readonly hasPinKnot: boolean;
       readonly kx: number;
       readonly ky: number;
       readonly rx: number;
       readonly ry: number;
+      readonly knotAngleCos: number;
+      readonly knotAngleSin: number;
       readonly wrapsLeft: boolean;
       readonly xStartWorld: number;
       readonly plankLen: number;
@@ -237,71 +308,102 @@ export function createEngineeredOakFloorTextures(): FloorPbrTextureBundle {
       anisotropy: 8,
       populate: (albedo, heightField, roughField) => {
         for (let row = 0; row < numRows; row++) {
-          const y0 = row * rowH;
-          const joints = rowJointLayouts[row]!;
-          const wrapsSeam = joints[1] !== 512;
+          const y0 = rowBoundsY[row]!;
+          const y1 = rowBoundsY[row + 1]!;
+          const rowH = y1 - y0;
+          const interior = courseInteriorJoints[row]!;
+          const joints = [0, ...interior, size];
+          const wrapsSeam = true;
           const numSegs = joints.length - 1;
           const segInfos: PlankSegInfo[] = [];
 
           for (let seg = 0; seg < numSegs; seg++) {
             const xStart = joints[seg]!;
             const xEnd = joints[seg + 1]!;
-            const plankId = wrapsSeam && seg === numSegs - 1 ? 0 : seg;
-            const seed = row * 41 + plankId * 29 + 17;
-            const pal = oakPlankPalette[(seed * 7 + row * 3) % oakPlankPalette.length]!;
-            const warmthShift = (hash2Periodic(plankId, row, 8, numRows, 31) - 0.5) * 18;
-            const valShift = (hash2Periodic(plankId, row, 8, numRows, 59) - 0.5) * 14;
+            const plankId = seg === numSegs - 1 ? 0 : seg;
+
+            // Permute palette index without neighbor collisions
+            const palIdx = Math.floor(hashBoard(row, plankId, 23) * oakPlankPalette.length) % oakPlankPalette.length;
+            const pal = oakPlankPalette[palIdx]!;
+            // Genuine board-to-board lightness (±8.5%) & warm honey/biscuit tint variation
+            const warmthShift = (hashBoard(row, plankId, 37) - 0.5) * 22.0;
+            const valShift = (hashBoard(row, plankId, 59) - 0.5) * 24.0;
             const baseR = pal[0] + warmthShift + valShift;
-            const baseG = pal[1] + warmthShift * 0.84 + valShift;
-            const baseB = pal[2] + warmthShift * 0.62 + valShift * 0.92;
-            const heightBias = (hash2Periodic(plankId, row, 8, numRows, 83) - 0.5) * 0.045;
-            const roughBias = (hash2Periodic(plankId, row, 8, numRows, 107) - 0.5) * 0.05;
-            const sapSide = (seed & 1) === 0 ? 1 : -1;
-            const cathedralY = 0.26 + hash2Periodic(plankId, row, 8, numRows, 131) * 0.48;
-            const hasRayFleck = hash2Periodic(plankId, row, 8, numRows, 157) > 0.42;
+            const baseG = pal[1] + warmthShift * 0.85 + valShift * 0.92;
+            const baseB = pal[2] + warmthShift * 0.64 + valShift * 0.80;
+
+            const heightBias = (hashBoard(row, plankId, 83) - 0.5) * 0.048;
+            const roughBias = (hashBoard(row, plankId, 107) - 0.5) * 0.085;
+            const sapSide = hashBoard(row, plankId, 127) > 0.5 ? 1 : -1;
+            const phaseU = hashBoard(row, plankId, 149);
+            const phaseV = hashBoard(row, plankId, 173);
+
+            // ~62% calm quarter-sawn / rift-sawn boards, ~38% gentle crown-cut boards
+            const cutRoll = hashBoard(row, plankId, 199);
+            const isQuarterSawn = cutRoll < 0.62;
+            const logCenterY = isQuarterSawn
+              ? (hashBoard(row, plankId, 223) > 0.5 ? -0.85 : 1.85) + (hashBoard(row, plankId, 239) - 0.5) * 0.4
+              : 0.24 + hashBoard(row, plankId, 223) * 0.52;
+            const logDepth = isQuarterSawn
+              ? 0.42 + hashBoard(row, plankId, 251) * 0.55
+              : 0.20 + hashBoard(row, plankId, 251) * 0.28;
+            const logSlope = (hashBoard(row, plankId, 269) - 0.5) * (isQuarterSawn ? 0.22 : 0.44);
+            const ringFreq = isQuarterSawn
+              ? 7.2 + hashBoard(row, plankId, 283) * 3.8
+              : 5.4 + hashBoard(row, plankId, 283) * 2.6;
+            const hasRayFleck = isQuarterSawn
+              ? hashBoard(row, plankId, 307) > 0.25
+              : hashBoard(row, plankId, 307) > 0.76;
 
             let xStartWorld = xStart;
             let plankLen = xEnd - xStart;
-            if (wrapsSeam) {
-              if (seg === 0) {
-                const tailStart = joints[numSegs - 1]!;
-                xStartWorld = tailStart - size;
-                plankLen = xEnd + (size - tailStart);
-              } else if (seg === numSegs - 1) {
-                plankLen = joints[1]! + (size - xStart);
-              }
+            if (seg === 0) {
+              const tailStart = joints[numSegs - 1]!;
+              xStartWorld = tailStart - size;
+              plankLen = xEnd + (size - tailStart);
+            } else if (seg === numSegs - 1) {
+              plankLen = joints[1]! + (size - xStart);
             }
 
+            // Rare, tiny, warm-amber intergrown pin-knots (only 3 subtle pin-knots across ~28 boards, never dark black landmarks)
             const segW = xEnd - xStart;
-            const hasKnot =
-              segW >= 240 &&
-              ((row === 1 && seg === 1) ||
-                (row === 3 && seg === 1) ||
-                (row === 5 && seg === 1) ||
-                (row === 6 && seg === 2) ||
-                (row === 7 && seg === 1));
-            const kFracX = 0.24 + hash2Periodic(plankId, row, 8, numRows, 179) * 0.52;
-            const kFracY = 0.24 + hash2Periodic(plankId, row, 8, numRows, 197) * 0.52;
+            const hasPinKnot =
+              segW >= 220 &&
+              seg > 0 &&
+              seg < numSegs - 1 &&
+              ((row === 2 && plankId === 1) ||
+                (row === 6 && plankId === 1) ||
+                (row === 8 && plankId === 2));
+            const kFracX = 0.28 + hashBoard(row, plankId, 331) * 0.44;
+            const kFracY = 0.28 + hashBoard(row, plankId, 353) * 0.44;
+            const knotAngle = (hashBoard(row, plankId, 379) - 0.5) * 0.55;
 
             segInfos.push({
               plankId,
-              seed,
               baseR,
               baseG,
               baseB,
               heightBias,
               roughBias,
               sapSide,
-              cathedralY,
+              phaseU,
+              phaseV,
+              isQuarterSawn,
+              logCenterY,
+              logDepth,
+              logSlope,
+              ringFreq,
               hasRayFleck,
-              hasKnot,
+              hasPinKnot,
               kx: xStart + segW * kFracX,
               ky: y0 + rowH * kFracY,
-              rx: 7.5 + hash2Periodic(plankId, row, 8, numRows, 211) * 5.0,
-              ry: 3.8 + hash2Periodic(plankId, row, 8, numRows, 229) * 2.4,
-              wrapsLeft: wrapsSeam && seg === numSegs - 1,
+              rx: 3.4 + hashBoard(row, plankId, 401) * 1.9,
+              ry: 2.1 + hashBoard(row, plankId, 419) * 1.2,
+              knotAngleCos: Math.cos(knotAngle),
+              knotAngleSin: Math.sin(knotAngle),
+              wrapsLeft: seg === numSegs - 1,
               xStartWorld,
-              plankLen: Math.max(64, plankLen),
+              plankLen: Math.max(80, plankLen),
             });
           }
 
@@ -321,131 +423,129 @@ export function createEngineeredOakFloorTextures(): FloorPbrTextureBundle {
               const xEnd = joints[segIdx + 1]!;
               const uGlobal = px / size;
 
-              const distLeftButt =
-                xStart === 0 && wrapsSeam ? 999 : px + 0.5 - xStart;
-              const distRightButt =
-                xEnd === size && wrapsSeam ? 999 : xEnd - (px + 0.5);
+              const distLeftButt = xStart === 0 && wrapsSeam ? 999 : px + 0.5 - xStart;
+              const distRightButt = xEnd === size && wrapsSeam ? 999 : xEnd - (px + 0.5);
               const distButtPx = Math.min(distLeftButt, distRightButt);
 
               const worldPx = info.wrapsLeft ? px - size : px;
               const along = (worldPx - info.xStartWorld) / info.plankLen;
 
+              // Full [0, 1) per-board UV phase decorrelation
+              const uBoard = uGlobal + info.phaseU;
+              const vBoard = vGlobal + info.phaseV;
+
               let acrossDeflected = across;
-              let knotMask = 0;
-              let knotCore = 0;
-              if (info.hasKnot) {
-                const dx = px - info.kx;
-                const dy = py - info.ky;
-                const nx = dx / (info.rx * 3.1);
-                const ny = dy / (info.ry * 3.4);
+              let pinKnotMask = 0;
+              let pinKnotCore = 0;
+              if (info.hasPinKnot) {
+                const rawDx = px - info.kx;
+                const rawDy = py - info.ky;
+                const dx = rawDx * info.knotAngleCos + rawDy * info.knotAngleSin;
+                const dy = -rawDx * info.knotAngleSin + rawDy * info.knotAngleCos;
+                const nx = dx / (info.rx * 3.2);
+                const ny = dy / (info.ry * 3.0);
                 const d2 = nx * nx + ny * ny;
-                if (d2 < 3.2) {
-                  const deflect = (1 - THREE.MathUtils.clamp(d2 / 3.2, 0, 1));
+                if (d2 < 2.6) {
+                  const deflect = 1 - THREE.MathUtils.clamp(d2 / 2.6, 0, 1);
                   const dir = dy >= 0 ? 1 : -1;
-                  acrossDeflected += dir * deflect * deflect * (info.ry / rowH) * 1.45;
-                  const coreD = Math.hypot(dx / info.rx, dy / info.ry);
-                  if (coreD < 1.65) {
-                    knotMask = 1 - THREE.MathUtils.smoothstep(coreD, 0.35, 1.65);
-                    knotCore = 1 - THREE.MathUtils.smoothstep(coreD, 0.0, 0.78);
+                  acrossDeflected += dir * deflect * deflect * (info.ry / rowH) * 1.15;
+                  const ang = Math.atan2(dy, dx) / (Math.PI * 2);
+                  const wobble =
+                    1 +
+                    fastSinTurn(ang * 3 + info.phaseU) * 0.18 +
+                    fastCosTurn(ang * 5 + info.phaseV) * 0.11;
+                  const coreD = Math.hypot(dx / info.rx, dy / info.ry) / wobble;
+                  if (coreD < 1.45) {
+                    pinKnotMask = 1 - THREE.MathUtils.smoothstep(coreD, 0.25, 1.45);
+                    pinKnotCore = 1 - THREE.MathUtils.smoothstep(coreD, 0.0, 0.65);
                   }
                 }
               }
 
-              const grainWarp =
-                (valueNoise2Periodic(
-                  uGlobal + info.seed * 0.037,
-                  vGlobal + info.seed * 0.053,
-                  12,
-                  24,
-                  401
-                ) -
-                  0.5) *
-                0.055;
-              const dCathedral = (acrossDeflected - info.cathedralY) * 2.15;
-              const archWave =
-                fastSinTurn(along * 1.15 + info.seed * 0.13) * 0.42 +
-                fastCosTurn(along * 2.35 + info.seed * 0.29) * 0.16;
-              const ringCoord =
-                dCathedral * dCathedral * 5.8 +
-                Math.abs(dCathedral) * 2.6 +
-                archWave * (0.45 + Math.abs(dCathedral)) +
-                grainWarp * 5.2;
-              const ringSin = fastSinTurn(ringCoord);
-              const latewood = THREE.MathUtils.smoothstep(ringSin, -0.35, 0.72);
+              // Multi-octave organic domain warp (periodic over uBoard/vBoard so wrap seams are seamless)
+              const warpLow =
+                valueNoise2Periodic(uBoard, vBoard, 6, 16, 401) - 0.5;
+              const warpMid =
+                valueNoise2Periodic(uBoard * 1.0, vBoard * 1.0, 14, 38, 439) - 0.5;
+              const domainWarp = warpLow * 0.085 + warpMid * 0.036;
 
-              const fineFiber = valueNoise2Periodic(
-                uGlobal + info.seed * 0.019,
-                vGlobal * 1.5 + info.seed * 0.031,
-                28,
-                192,
-                509
-              );
-              const poreNoise = valueNoise2Periodic(
-                uGlobal + info.seed * 0.071,
-                vGlobal + info.seed * 0.043,
-                44,
-                320,
-                613
-              );
+              // Off-axis 3D cylinder growth-ring slice (quarter-sawn straight grain vs gentle crown arches)
+              const dyLog = (acrossDeflected - info.logCenterY) * (info.isQuarterSawn ? 1.12 : 1.95);
+              const dzLog =
+                info.logDepth +
+                (along - 0.5) * info.logSlope +
+                domainWarp * (info.isQuarterSawn ? 0.55 : 0.85);
+              const rLog = Math.hypot(dyLog, dzLog);
+              const ringPhase = rLog * info.ringFreq + warpMid * 0.55;
+              const ringFrac = ringPhase - Math.floor(ringPhase);
+              // Asymmetric ring-porous oak transition: narrow darker latewood/earlywood pore band, broad warm heartwood
+              const ringBand =
+                THREE.MathUtils.smoothstep(ringFrac, 0.0, 0.18) *
+                (1 - THREE.MathUtils.smoothstep(ringFrac, 0.22, 0.68));
+              const latewood = 1 - ringBand;
+
+              const fineFiber = valueNoise2Periodic(uBoard, vBoard, 24, 210, 509);
+              const microStreak = valueNoise2Periodic(uBoard, vBoard, 10, 96, 547);
+              const poreNoise = valueNoise2Periodic(uBoard, vBoard, 48, 340, 613);
+              const earlywoodZone = ringBand;
               const openPore =
-                poreNoise < 0.24 + (1 - latewood) * 0.12
-                  ? (0.36 - poreNoise) * 2.4
+                poreNoise < 0.19 + earlywoodZone * 0.15
+                  ? (0.34 - poreNoise) * (1.7 + earlywoodZone * 0.9)
                   : 0;
 
               let rayFleck = 0;
               if (info.hasRayFleck) {
-                const rayN = valueNoise2Periodic(
-                  uGlobal * 1.2 + info.seed * 0.11,
-                  vGlobal * 0.8 + info.seed * 0.07,
-                  32,
-                  20,
-                  733
-                );
-                const rayRibbon = fastSinTurn(
-                  acrossDeflected * 7.5 + along * 0.6 + rayN * 0.8
-                );
-                if (rayN > 0.62 && rayRibbon > 0.58) {
+                const rayPatch = valueNoise2Periodic(uBoard, vBoard, 18, 22, 733);
+                const raySilky = valueNoise2Periodic(uBoard, vBoard, 36, 12, 769);
+                if (rayPatch > 0.60 && raySilky > 0.54) {
                   rayFleck =
-                    THREE.MathUtils.smoothstep(rayN, 0.62, 0.88) *
-                    THREE.MathUtils.smoothstep(rayRibbon, 0.58, 0.94);
+                    THREE.MathUtils.smoothstep(rayPatch, 0.60, 0.88) *
+                    THREE.MathUtils.smoothstep(raySilky, 0.54, 0.86);
                 }
               }
 
+              // Subtle within-board sapwood/heartwood gradient and lengthwise organic drift
               const sapGrad = (across - 0.5) * 2 * info.sapSide;
-              const sapLift = THREE.MathUtils.clamp(sapGrad, -1, 1) * 5.5;
-              const crownShade = (1 - Math.abs(across - 0.5) * 2) * 3.0 - 1.5;
+              const sapLift = THREE.MathUtils.clamp(sapGrad, -1, 1) * 4.8;
+              const alongDrift = (warpLow * 7.5) + (microStreak - 0.5) * 6.5;
 
-              const longBevel = THREE.MathUtils.smoothstep(distLongEdgePx, 0.55, 2.85);
-              const buttBevel = THREE.MathUtils.smoothstep(distButtPx, 0.45, 2.15);
+              const longBevel = THREE.MathUtils.smoothstep(distLongEdgePx, 0.5, 2.65);
+              const buttBevel = THREE.MathUtils.smoothstep(distButtPx, 0.45, 2.05);
               const grooveFactor = Math.min(longBevel, buttBevel);
-              const isGrooveCrevice = grooveFactor < 0.42;
+              const isGrooveCrevice = grooveFactor < 0.40;
 
               const grainTone =
-                (latewood - 0.48) * -13.5 +
-                (fineFiber - 0.5) * 11.0 -
-                openPore * 19.0 +
-                rayFleck * 17.5 +
-                sapLift +
-                crownShade;
+                (ringBand - 0.32) * -17.5 +
+                (fineFiber - 0.5) * 11.5 +
+                alongDrift -
+                openPore * 16.5 +
+                rayFleck * 13.5 +
+                sapLift;
 
               let r = info.baseR + grainTone;
-              let g = info.baseG + grainTone * 0.93;
-              let b = info.baseB + grainTone * 0.82 + rayFleck * 3.0;
+              let g = info.baseG + grainTone * 0.90;
+              let b = info.baseB + grainTone * 0.76 + rayFleck * 2.5;
 
-              if (knotMask > 0) {
-                r = THREE.MathUtils.lerp(r, 82, knotMask * 0.72);
-                g = THREE.MathUtils.lerp(g, 54, knotMask * 0.75);
-                b = THREE.MathUtils.lerp(b, 31, knotMask * 0.78);
-                if (knotCore > 0) {
-                  r = THREE.MathUtils.lerp(r, 46, knotCore * 0.85);
-                  g = THREE.MathUtils.lerp(g, 29, knotCore * 0.85);
-                  b = THREE.MathUtils.lerp(b, 16, knotCore * 0.85);
+              // Warm-amber intergrown pin-knot (~18-24% deeper warm honey-amber, NEVER black/dark brown!)
+              if (pinKnotMask > 0) {
+                const amberR = info.baseR * 0.79;
+                const amberG = info.baseG * 0.73;
+                const amberB = info.baseB * 0.65;
+                r = THREE.MathUtils.lerp(r, amberR, pinKnotMask * 0.68);
+                g = THREE.MathUtils.lerp(g, amberG, pinKnotMask * 0.70);
+                b = THREE.MathUtils.lerp(b, amberB, pinKnotMask * 0.72);
+                if (pinKnotCore > 0) {
+                  r = THREE.MathUtils.lerp(r, info.baseR * 0.70, pinKnotCore * 0.55);
+                  g = THREE.MathUtils.lerp(g, info.baseG * 0.63, pinKnotCore * 0.55);
+                  b = THREE.MathUtils.lerp(b, info.baseB * 0.54, pinKnotCore * 0.55);
                 }
               }
 
-              const creviceShade = THREE.MathUtils.lerp(0.42, 1.0, grooveFactor);
+              // Crisp micro-bevelled V-grooves on long plank seams and lighter micro-chamfer on header end-joints
+              const effectiveCreviceFloor = distLongEdgePx < distButtPx ? 0.44 : 0.54;
+              const creviceShade = THREE.MathUtils.lerp(effectiveCreviceFloor, 1.0, grooveFactor);
               const bevelKiss =
-                distLongEdgePx >= 2.2 && distLongEdgePx <= 3.8 && ly < 5 ? 4.5 : 0;
+                distLongEdgePx >= 2.0 && distLongEdgePx <= 3.6 && ly < 5 ? 4.0 : 0;
               r = r * creviceShade + bevelKiss;
               g = g * creviceShade + bevelKiss * 0.9;
               b = b * creviceShade + bevelKiss * 0.76;
@@ -457,43 +557,44 @@ export function createEngineeredOakFloorTextures(): FloorPbrTextureBundle {
               albedo[o4 + 2] = clampByte(b);
               albedo[o4 + 3] = 255;
 
-              const plankCrown = Math.sin(across * Math.PI) * 0.025;
+              const plankCrown = Math.sin(across * Math.PI) * 0.022;
               const grainRelief =
-                latewood * 0.055 +
+                latewood * 0.05 +
                 (fineFiber - 0.5) * 0.032 -
-                openPore * 0.145 +
-                rayFleck * 0.022 -
-                knotCore * 0.08;
+                openPore * 0.14 +
+                rayFleck * 0.018 -
+                pinKnotCore * 0.035;
               const hSurface = 0.74 + info.heightBias + plankCrown + grainRelief;
+              const grooveDepth = distLongEdgePx < distButtPx ? 0.14 : 0.24;
               heightField[idx] = THREE.MathUtils.clamp(
-                THREE.MathUtils.lerp(0.14, hSurface, grooveFactor),
+                THREE.MathUtils.lerp(grooveDepth, hSurface, grooveFactor),
                 0,
                 1
               );
 
               let rough =
-                0.43 +
+                0.42 +
                 info.roughBias -
-                latewood * 0.055 -
-                rayFleck * 0.065 +
+                latewood * 0.045 -
+                rayFleck * 0.055 +
                 (0.5 - fineFiber) * 0.04;
-              rough = THREE.MathUtils.clamp(rough, 0.36, 0.49);
+              rough = THREE.MathUtils.clamp(rough, 0.34, 0.52);
               if (openPore > 0.02) {
-                const poreT = THREE.MathUtils.clamp(openPore * 1.45, 0, 1);
-                rough = THREE.MathUtils.lerp(rough, 0.62, poreT);
+                const poreT = THREE.MathUtils.clamp(openPore * 1.4, 0, 1);
+                rough = THREE.MathUtils.lerp(rough, 0.63, poreT);
               }
-              if (knotMask > 0.05) {
-                rough = THREE.MathUtils.lerp(rough, 0.58, knotMask * 0.7);
+              if (pinKnotMask > 0.05) {
+                rough = THREE.MathUtils.lerp(rough, 0.52, pinKnotMask * 0.5);
               }
               if (grooveFactor < 0.96) {
                 rough = THREE.MathUtils.lerp(
-                  0.88,
+                  0.89,
                   rough,
                   THREE.MathUtils.smoothstep(grooveFactor, 0.18, 0.96)
                 );
               }
               if (isGrooveCrevice) {
-                rough = 0.88;
+                rough = 0.89;
               }
               roughField[idx] = rough;
             }

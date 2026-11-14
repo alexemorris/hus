@@ -382,7 +382,7 @@ export function createSimpleHouseFloorMaterials() {
   const landingSmokedOakMat = buildMetricScaledFloorMaterial(
     'simpleHouse.floorMat.landingSmokedOak',
     createEngineeredOakFloorTextures(),
-    [1 / 3.8, 1 / 1.52],
+    [1 / 4.75, 1 / 1.9],
     0.58,
     0.42
   );
@@ -399,7 +399,7 @@ export function createSimpleHouseFloorMaterials() {
   const studyFumedWalnutOakMat = buildMetricScaledFloorMaterial(
     'simpleHouse.floorMat.studyHoneySmokedOak',
     createEngineeredOakFloorTextures(),
-    [1 / 4.0, 1 / 1.6],
+    [1 / 5.0, 1 / 2.0],
     0.48,
     0.44
   );

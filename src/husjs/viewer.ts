@@ -74,3 +74,4 @@ export { AssetInspectorController } from '../engine/assets/asset-inspector-contr
 export { CircuitLightingController } from '../engine/lighting/circuit-lighting.ts';
 
 export { CameraRig } from '../engine/camera/camera-rig.ts';
+export { detectMobile, isRealBrowserMobile } from '../engine/perf/device-tier.ts';

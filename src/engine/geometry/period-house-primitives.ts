@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { SceneInteractionManager } from '../interaction/interaction-manager.ts';
 import { addCasedArchitravePortal, buildMitredWallSkirtingGeometry } from './swept-moulding.ts';
+import { createTimberBoxGeometry, hashTimberSeed, type TimberGrainAxis } from './timber-piece-uvs.ts';
 
 /**
  * 2D world coordinate `[x, z]` in meters.
@@ -415,7 +416,10 @@ export function buildAngledWallSegment(
               [segB, -wallFaceZ],
               [segA, -wallFaceZ],
             ];
-      const skirtGeo = buildMitredWallSkirtingGeometry(skirtPath, floorY);
+      const skirtGeo = buildMitredWallSkirtingGeometry(skirtPath, floorY, {
+        material: config.skirtingMaterial,
+        seed: [config.start[0], config.start[1], config.end[0], config.end[1], zSign, segA, segB],
+      });
       const skirt = new THREE.Mesh(skirtGeo, config.skirtingMaterial);
       skirt.name = 'architecture.primitive.skirt';
       skirt.castShadow = true;
@@ -718,6 +722,7 @@ export function buildAngledWallSegment(
         frontFaceOffset: config.frontFaceMaterial ? 0.014 : 0,
         backFaceOffset: config.backFaceMaterial ? 0.014 : 0,
         namePrefix: `${op.id ?? 'portal'}.architrave`,
+        seed: [config.start[0], config.start[1], config.end[0], config.end[1], op.uCenter, headBottomY],
       });
     }
 
@@ -760,13 +765,16 @@ export function buildAngledWallSegment(
       const riserDepth = 0.028; // 28mm solid oak vertical riser board tucked cleanly beneath the bullnose overhang
 
       const riserH = Math.max(0.02, stepRise - nosingH);
+      const stepSeed = hashTimberSeed([config.start[0], config.start[1], op.uCenter, highFloorY]);
+      const stepUShift = ((stepSeed >>> 8) % 1000) / 1000 * 0.52;
+      const stepRowShift = (stepSeed % 10) * 0.1;
       const stepRiser = new THREE.Mesh(
         applyCarpenterSingleBoardUVs(
           new THREE.BoxGeometry(stepW, riserH, riserDepth),
           stepW,
-          0.05,
-          0.155,
-          0.225
+          0.05 + stepUShift,
+          stepRowShift + 0.025,
+          stepRowShift + 0.075
         ),
         op.stepMaterial
       );
@@ -780,13 +788,14 @@ export function buildAngledWallSegment(
       stepRiser.receiveShadow = true;
       group.add(stepRiser);
 
+      const nosingRowShift = ((stepSeed >>> 4) % 10) * 0.1;
       const stepNosing = new THREE.Mesh(
         applyCarpenterSingleBoardUVs(
           new THREE.BoxGeometry(stepW, nosingH, nosingDepth),
           stepW,
-          0.04,
-          0.03,
-          0.1
+          0.04 + stepUShift * 0.85,
+          nosingRowShift + 0.02,
+          nosingRowShift + 0.08
         ),
         op.stepMaterial
       );
@@ -816,7 +825,7 @@ export function buildAngledWallSegment(
       if (stepFacingSign === -1) {
         bullnoseGeo.rotateY(Math.PI);
       }
-      applyCarpenterSingleBoardUVs(bullnoseGeo, stepW, 0.04, 0.04, 0.09);
+      applyCarpenterSingleBoardUVs(bullnoseGeo, stepW, 0.04 + stepUShift * 0.85, nosingRowShift + 0.03, nosingRowShift + 0.075);
       const bullnoseLip = new THREE.Mesh(bullnoseGeo, op.stepMaterial);
       bullnoseLip.name = `${op.id}.stepBullnoseLip`;
       bullnoseLip.position.set(
@@ -869,6 +878,9 @@ export function buildAngledWallSegment(
 
       const frontLeafMat = op.frontDoorLeafMaterial ?? op.doorLeafMaterial;
       const backLeafMat = op.backDoorLeafMaterial ?? op.doorLeafMaterial;
+      const doorWorldX = config.start[0] + frame.tangent[0] * op.uCenter;
+      const doorWorldZ = config.start[1] + frame.tangent[1] * op.uCenter;
+      let doorPieceIdx = 0;
       const addAngledLeafBox = (
         baseName: string,
         w: number,
@@ -876,10 +888,19 @@ export function buildAngledWallSegment(
         d: number,
         px: number,
         py: number,
+        grainAxis: TimberGrainAxis,
         castShad = true
       ): void => {
+        const curIdx = doorPieceIdx++;
         if (frontLeafMat === backLeafMat) {
-          const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), frontLeafMat);
+          const m = new THREE.Mesh(
+            createTimberBoxGeometry(w, h, d, {
+              grainAxis,
+              material: frontLeafMat,
+              seed: [doorWorldX, highFloorY, doorWorldZ, curIdx, baseName],
+            }),
+            frontLeafMat
+          );
           m.name = baseName;
           m.position.set(px, py, 0);
           m.castShadow = castShad;
@@ -892,7 +913,14 @@ export function buildAngledWallSegment(
           [1, frontLeafMat, '.front'],
           [-1, backLeafMat, '.back'],
         ] as const) {
-          const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, halfD), mat);
+          const m = new THREE.Mesh(
+            createTimberBoxGeometry(w, h, halfD, {
+              grainAxis,
+              material: mat,
+              seed: [doorWorldX, highFloorY, doorWorldZ, curIdx, zSign, baseName],
+            }),
+            mat
+          );
           m.name = `${baseName}${suffix}`;
           m.position.set(px, py, zSign * halfD * 0.5);
           m.castShadow = castShad;
@@ -904,10 +932,10 @@ export function buildAngledWallSegment(
       // Central recessed core slab (tucked inside outer stiles & rails so outer edges never Z-fight)
       const coreW = Math.max(0.08, leafW - stileW);
       const coreH = Math.max(0.12, leafH - (topRailH + bottomRailH) * 0.5);
-      addAngledLeafBox('architecture.primitive.leafCore', coreW, coreH, 0.028, 0, (bottomRailH - topRailH) * 0.25);
+      addAngledLeafBox('architecture.primitive.leafCore', coreW, coreH, 0.028, 0, (bottomRailH - topRailH) * 0.25, 'y');
 
       for (const side of [-1, 1] as const) {
-        addAngledLeafBox('architecture.primitive.stile', stileW, leafH, 0.046, side * (leafW / 2 - stileW / 2), 0);
+        addAngledLeafBox('architecture.primitive.stile', stileW, leafH, 0.046, side * (leafW / 2 - stileW / 2), 0, 'y');
       }
 
       const innerW = Math.max(0.1, leafW - stileW * 2 + 0.004);
@@ -916,7 +944,7 @@ export function buildAngledWallSegment(
         [lockRailY, lockRailH],
         [-leafH / 2 + bottomRailH / 2, bottomRailH]
       ] as const) {
-        addAngledLeafBox('architecture.primitive.rail', innerW, railH, 0.046, 0, railY);
+        addAngledLeafBox('architecture.primitive.rail', innerW, railH, 0.046, 0, railY, 'x');
       }
 
       const upperPanelTop = leafH / 2 - topRailH;
@@ -930,7 +958,7 @@ export function buildAngledWallSegment(
       ] as const) {
         const pH = Math.max(0.12, pTop - pBot);
         const pMidY = (pBot + pTop) / 2;
-        addAngledLeafBox('architecture.primitive.muntin', muntinW, pH + 0.004, 0.046, 0, pMidY, false);
+        addAngledLeafBox('architecture.primitive.muntin', muntinW, pH + 0.004, 0.046, 0, pMidY, 'y', false);
 
         // Raised bevelled fielding panel inside each of the 4 panels
         const panelClearW = (innerW - muntinW) / 2;
@@ -944,6 +972,7 @@ export function buildAngledWallSegment(
             0.038,
             col * (muntinW / 2 + panelClearW / 2),
             pMidY,
+            'y',
             false
           );
         }

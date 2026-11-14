@@ -9,6 +9,13 @@ import {
   tagHighLod,
 } from '../../engine/geometry/mesh-traits.ts';
 import type { Point2D } from '../../engine/geometry/period-house-primitives.ts';
+import {
+  createTimberBoxGeometry,
+  resolveMaterialTextureGrainAxis,
+  sampleTimberSliceTransform,
+  type TimberGrainAxis,
+  type TimberSeedInput,
+} from '../../engine/geometry/timber-piece-uvs.ts';
 import { InteractionRegistry } from '../../engine/interaction/interaction-registry.ts';
 import {
   createGeorgianSashWindow,
@@ -335,6 +342,8 @@ function buildMitredArchitraveGeometry(params: {
   readonly innerTopY: number;
   readonly zBack: number;
   readonly zFront: number;
+  readonly material?: THREE.Material;
+  readonly seed?: TimberSeedInput;
 }): THREE.BufferGeometry {
   const {
     innerHalfW,
@@ -368,6 +377,15 @@ function buildMitredArchitraveGeometry(params: {
   const uvs: number[] = [];
   const indices: number[] = [];
 
+  const texAxis = resolveMaterialTextureGrainAxis(params.material);
+  const uvScale = 1 / 2.2;
+  const pieceSlices = [
+    sampleTimberSliceTransform([params.seed ?? 'mitredArch', 'leftLeg']),
+    sampleTimberSliceTransform([params.seed ?? 'mitredArch', 'head']),
+    sampleTimberSliceTransform([params.seed ?? 'mitredArch', 'rightLeg']),
+  ] as const;
+  const pieceHorizontal = [false, true, false] as const;
+
   const emitQuad = (
     p0: readonly [number, number, number],
     p1: readonly [number, number, number],
@@ -375,7 +393,8 @@ function buildMitredArchitraveGeometry(params: {
     p3: readonly [number, number, number],
     nx: number,
     ny: number,
-    nz: number
+    nz: number,
+    pieceIdx: 0 | 1 | 2
   ): void => {
     const e1x = p1[0] - p0[0];
     const e1y = p1[1] - p0[1];
@@ -388,12 +407,29 @@ function buildMitredArchitraveGeometry(params: {
     const cz = e1x * e2y - e1y * e2x;
     const dot = cx * nx + cy * ny + cz * nz;
 
+    const slice = pieceSlices[pieceIdx];
+    const isHoriz = pieceHorizontal[pieceIdx];
     const base = positions.length / 3;
     const pts = [p0, p1, p2, p3];
     for (const p of pts) {
       positions.push(p[0], p[1], p[2]);
       normals.push(nx, ny, nz);
-      uvs.push(Math.abs(nz) > 0.5 ? p[0] : p[2], p[1]);
+      let along: number;
+      let across: number;
+      if (isHoriz) {
+        along = p[0];
+        across = Math.abs(nz) > 0.5 ? p[1] : p[2];
+      } else {
+        along = p[1];
+        across = Math.abs(nz) > 0.5 ? p[0] : p[2];
+      }
+      const fiberU = along * uvScale * slice.uSign + slice.uOffset;
+      const crossV = across * uvScale * slice.vSign + slice.vOffset;
+      if (texAxis === 'u') {
+        uvs.push(fiberU, crossV);
+      } else {
+        uvs.push(crossV, fiberU);
+      }
     }
     if (dot >= 0) {
       indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
@@ -424,7 +460,9 @@ function buildMitredArchitraveGeometry(params: {
   ];
 
   // Front (+Z) and Back (-Z) faces
-  for (const [a, b, c, d] of trapQuads) {
+  for (let pIdx = 0; pIdx < trapQuads.length; pIdx++) {
+    const [a, b, c, d] = trapQuads[pIdx]!;
+    const pieceIdx = pIdx as 0 | 1 | 2;
     emitQuad(
       [a[0], a[1], zMax],
       [b[0], b[1], zMax],
@@ -432,7 +470,8 @@ function buildMitredArchitraveGeometry(params: {
       [d[0], d[1], zMax],
       0,
       0,
-      1
+      1,
+      pieceIdx
     );
     emitQuad(
       [a[0], a[1], zMin],
@@ -441,7 +480,8 @@ function buildMitredArchitraveGeometry(params: {
       [d[0], d[1], zMin],
       0,
       0,
-      -1
+      -1,
+      pieceIdx
     );
   }
 
@@ -451,23 +491,24 @@ function buildMitredArchitraveGeometry(params: {
     readonly b: readonly [number, number];
     readonly nx: number;
     readonly ny: number;
+    readonly pieceIdx: 0 | 1 | 2;
   }> = [
     // Outer left (-X)
-    { a: [xOutL, yBot], b: [xOutL, yOutTop], nx: -1, ny: 0 },
+    { a: [xOutL, yBot], b: [xOutL, yOutTop], nx: -1, ny: 0, pieceIdx: 0 },
     // Outer top (+Y)
-    { a: [xOutL, yOutTop], b: [xOutR, yOutTop], nx: 0, ny: 1 },
+    { a: [xOutL, yOutTop], b: [xOutR, yOutTop], nx: 0, ny: 1, pieceIdx: 1 },
     // Outer right (+X)
-    { a: [xOutR, yOutTop], b: [xOutR, yBot], nx: 1, ny: 0 },
+    { a: [xOutR, yOutTop], b: [xOutR, yBot], nx: 1, ny: 0, pieceIdx: 2 },
     // Right bottom (-Y)
-    { a: [xOutR, yBot], b: [xInR, yBot], nx: 0, ny: -1 },
+    { a: [xOutR, yBot], b: [xInR, yBot], nx: 0, ny: -1, pieceIdx: 2 },
     // Inner right (-X)
-    { a: [xInR, yBot], b: [xInR, yInTop], nx: -1, ny: 0 },
+    { a: [xInR, yBot], b: [xInR, yInTop], nx: -1, ny: 0, pieceIdx: 2 },
     // Inner top (-Y)
-    { a: [xInR, yInTop], b: [xInL, yInTop], nx: 0, ny: -1 },
+    { a: [xInR, yInTop], b: [xInL, yInTop], nx: 0, ny: -1, pieceIdx: 1 },
     // Inner left (+X)
-    { a: [xInL, yInTop], b: [xInL, yBot], nx: 1, ny: 0 },
+    { a: [xInL, yInTop], b: [xInL, yBot], nx: 1, ny: 0, pieceIdx: 0 },
     // Left bottom (-Y)
-    { a: [xInL, yBot], b: [xOutL, yBot], nx: 0, ny: -1 },
+    { a: [xInL, yBot], b: [xOutL, yBot], nx: 0, ny: -1, pieceIdx: 0 },
   ];
 
   for (const edge of perimeterEdges) {
@@ -478,7 +519,8 @@ function buildMitredArchitraveGeometry(params: {
       [edge.a[0], edge.a[1], zMax],
       edge.nx,
       edge.ny,
-      0
+      0,
+      edge.pieceIdx
     );
   }
 
@@ -509,7 +551,9 @@ function buildArchitecturalDoorLeaf(params: {
   readonly doorMat: THREE.Material;
   readonly glassMat: THREE.Material;
   readonly hardwareMat: THREE.Material;
+  readonly seed?: TimberSeedInput;
 }): THREE.Group {
+  const leafSeed: TimberSeedInput = params.seed ?? params.namePrefix;
   const {
     namePrefix,
     width,
@@ -530,7 +574,14 @@ function buildArchitecturalDoorLeaf(params: {
     style === '4-panel' ? 'four-panel' : style === '6-panel' ? 'six-panel' : style;
 
   if (normalizedStyle === 'flush') {
-    const slab = new THREE.Mesh(sharedBoxGeometry(width, height, thickness), doorMat);
+    const slab = new THREE.Mesh(
+      createTimberBoxGeometry(width, height, thickness, {
+        grainAxis: 'y',
+        material: doorMat,
+        seed: [leafSeed, 'slab'],
+      }),
+      doorMat
+    );
     slab.name = `${namePrefix}.slab`;
     slab.position.set(0, height * 0.5, 0);
     slab.castShadow = true;
@@ -549,12 +600,20 @@ function buildArchitecturalDoorLeaf(params: {
       x1: number,
       y0: number,
       y1: number,
+      grainAxis: TimberGrainAxis,
       zThickness = thickness
     ): void => {
       const pw = x1 - x0;
       const ph = y1 - y0;
       if (pw <= 1e-4 || ph <= 1e-4) return;
-      const m = new THREE.Mesh(sharedBoxGeometry(pw, ph, zThickness), doorMat);
+      const m = new THREE.Mesh(
+        createTimberBoxGeometry(pw, ph, zThickness, {
+          grainAxis,
+          material: doorMat,
+          seed: [leafSeed, partName],
+        }),
+        doorMat
+      );
       m.name = `${namePrefix}.${partName}`;
       m.position.set((x0 + x1) * 0.5, (y0 + y1) * 0.5, 0);
       m.castShadow = true;
@@ -567,12 +626,12 @@ function buildArchitecturalDoorLeaf(params: {
     const innerX1 = halfW - stileW;
 
     // Outer left & right stiles run full height [0, height]
-    addFramePiece('stile_left', -halfW, innerX0 - EPS_M, 0, height);
-    addFramePiece('stile_right', innerX1 + EPS_M, halfW, 0, height);
+    addFramePiece('stile_left', -halfW, innerX0 - EPS_M, 0, height, 'y');
+    addFramePiece('stile_right', innerX1 + EPS_M, halfW, 0, height, 'y');
 
     // Bottom & top rails span strictly between stiles [innerX0, innerX1]
-    addFramePiece('rail_bottom', innerX0, innerX1, 0, bottomRailH);
-    addFramePiece('rail_top', innerX0, innerX1, height - topRailH, height);
+    addFramePiece('rail_bottom', innerX0, innerX1, 0, bottomRailH, 'x');
+    addFramePiece('rail_top', innerX0, innerX1, height - topRailH, height, 'x');
 
     const addFieldedPanel = (
       panelName: string,
@@ -588,7 +647,14 @@ function buildArchitecturalDoorLeaf(params: {
       const cy = (py0 + py1) * 0.5;
 
       const recessDepth = Math.max(0.014, thickness * 0.36);
-      const backing = new THREE.Mesh(sharedBoxGeometry(w0, h0, recessDepth), doorMat);
+      const backing = new THREE.Mesh(
+        createTimberBoxGeometry(w0, h0, recessDepth, {
+          grainAxis: 'y',
+          material: doorMat,
+          seed: [leafSeed, panelName, 'field'],
+        }),
+        doorMat
+      );
       backing.name = `${namePrefix}.${panelName}_field`;
       backing.position.set(cx, cy, 0);
       backing.castShadow = true;
@@ -600,7 +666,14 @@ function buildArchitecturalDoorLeaf(params: {
       const tableH = h0 - 2 * margin;
       if (tableW > 0.02 && tableH > 0.02) {
         const raisedDepth = Math.max(recessDepth + 0.008, thickness * 0.64);
-        const table = new THREE.Mesh(sharedBoxGeometry(tableW, tableH, raisedDepth), doorMat);
+        const table = new THREE.Mesh(
+          createTimberBoxGeometry(tableW, tableH, raisedDepth, {
+            grainAxis: 'y',
+            material: doorMat,
+            seed: [leafSeed, panelName, 'raised'],
+          }),
+          doorMat
+        );
         table.name = `${namePrefix}.${panelName}_raised`;
         table.position.set(cx, cy, 0);
         table.castShadow = true;
@@ -612,14 +685,14 @@ function buildArchitecturalDoorLeaf(params: {
     if (normalizedStyle === 'glazed') {
       const lockY0 = Math.min(height * 0.4, 0.82);
       const lockY1 = lockY0 + lockRailH;
-      addFramePiece('rail_lock', innerX0, innerX1, lockY0, lockY1);
+      addFramePiece('rail_lock', innerX0, innerX1, lockY0, lockY1, 'x');
 
       // Lower fielded timber panel(s)
       const cols = width >= 0.62 ? 2 : 1;
       if (cols === 2) {
         const m0 = -muntinW * 0.5;
         const m1 = muntinW * 0.5;
-        addFramePiece('muntin_lower', m0, m1, bottomRailH + EPS_M, lockY0 - EPS_M);
+        addFramePiece('muntin_lower', m0, m1, bottomRailH + EPS_M, lockY0 - EPS_M, 'y');
         addFieldedPanel('panel_bl', innerX0, m0, bottomRailH, lockY0);
         addFieldedPanel('panel_br', m1, innerX1, bottomRailH, lockY0);
       } else {
@@ -647,7 +720,14 @@ function buildArchitecturalDoorLeaf(params: {
         const barW = 0.018;
         const barD = 0.02;
         if (gx1 - gx0 > 0.28) {
-          const vBar = new THREE.Mesh(sharedBoxGeometry(barW, gy1 - gy0, barD), doorMat);
+          const vBar = new THREE.Mesh(
+            createTimberBoxGeometry(barW, gy1 - gy0, barD, {
+              grainAxis: 'y',
+              material: doorMat,
+              seed: [leafSeed, 'glazingBar_v'],
+            }),
+            doorMat
+          );
           vBar.name = `${namePrefix}.glazingBar_v`;
           vBar.position.set((gx0 + gx1) * 0.5, (gy0 + gy1) * 0.5, 0);
           leaf.add(vBar);
@@ -657,13 +737,27 @@ function buildArchitecturalDoorLeaf(params: {
           const halfSpan = (gx1 - gx0 - barW) * 0.5 - EPS_M;
           if (gx1 - gx0 > 0.28 && halfSpan > 0.02) {
             for (const s of [-1, 1] as const) {
-              const hBar = new THREE.Mesh(sharedBoxGeometry(halfSpan, barW, barD), doorMat);
+              const hBar = new THREE.Mesh(
+                createTimberBoxGeometry(halfSpan, barW, barD, {
+                  grainAxis: 'x',
+                  material: doorMat,
+                  seed: [leafSeed, 'glazingBar_h', s],
+                }),
+                doorMat
+              );
               hBar.name = `${namePrefix}.glazingBar_h_${s < 0 ? 'l' : 'r'}`;
               hBar.position.set((gx0 + gx1) * 0.5 + s * (barW * 0.5 + EPS_M + halfSpan * 0.5), midY, 0);
               leaf.add(hBar);
             }
           } else {
-            const hBar = new THREE.Mesh(sharedBoxGeometry(gx1 - gx0, barW, barD), doorMat);
+            const hBar = new THREE.Mesh(
+              createTimberBoxGeometry(gx1 - gx0, barW, barD, {
+                grainAxis: 'x',
+                material: doorMat,
+                seed: [leafSeed, 'glazingBar_h_full'],
+              }),
+              doorMat
+            );
             hBar.name = `${namePrefix}.glazingBar_h`;
             hBar.position.set((gx0 + gx1) * 0.5, midY, 0);
             leaf.add(hBar);
@@ -677,15 +771,15 @@ function buildArchitecturalDoorLeaf(params: {
       const friezeY0 = height - topRailH - Math.max(0.24, (height - lockY1 - topRailH) * 0.34);
       const friezeY1 = friezeY0 + friezeH;
 
-      addFramePiece('rail_lock', innerX0, innerX1, lockY0, lockY1);
-      addFramePiece('rail_frieze', innerX0, innerX1, friezeY0, friezeY1);
+      addFramePiece('rail_lock', innerX0, innerX1, lockY0, lockY1, 'x');
+      addFramePiece('rail_frieze', innerX0, innerX1, friezeY0, friezeY1, 'x');
 
       const m0 = -muntinW * 0.5;
       const m1 = muntinW * 0.5;
       if (innerX1 - innerX0 > muntinW + 0.12) {
-        addFramePiece('muntin_low', m0, m1, bottomRailH + EPS_M, lockY0 - EPS_M);
-        addFramePiece('muntin_mid', m0, m1, lockY1 + EPS_M, friezeY0 - EPS_M);
-        addFramePiece('muntin_top', m0, m1, friezeY1 + EPS_M, height - topRailH - EPS_M);
+        addFramePiece('muntin_low', m0, m1, bottomRailH + EPS_M, lockY0 - EPS_M, 'y');
+        addFramePiece('muntin_mid', m0, m1, lockY1 + EPS_M, friezeY0 - EPS_M, 'y');
+        addFramePiece('muntin_top', m0, m1, friezeY1 + EPS_M, height - topRailH - EPS_M, 'y');
 
         addFieldedPanel('panel_bl', innerX0, m0, bottomRailH, lockY0);
         addFieldedPanel('panel_br', m1, innerX1, bottomRailH, lockY0);
@@ -702,13 +796,13 @@ function buildArchitecturalDoorLeaf(params: {
       // Classic 4-panel Georgian door
       const lockY0 = Math.min(height * 0.42, 0.88);
       const lockY1 = lockY0 + lockRailH;
-      addFramePiece('rail_lock', innerX0, innerX1, lockY0, lockY1);
+      addFramePiece('rail_lock', innerX0, innerX1, lockY0, lockY1, 'x');
 
       const m0 = -muntinW * 0.5;
       const m1 = muntinW * 0.5;
       if (innerX1 - innerX0 > muntinW + 0.12) {
-        addFramePiece('muntin_low', m0, m1, bottomRailH + EPS_M, lockY0 - EPS_M);
-        addFramePiece('muntin_top', m0, m1, lockY1 + EPS_M, height - topRailH - EPS_M);
+        addFramePiece('muntin_low', m0, m1, bottomRailH + EPS_M, lockY0 - EPS_M, 'y');
+        addFramePiece('muntin_top', m0, m1, lockY1 + EPS_M, height - topRailH - EPS_M, 'y');
 
         addFieldedPanel('panel_bl', innerX0, m0, bottomRailH, lockY0);
         addFieldedPanel('panel_br', m1, innerX1, bottomRailH, lockY0);
@@ -931,10 +1025,15 @@ export function populateWallOpenings(
           const trimBot = 0.025 + 2 * EPS_M;
           const trimTop = height - 0.018 - 2 * EPS_M;
           const newH = Math.max(0.1, trimTop - trimBot);
-          rev.geometry = sharedBoxGeometry(
+          rev.geometry = createTimberBoxGeometry(
             0.018,
             newH,
-            Math.max(0.012, (rev.geometry as THREE.BoxGeometry).parameters?.depth ?? 0.06)
+            Math.max(0.012, (rev.geometry as THREE.BoxGeometry).parameters?.depth ?? 0.06),
+            {
+              grainAxis: 'y',
+              material: rev.material as THREE.Material,
+              seed: [worldX, worldY, worldZ, req.id, 'sashRev', side],
+            }
           );
           rev.position.y = (trimBot + trimTop) * 0.5;
         }
@@ -1028,8 +1127,13 @@ export function populateWallOpenings(
       const boardSpan = width + 2 * (archW - liningT) + 0.04;
       const zBoardBack = -halfT + EPS_M;
       const zBoardFront = halfT + 0.034;
+      const openingSeed = [worldX, worldY, worldZ, req.id] as const;
       const windowBoard = new THREE.Mesh(
-        sharedBoxGeometry(boardSpan, boardT, zBoardFront - zBoardBack),
+        createTimberBoxGeometry(boardSpan, boardT, zBoardFront - zBoardBack, {
+          grainAxis: 'x',
+          material: archMat,
+          seed: [...openingSeed, 'windowBoard'],
+        }),
         archMat
       );
       windowBoard.name = `${req.id}.windowBoard`;
@@ -1043,14 +1147,25 @@ export function populateWallOpenings(
       const jambY1 = height - EPS_M;
       const jambH = Math.max(0.1, jambY1 - jambY0);
       for (const s of [-1, 1] as const) {
-        const jamb = new THREE.Mesh(sharedBoxGeometry(liningT, jambH, liningDepth), frameMat);
+        const jamb = new THREE.Mesh(
+          createTimberBoxGeometry(liningT, jambH, liningDepth, {
+            grainAxis: 'y',
+            material: frameMat,
+            seed: [...openingSeed, 'casementJamb', s],
+          }),
+          frameMat
+        );
         jamb.name = `${req.id}.revealLining_${s < 0 ? 'left' : 'right'}`;
         jamb.position.set(s * (halfW - EPS_M - liningT * 0.5), (jambY0 + jambY1) * 0.5, 0);
         openingGroup.add(jamb);
       }
       const innerClearW = Math.max(0.15, width - 2 * (liningT + EPS_M));
       const headLining = new THREE.Mesh(
-        sharedBoxGeometry(innerClearW - 2 * EPS_M, liningT, liningDepth),
+        createTimberBoxGeometry(innerClearW - 2 * EPS_M, liningT, liningDepth, {
+          grainAxis: 'x',
+          material: frameMat,
+          seed: [...openingSeed, 'casementHead'],
+        }),
         frameMat
       );
       headLining.name = `${req.id}.revealLining_head`;
@@ -1075,6 +1190,8 @@ export function populateWallOpenings(
         innerTopY: jambY1 - liningT,
         zBack: halfT + EPS_M,
         zFront: halfT + EPS_M + archT,
+        material: archMat,
+        seed: [...openingSeed, 'casementArch'],
       });
       const archMesh = new THREE.Mesh(archGeo, archMat);
       archMesh.name = `${req.id}.architrave_int`;
@@ -1095,16 +1212,30 @@ export function populateWallOpenings(
         const st = 0.044;
         const th = 0.038;
         const hw = lw * 0.5;
-        const addBar = (n: string, x0: number, x1: number, y0: number, y1: number): void => {
-          const m = new THREE.Mesh(sharedBoxGeometry(x1 - x0, y1 - y0, th), frameMat);
+        const addBar = (
+          n: string,
+          x0: number,
+          x1: number,
+          y0: number,
+          y1: number,
+          grainAxis: TimberGrainAxis
+        ): void => {
+          const m = new THREE.Mesh(
+            createTimberBoxGeometry(x1 - x0, y1 - y0, th, {
+              grainAxis,
+              material: frameMat,
+              seed: [...openingSeed, leafName, n],
+            }),
+            frameMat
+          );
           m.name = `${leafName}.${n}`;
           m.position.set((x0 + x1) * 0.5, (y0 + y1) * 0.5, 0);
           cg.add(m);
         };
-        addBar('stileL', -hw, -hw + st, 0, lh);
-        addBar('stileR', hw - st, hw, 0, lh);
-        addBar('railB', -hw + st + EPS_M, hw - st - EPS_M, 0, st);
-        addBar('railT', -hw + st + EPS_M, hw - st - EPS_M, lh - st, lh);
+        addBar('stileL', -hw, -hw + st, 0, lh, 'y');
+        addBar('stileR', hw - st, hw, 0, lh, 'y');
+        addBar('railB', -hw + st + EPS_M, hw - st - EPS_M, 0, st, 'x');
+        addBar('railT', -hw + st + EPS_M, hw - st - EPS_M, lh - st, lh, 'x');
         const gw = Math.max(0.04, lw - 2 * st - 2 * EPS_M);
         const gh = Math.max(0.04, lh - 2 * st - 2 * EPS_M);
         const glass = new THREE.Mesh(sharedBoxGeometry(gw, gh, 0.008), glassMat);
@@ -1115,7 +1246,14 @@ export function populateWallOpenings(
         }
         cg.add(glass);
         if (gh > 0.55) {
-          const hBar = new THREE.Mesh(sharedBoxGeometry(gw, 0.016, 0.018), frameMat);
+          const hBar = new THREE.Mesh(
+            createTimberBoxGeometry(gw, 0.016, 0.018, {
+              grainAxis: 'x',
+              material: frameMat,
+              seed: [...openingSeed, leafName, 'astragal'],
+            }),
+            frameMat
+          );
           hBar.name = `${leafName}.astragal`;
           hBar.position.set(0, lh * 0.5, 0);
           cg.add(hBar);
@@ -1230,13 +1368,23 @@ export function populateWallOpenings(
     const hasThreshold = sillY <= 1e-4 && thresholdStyle !== 'none';
     const thresholdH = hasThreshold ? 0.014 : 0;
 
+    const doorOpeningSeed = [worldX, worldY, worldZ, req.id] as const;
     if (hasThreshold) {
       const threshMat =
         spec.thresholdMaterial ??
         getThresholdMaterial(thresholdStyle as Exclude<DoorThresholdStyle, 'none'>);
       const saddleClearW = Math.max(0.18, width - 2 * (liningT + 2 * EPS_M));
       const saddle = new THREE.Mesh(
-        sharedBoxGeometry(saddleClearW, thresholdH, Math.max(0.04, wall.thickness - 2 * EPS_M)),
+        createTimberBoxGeometry(
+          saddleClearW,
+          thresholdH,
+          Math.max(0.04, wall.thickness - 2 * EPS_M),
+          {
+            grainAxis: 'x',
+            material: threshMat,
+            seed: [...doorOpeningSeed, 'thresholdSaddle'],
+          }
+        ),
         threshMat
       );
       saddle.name = `${req.id}.thresholdSaddle`;
@@ -1252,7 +1400,14 @@ export function populateWallOpenings(
     const jambY1 = height - EPS_M;
     const jambH = Math.max(0.2, jambY1 - jambY0);
     for (const s of [-1, 1] as const) {
-      const jamb = new THREE.Mesh(sharedBoxGeometry(liningT, jambH, liningDepth), frameMat);
+      const jamb = new THREE.Mesh(
+        createTimberBoxGeometry(liningT, jambH, liningDepth, {
+          grainAxis: 'y',
+          material: frameMat,
+          seed: [...doorOpeningSeed, 'revealJamb', s],
+        }),
+        frameMat
+      );
       jamb.name = `${req.id}.revealLining_${s < 0 ? 'left' : 'right'}`;
       jamb.position.set(s * (halfW - EPS_M - liningT * 0.5), (jambY0 + jambY1) * 0.5, 0);
       jamb.castShadow = true;
@@ -1264,7 +1419,11 @@ export function populateWallOpenings(
     const innerHalfW = halfW - EPS_M - liningT;
     const clearW = Math.max(0.2, innerHalfW * 2);
     const headLining = new THREE.Mesh(
-      sharedBoxGeometry(clearW - 2 * EPS_M, liningT, liningDepth),
+      createTimberBoxGeometry(clearW - 2 * EPS_M, liningT, liningDepth, {
+        grainAxis: 'x',
+        material: frameMat,
+        seed: [...doorOpeningSeed, 'revealHead'],
+      }),
       frameMat
     );
     headLining.name = `${req.id}.revealLining_head`;
@@ -1312,7 +1471,11 @@ export function populateWallOpenings(
       // Left & Right 168 x 28 mm pedestal plinth blocks (sitting at Y in [EPS_M, plinthH])
       const plinthSpanY = Math.max(0.04, plinthH - EPS_M);
       const leftPlinth = new THREE.Mesh(
-        sharedBoxGeometry(rippedLeftPlinthW, plinthSpanY, plinthT),
+        createTimberBoxGeometry(rippedLeftPlinthW, plinthSpanY, plinthT, {
+          grainAxis: 'y',
+          material: archMat,
+          seed: [...doorOpeningSeed, 'plinthL', faceSign],
+        }),
         archMat
       );
       leftPlinth.name = `${req.id}.plinthBlock_${sideLabel}_left`;
@@ -1327,7 +1490,11 @@ export function populateWallOpenings(
       openingGroup.add(leftPlinth);
 
       const rightPlinth = new THREE.Mesh(
-        sharedBoxGeometry(rippedRightPlinthW, plinthSpanY, plinthT),
+        createTimberBoxGeometry(rippedRightPlinthW, plinthSpanY, plinthT, {
+          grainAxis: 'y',
+          material: archMat,
+          seed: [...doorOpeningSeed, 'plinthR', faceSign],
+        }),
         archMat
       );
       rightPlinth.name = `${req.id}.plinthBlock_${sideLabel}_right`;
@@ -1351,6 +1518,8 @@ export function populateWallOpenings(
         innerTopY: jambY1 - liningT,
         zBack,
         zFront: zArchFront,
+        material: archMat,
+        seed: [...doorOpeningSeed, 'arch', faceSign],
       });
       const archMesh = new THREE.Mesh(archGeo, archMat);
       archMesh.name = `${req.id}.architrave_${sideLabel}`;
@@ -1398,14 +1567,28 @@ export function populateWallOpenings(
         const stopTopY = jambY1 - liningT - EPS_M;
         const stopH = Math.max(0.2, stopTopY - jambY0);
         for (const s of [-1, 1] as const) {
-          const jStop = new THREE.Mesh(sharedBoxGeometry(stopT, stopH, stopD), frameMat);
+          const jStop = new THREE.Mesh(
+            createTimberBoxGeometry(stopT, stopH, stopD, {
+              grainAxis: 'y',
+              material: frameMat,
+              seed: [...doorOpeningSeed, 'doorStop', s],
+            }),
+            frameMat
+          );
           jStop.name = `${req.id}.doorStop_${s < 0 ? 'left' : 'right'}`;
           jStop.position.set(s * (innerHalfW - EPS_M - stopT * 0.5), (jambY0 + stopTopY) * 0.5, zStopCenter);
           tagCollisionRole(jStop, 'ignore');
           openingGroup.add(jStop);
         }
         const hStopSpan = Math.max(0.1, clearW - 2 * (stopT + 2 * EPS_M));
-        const hStop = new THREE.Mesh(sharedBoxGeometry(hStopSpan, stopT, stopD), frameMat);
+        const hStop = new THREE.Mesh(
+          createTimberBoxGeometry(hStopSpan, stopT, stopD, {
+            grainAxis: 'x',
+            material: frameMat,
+            seed: [...doorOpeningSeed, 'doorStopHead'],
+          }),
+          frameMat
+        );
         hStop.name = `${req.id}.doorStop_head`;
         hStop.position.set(0, stopTopY - stopT * 0.5, zStopCenter);
         tagCollisionRole(hStop, 'ignore');
@@ -1431,6 +1614,7 @@ export function populateWallOpenings(
           doorMat,
           glassMat,
           hardwareMat,
+          seed: [...doorOpeningSeed, 'singleLeaf'],
         });
         leafGroup.position.set(0, leafY0, zLeafCenter);
         openingGroup.add(leafGroup);
@@ -1480,6 +1664,7 @@ export function populateWallOpenings(
           doorMat,
           glassMat,
           hardwareMat,
+          seed: [...doorOpeningSeed, 'leftLeaf'],
         });
         leftLeaf.position.set(-(leafW * 0.5 + 0.001), leafY0, zLeafCenter);
         openingGroup.add(leftLeaf);
@@ -1495,6 +1680,7 @@ export function populateWallOpenings(
           doorMat,
           glassMat,
           hardwareMat,
+          seed: [...doorOpeningSeed, 'rightLeaf'],
         });
         rightLeaf.position.set(leafW * 0.5 + 0.001, leafY0, zLeafCenter);
         openingGroup.add(rightLeaf);

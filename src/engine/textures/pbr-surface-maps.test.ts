@@ -275,6 +275,29 @@ describe('derivePbrNormalAndRoughnessMaps', () => {
       expect(minOakR).toBeLessThan(115);
       expect(maxOakR).toBeGreaterThan(215);
 
+      // Verify wide-plank oak albedo has genuine course-to-course luminance variation and zero near-black knot blobs
+      const oakAlbedo = (oak.colorMap.image as { data: Uint8Array }).data;
+      const courseMeans: number[] = [];
+      let minNonGrooveLuma = 255;
+      for (let row = 0; row < 10; row++) {
+        const yMid = Math.floor(((row + 0.5) * 1024) / 10);
+        let sum = 0;
+        let count = 0;
+        for (let x = 32; x < 992; x += 4) {
+          const idx = yMid * 1024 + x;
+          // Skip butt-joint crevices (high roughness > 200)
+          if (oakRough[idx * 2 + 1]! > 195) continue;
+          const o4 = idx * 4;
+          const luma = oakAlbedo[o4]! * 0.299 + oakAlbedo[o4 + 1]! * 0.587 + oakAlbedo[o4 + 2]! * 0.114;
+          sum += luma;
+          count++;
+          if (luma < minNonGrooveLuma) minNonGrooveLuma = luma;
+        }
+        courseMeans.push(sum / Math.max(1, count));
+      }
+      expect(Math.max(...courseMeans) - Math.min(...courseMeans)).toBeGreaterThan(14);
+      expect(minNonGrooveLuma).toBeGreaterThan(75);
+
       const limestone = createTumbledLimestoneFlagstoneTextures();
       expect(limestone.colorMap.image.width).toBe(1024);
       expect(limestone.normalMap.image.width).toBe(1024);

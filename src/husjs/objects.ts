@@ -59,3 +59,4 @@ export * from '../objects/architectural/georgian-sash-window.ts';
 
 export * from '../core/assets/asset-metadata.ts';
 export * from '../engine/assets/smart-asset.ts';
+export { detectMobile, isRealBrowserMobile } from '../engine/perf/device-tier.ts';

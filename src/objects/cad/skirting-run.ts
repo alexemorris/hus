@@ -2,6 +2,11 @@ import * as THREE from 'three';
 import type { CutawayWallDescriptor, Vec3Tuple } from '../../core/types/scene.ts';
 import { computeSignedPolygonArea2D } from '../../engine/geometry/cad-primitives.ts';
 import { tagCollisionRole, tagCutaway, type CollisionRole } from '../../engine/geometry/mesh-traits.ts';
+import {
+  resolveMaterialTextureGrainAxis,
+  sampleTimberSliceTransform,
+  type TimberSliceTransform,
+} from '../../engine/geometry/timber-piece-uvs.ts';
 
 export type RoomSide = 'left' | 'right';
 export type SkirtingProfilePreset = 'ogee' | 'torus' | 'lambs-tongue' | 'chamfered';
@@ -1450,6 +1455,28 @@ export function evaluateJointMiterPoint(
   };
 }
 
+interface SkirtingUvTransform extends TimberSliceTransform {
+  readonly texAxis: 'u' | 'v';
+}
+
+const IDENTITY_SKIRTING_UV: SkirtingUvTransform = {
+  uOffset: 0,
+  vOffset: 0,
+  uSign: 1,
+  vSign: 1,
+  texAxis: 'u',
+};
+
+function mapSkirtingUvPair(
+  alongScaled: number,
+  crossScaled: number,
+  uvTransform: SkirtingUvTransform
+): [number, number] {
+  const u = alongScaled * uvTransform.uSign + uvTransform.uOffset;
+  const v = crossScaled * uvTransform.vSign + uvTransform.vOffset;
+  return uvTransform.texAxis === 'u' ? [u, v] : [v, u];
+}
+
 function emitSweptRingPair(
   acc: MeshAccumulator,
   profileEdges: readonly PreparedProfileEdge[],
@@ -1466,7 +1493,8 @@ function emitSweptRingPair(
   arcStart: number,
   arcEnd: number,
   includeHiddenFaces: boolean,
-  uvScale: number
+  uvScale: number,
+  uvTransform: SkirtingUvTransform = IDENTITY_SKIRTING_UV
 ): void {
   const faceNormal = new THREE.Vector3();
   const nA0 = new THREE.Vector3();
@@ -1525,13 +1553,17 @@ function emitSweptRingPair(
       nA1.x, nA1.y, nA1.z
     );
 
-    const uA0 = (arcStart + startShifts[edge.i0]!) * uvScale;
-    const uB0 = (arcEnd + endShifts[edge.i0]!) * uvScale;
-    const uB1 = (arcEnd + endShifts[edge.i1]!) * uvScale;
-    const uA1 = (arcStart + startShifts[edge.i1]!) * uvScale;
-    const v0 = edge.arc0 * uvScale;
-    const v1 = edge.arc1 * uvScale;
-    acc.uvs.push(uA0, v0, uB0, v0, uB1, v1, uA1, v1);
+    const uA0 = (arcStart + startShifts[edge.i0]!) * uvScale * uvTransform.uSign + uvTransform.uOffset;
+    const uB0 = (arcEnd + endShifts[edge.i0]!) * uvScale * uvTransform.uSign + uvTransform.uOffset;
+    const uB1 = (arcEnd + endShifts[edge.i1]!) * uvScale * uvTransform.uSign + uvTransform.uOffset;
+    const uA1 = (arcStart + startShifts[edge.i1]!) * uvScale * uvTransform.uSign + uvTransform.uOffset;
+    const v0 = edge.arc0 * uvScale * uvTransform.vSign + uvTransform.vOffset;
+    const v1 = edge.arc1 * uvScale * uvTransform.vSign + uvTransform.vOffset;
+    if (uvTransform.texAxis === 'u') {
+      acc.uvs.push(uA0, v0, uB0, v0, uB1, v1, uA1, v1);
+    } else {
+      acc.uvs.push(v0, uA0, v0, uB0, v1, uB1, v1, uA1);
+    }
 
     emitOrientedTri(acc, base, base + 1, base + 2, faceNormal);
     emitOrientedTri(acc, base, base + 2, base + 3, faceNormal);
@@ -1544,7 +1576,8 @@ function emitPlanarProfileCap(
   capTriangles: readonly (readonly [number, number, number])[],
   ring: readonly THREE.Vector3[],
   outwardNormal: THREE.Vector3,
-  uvScale: number
+  uvScale: number,
+  uvTransform: SkirtingUvTransform = IDENTITY_SKIRTING_UV
 ): void {
   const n = outwardNormal.clone().normalize();
   const base = acc.positions.length / 3;
@@ -1553,7 +1586,8 @@ function emitPlanarProfileCap(
     const prof = profile[i]!;
     acc.positions.push(p.x, p.y, p.z);
     acc.normals.push(n.x, n.y, n.z);
-    acc.uvs.push(prof.u * uvScale, prof.v * uvScale);
+    const [cu, cv] = mapSkirtingUvPair(prof.u * uvScale, prof.v * uvScale, uvTransform);
+    acc.uvs.push(cu, cv);
   }
   for (const [a, b, c] of capTriangles) {
     emitOrientedTri(acc, base + a, base + b, base + c, n);
@@ -1577,7 +1611,8 @@ function emitScribedStepPieceIntoAccumulator(
   profile: readonly SkirtingProfilePoint[],
   includeHiddenFaces: boolean,
   maxMiterRatio: number,
-  uvScale: number
+  uvScale: number,
+  uvTransform: SkirtingUvTransform = IDENTITY_SKIRTING_UV
 ): void {
   const seg = piece.seg;
   const scribed = seg.scribedSteps!;
@@ -1685,7 +1720,8 @@ function emitScribedStepPieceIntoAccumulator(
     piece.arcStart,
     piece.arcEnd,
     includeHiddenFaces,
-    uvScale
+    uvScale,
+    uvTransform
   );
 
   if (piece.startCap === 'butt') {
@@ -1695,7 +1731,8 @@ function emitScribedStepPieceIntoAccumulator(
       upperInfo.capTriangles,
       startRing,
       hVec.clone().negate(),
-      uvScale
+      uvScale,
+      uvTransform
     );
   }
   if (piece.endCap === 'butt') {
@@ -1705,7 +1742,8 @@ function emitScribedStepPieceIntoAccumulator(
       upperInfo.capTriangles,
       endRing,
       hVec,
-      uvScale
+      uvScale,
+      uvTransform
     );
   }
 
@@ -1820,10 +1858,10 @@ function emitScribedStepPieceIntoAccumulator(
       fTopB,
       fTopA,
       uVec,
-      [sFrontA * uvScale, yBotA * uvScale],
-      [sFrontB * uvScale, yBotB * uvScale],
-      [sFrontB * uvScale, yTopFrontB * uvScale],
-      [sFrontA * uvScale, yTopFrontA * uvScale]
+      mapSkirtingUvPair(sFrontA * uvScale, yBotA * uvScale, uvTransform),
+      mapSkirtingUvPair(sFrontB * uvScale, yBotB * uvScale, uvTransform),
+      mapSkirtingUvPair(sFrontB * uvScale, yTopFrontB * uvScale, uvTransform),
+      mapSkirtingUvPair(sFrontA * uvScale, yTopFrontA * uvScale, uvTransform)
     );
 
     if (includeHiddenFaces) {
@@ -1926,7 +1964,8 @@ function emitPieceIntoAccumulator(
   profileInfo: ReturnType<typeof prepareProfileEdges>,
   includeHiddenFaces: boolean,
   maxMiterRatio: number,
-  uvScale: number
+  uvScale: number,
+  uvTransform: SkirtingUvTransform = IDENTITY_SKIRTING_UV
 ): void {
   if (piece.seg.scribedSteps) {
     emitScribedStepPieceIntoAccumulator(
@@ -1935,7 +1974,8 @@ function emitPieceIntoAccumulator(
       profile,
       includeHiddenFaces,
       maxMiterRatio,
-      uvScale
+      uvScale,
+      uvTransform
     );
     return;
   }
@@ -2039,7 +2079,8 @@ function emitPieceIntoAccumulator(
     piece.arcStart,
     piece.arcEnd,
     includeHiddenFaces,
-    uvScale
+    uvScale,
+    uvTransform
   );
 
   if (piece.startCap === 'butt') {
@@ -2049,11 +2090,12 @@ function emitPieceIntoAccumulator(
       profileInfo.capTriangles,
       startRing,
       tVec.clone().negate(),
-      uvScale
+      uvScale,
+      uvTransform
     );
   } else if (piece.startCap === 'miter') {
     const miterOut = new THREE.Vector3().subVectors(uVec, tVec).normalize();
-    emitPlanarProfileCap(acc, profile, profileInfo.capTriangles, startRing, miterOut, uvScale);
+    emitPlanarProfileCap(acc, profile, profileInfo.capTriangles, startRing, miterOut, uvScale, uvTransform);
   } else if (piece.startCap === 'selfReturn') {
     const wallReturnRing = profile.map((pt) => {
       const shift = Math.max(
@@ -2412,6 +2454,28 @@ export function sweepMouldingProfileRun(options: SweepMouldingProfileRunOptions)
     cutawayToleranceM,
   });
 
+  const texAxis = resolveMaterialTextureGrainAxis(options.material);
+  const segUvTransforms: SkirtingUvTransform[] = [];
+  let activeBoardTransform: SkirtingUvTransform | null = null;
+  for (let i = 0; i < pathData.segments.length; i++) {
+    const seg = pathData.segments[i]!;
+    const prevSmooth = i > 0 && pieces.some((p) => p.segIndex === i && p.startJoint?.smooth);
+    if (!activeBoardTransform || !prevSmooth) {
+      const slice = sampleTimberSliceTransform([
+        options.baseName,
+        seg.from[0],
+        seg.from[1],
+        seg.from[2],
+        seg.to[0],
+        seg.to[1],
+        seg.to[2],
+        i,
+      ]);
+      activeBoardTransform = { ...slice, texAxis };
+    }
+    segUvTransforms.push(activeBoardTransform);
+  }
+
   const interiorAcc = createMeshAccumulator();
   const cutawayAccMap = new Map<
     string,
@@ -2439,7 +2503,8 @@ export function sweepMouldingProfileRun(options: SweepMouldingProfileRunOptions)
       profileInfo,
       includeHiddenFaces,
       maxMiterRatio,
-      uvScale
+      uvScale,
+      segUvTransforms[piece.segIndex] ?? IDENTITY_SKIRTING_UV
     );
   }
 

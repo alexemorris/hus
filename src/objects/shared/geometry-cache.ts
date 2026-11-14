@@ -24,6 +24,7 @@ export function sharedBoxGeometry(
   let geo = boxCache.get(key);
   if (!geo) {
     geo = new THREE.BoxGeometry(...args);
+    geo.userData.isSharedPrimitive = true;
     geo.computeBoundingSphere();
     boxCache.set(key, geo);
   }
@@ -37,6 +38,7 @@ export function sharedCylinderGeometry(
   let geo = cylinderCache.get(key);
   if (!geo) {
     geo = new THREE.CylinderGeometry(...args);
+    geo.userData.isSharedPrimitive = true;
     geo.computeBoundingSphere();
     cylinderCache.set(key, geo);
   }
@@ -50,6 +52,7 @@ export function sharedSphereGeometry(
   let geo = sphereCache.get(key);
   if (!geo) {
     geo = new THREE.SphereGeometry(...args);
+    geo.userData.isSharedPrimitive = true;
     geo.computeBoundingSphere();
     sphereCache.set(key, geo);
   }
@@ -63,6 +66,7 @@ export function sharedTorusGeometry(
   let geo = torusCache.get(key);
   if (!geo) {
     geo = new THREE.TorusGeometry(...args);
+    geo.userData.isSharedPrimitive = true;
     geo.computeBoundingSphere();
     torusCache.set(key, geo);
   }
@@ -76,6 +80,7 @@ export function sharedCircleGeometry(
   let geo = circleCache.get(key);
   if (!geo) {
     geo = new THREE.CircleGeometry(...args);
+    geo.userData.isSharedPrimitive = true;
     geo.computeBoundingSphere();
     circleCache.set(key, geo);
   }
