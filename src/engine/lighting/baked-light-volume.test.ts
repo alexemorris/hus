@@ -13,6 +13,7 @@ import {
   type BakedRoomVolumeBounds,
 } from './baked-light-volume.ts';
 import { CircuitLightingController } from './circuit-lighting.ts';
+import { FittingEffects } from './fitting-fx.ts';
 import { SHARED_CLOUD_GOBO_TEXTURE } from './shader-light-culling.ts';
 import { POINT_LIGHT_BUDGET_WEIGHT_KEY } from '../rendering/scene-batch-optimizer.ts';
 import type { CircuitFixtureAppearance } from '../viewer/property-scene-profile.ts';
@@ -409,5 +410,59 @@ describe('BakedLightVolumeController', () => {
     // Turning all lights off clears clustered activity flag (.w = 0)
     updateClusteredPointLightGrid([], true);
     expect(SHARED_POINT_LIGHT_ACTIVITY.w).toBe(0);
+  });
+
+  it('binds FittingEffects multi-fitting halo attributes as non-interleaved InstancedBufferAttribute for WebGPU instance stepMode', () => {
+    const root = new THREE.Group();
+    const bulbMat = new THREE.MeshStandardMaterial({
+      color: 0xfff4dc,
+      emissive: new THREE.Color(0xffad42),
+      emissiveIntensity: 2.0,
+    });
+    const bulbGeo = new THREE.SphereGeometry(0.03, 8, 8);
+    const positions = [
+      [-21.22, 2.876, 8.575],
+      [-19.08, 2.876, 8.575],
+      [-19.85, 4.405, 9.94],
+    ] as const;
+    for (let i = 0; i < positions.length; i++) {
+      const m = new THREE.Mesh(bulbGeo, bulbMat);
+      m.name = `bedroom4.lamp_${i}.bulb`;
+      m.position.set(positions[i]![0], positions[i]![1], positions[i]![2]);
+      root.add(m);
+    }
+    root.updateMatrixWorld(true);
+
+    const lightGroups = {
+      bedroom4Pendant: {
+        lights: [],
+        emissives: [bulbMat],
+        cones: [],
+        pools: [],
+        maxIntensity: 13.0,
+      },
+    } as unknown as LightGroupMap;
+    const fx = new FittingEffects({ lightGroups, sceneRoot: root });
+    void fx;
+
+    const haloSprite = root.children.find((c) => c.name === 'fx.halo.bedroom4Pendant') as
+      | (THREE.Sprite & { count?: number })
+      | undefined;
+    expect(haloSprite).toBeDefined();
+    expect(haloSprite?.count).toBe(3);
+
+    const mat = haloSprite?.material as unknown as {
+      positionNode?: {
+        attribute?: THREE.BufferAttribute & {
+          isInstancedBufferAttribute?: boolean;
+          isInterleavedBufferAttribute?: boolean;
+        };
+      };
+    };
+    const posAttr = mat.positionNode?.attribute;
+    expect(posAttr).toBeDefined();
+    expect(posAttr?.isInstancedBufferAttribute).toBe(true);
+    expect(posAttr?.isInterleavedBufferAttribute).not.toBe(true);
+    expect(posAttr?.count).toBe(3);
   });
 });

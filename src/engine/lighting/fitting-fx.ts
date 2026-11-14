@@ -136,11 +136,26 @@ function createHaloNodeMaterial(
   readonly material: PointsNodeMaterial;
   readonly intensityUniform: ReturnType<typeof uniform<number>>;
 } {
-  const aCenter = instancedBufferAttribute(new Float32Array(positions), 'vec3');
-  const aSize = instancedBufferAttribute(new Float32Array(sizes), 'float');
-  const aColor = instancedBufferAttribute(new Float32Array(colors), 'vec3');
-  const aDir = instancedBufferAttribute(new Float32Array(dirs), 'vec3');
-  const aCone = instancedBufferAttribute(new Float32Array(cones), 'float');
+  const aCenter = instancedBufferAttribute(
+    new THREE.InstancedBufferAttribute(new Float32Array(positions), 3),
+    'vec3'
+  );
+  const aSize = instancedBufferAttribute(
+    new THREE.InstancedBufferAttribute(new Float32Array(sizes), 1),
+    'float'
+  );
+  const aColor = instancedBufferAttribute(
+    new THREE.InstancedBufferAttribute(new Float32Array(colors), 3),
+    'vec3'
+  );
+  const aDir = instancedBufferAttribute(
+    new THREE.InstancedBufferAttribute(new Float32Array(dirs), 3),
+    'vec3'
+  );
+  const aCone = instancedBufferAttribute(
+    new THREE.InstancedBufferAttribute(new Float32Array(cones), 1),
+    'float'
+  );
   const uIntensity = uniform(0);
 
   const mvPos = modelViewMatrix.mul(vec4(aCenter, 1.0)).xyz;
