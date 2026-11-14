@@ -296,6 +296,7 @@ function resolveVisibilityContainer(mesh: THREE.Object3D, root: THREE.Object3D):
       Boolean(u?.isCutawayWall) ||
       u?.lodTier !== undefined ||
       u?.ufhZoneId !== undefined ||
+      Boolean(u?.isVariationOptionRoot) ||
       (cur.parent === root && !u?.isRoomContainer)
     ) {
       return cur;

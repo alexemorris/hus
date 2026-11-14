@@ -75,3 +75,15 @@ export { CircuitLightingController } from '../engine/lighting/circuit-lighting.t
 
 export { CameraRig } from '../engine/camera/camera-rig.ts';
 export { detectMobile, isRealBrowserMobile } from '../engine/perf/device-tier.ts';
+
+export {
+  RoomVariationController,
+  VariationRegistry,
+  createRoomVariationGroup,
+  type RoomVariationChangeListener,
+  type RoomVariationControllerOptions,
+  type RoomVariationGroup,
+  type RoomVariationGroupInput,
+  type RoomVariationOption,
+} from '../engine/variations/room-variation-controller.ts';
+export { findVariationOptionRoot, isVariationHiddenInHierarchy } from '../engine/util/object-utils.ts';

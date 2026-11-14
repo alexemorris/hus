@@ -761,6 +761,8 @@ export function createDefaultHouseRuntime<TSecurity extends SecurityOverlay3D = 
       isInteractiveScrubbing: () => scene.isInteractiveScrubbing(),
     },
 
+    variations: scene.variations,
+
     terrainSculpt: {
       isAvailable: () => scene.terrainSculpt.isAvailable(),
       getSnapshot: () => scene.terrainSculpt.getSnapshot(),

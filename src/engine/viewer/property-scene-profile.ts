@@ -1,3 +1,4 @@
+import type { RoomVariationGroup, RoomVariationGroupInput } from "../variations/room-variation-controller.ts";
 import type { RoomManifestEntry } from '../../core/types/twin-ux.ts';
 import * as THREE from 'three';
 import type {
@@ -239,6 +240,8 @@ export interface PropertySceneProfile<TSecurity extends SecurityOverlay3D = Secu
   readonly lodRegistrations: readonly RoomZoneLodRegistration[];
   /** Optional declarative room manifest carrying per-room finishes, paint swatches & renovation notes. */
   readonly roomManifest?: readonly RoomManifestEntry[];
+  /** Optional declarative room/design variations (or builder callback) for this property. */
+  readonly variations?: readonly (RoomVariationGroup | RoomVariationGroupInput)[] | ((ctx: SceneBuilderContext) => readonly (RoomVariationGroup | RoomVariationGroupInput)[]);
   /** Scene-graph naming rules used to classify this home's hierarchy into room LOD tiers. */
   readonly lodOptions?: RoomLodOptions;
   /** Home-specific static-geometry batching rules. */

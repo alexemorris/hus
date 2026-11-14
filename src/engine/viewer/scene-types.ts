@@ -1,3 +1,4 @@
+import type { RoomVariationGroup, RoomVariationGroupInput, VariationRegistry } from "../variations/room-variation-controller.ts";
 /**
  * three.js-dependent scene-building types (moved out of src/core so core stays
  * renderer-free). Pure data types live in core/types/scene.ts.
@@ -91,6 +92,10 @@ export interface SceneBuilderContext {
   readonly interactiveMeshes: THREE.Object3D[];
   readonly interactions: SceneInteractionManager;
   readonly lightGroups: LightGroupMap;
+  /** First-class registry for declarative room/design variation groups built in zone modules. */
+  readonly variations?: VariationRegistry;
+  /** Convenience helper equivalent to `ctx.variations.register(group)`. */
+  registerVariation?(group: RoomVariationGroup | RoomVariationGroupInput): RoomVariationGroup;
   addGlowPool(
     circuitId: CircuitId,
     x: number,
@@ -123,5 +128,6 @@ export interface SceneZoneModule {
   readonly zoneIds: readonly RoomZoneId[];
   readonly interiorBounds?: readonly RoomBoundingBox[];
   readonly cameraPresets?: readonly CameraPresetDefinition[];
+  readonly variations?: readonly (RoomVariationGroup | RoomVariationGroupInput)[];
   build(ctx: SceneBuilderContext): ZoneIndicatorMaterials;
 }

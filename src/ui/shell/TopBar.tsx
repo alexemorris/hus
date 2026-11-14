@@ -1,3 +1,4 @@
+import { TopBarVariationsButton } from './VariationsControl.tsx';
 import type { JSX } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import {
@@ -157,6 +158,7 @@ export function TopBar(): JSX.Element {
       </div>
 
       <div class="shell-topbar-right">
+        <TopBarVariationsButton />
         <label class="shell-viewas" title="Show the model as a particular trade sees it">
           <Icon name="eye" size={15} />
           <span class="shell-viewas-label">View as</span>

@@ -1,3 +1,4 @@
+import { isVariationHiddenInHierarchy } from "../util/object-utils.ts";
 import * as THREE from 'three';
 import { getFloorIdForSceneGroup } from '../viewer/scene-content.ts';
 import { getStaircaseWalkableSampler } from '../walkthrough/auto-elevation-composer.ts';
@@ -132,7 +133,7 @@ export class RoomLodController {
       fn(room.standardGroup);
       for (let i = 0; i < room.managedObjects.length; i++) {
         const item = room.managedObjects[i]!;
-        if (item.tier === 1) {
+        if (item.tier === 1 && !isVariationHiddenInHierarchy(item.object)) {
           fn(item.object);
         }
       }
@@ -211,7 +212,7 @@ export class RoomLodController {
     const room = this.rooms.get(zoneId);
     if (!room) return;
     object.userData = { ...object.userData, lodTier: tier, zoneId };
-    object.visible = room.currentTier >= tier;
+    object.visible = object.userData?.variationHidden === true ? false : room.currentTier >= tier;
     room.managedObjects.push({ object, tier });
     if (tier === 2) {
       RoomLodController.disableShadowCasting(object);
@@ -292,8 +293,8 @@ export class RoomLodController {
   public clearRuntimeDistanceObjects(): void {
     for (let i = 0; i < this.runtimeDistanceItems.length; i++) {
       const item = this.runtimeDistanceItems[i]!;
-      item.object.visible = true;
-      item.visible = true;
+      item.object.visible = item.object.userData?.variationHidden === true ? false : true;
+      item.visible = item.object.visible;
     }
     this.runtimeDistanceItems.length = 0;
   }
@@ -325,7 +326,7 @@ export class RoomLodController {
     const deep = Boolean(options?.deepBatchClassification);
     for (const room of this.rooms.values()) {
       for (const item of room.managedObjects) {
-        item.object.visible = true;
+        item.object.visible = item.object.userData?.variationHidden === true ? false : true;
       }
       room.shellGroup.visible = true;
       room.standardGroup.visible = true;
@@ -380,13 +381,18 @@ export class RoomLodController {
     deep = false
   ): void {
     // Skip lights, cameras, and helper planes, as well as state-toggled hidden subtrees (e.g. extended dining table seats)
-    if (obj instanceof THREE.Light || obj instanceof THREE.Camera || !obj.visible || obj.userData?.lodIgnore) {
+    if (
+      obj instanceof THREE.Light ||
+      obj instanceof THREE.Camera ||
+      (!obj.visible && obj.userData?.variationHidden !== true) ||
+      obj.userData?.lodIgnore
+    ) {
       return;
     }
 
-    // Transparently unwrap hierarchical Wing / Room / Wall-Frame container groups
+    // Transparently unwrap hierarchical Wing / Room / Wall-Frame / Variation Option container groups
     // so their child meshes and furniture groups are classified identically to top-level scene children.
-    if (obj.userData?.isRoomContainer) {
+    if (obj.userData?.isRoomContainer || (obj instanceof THREE.Group && obj.userData?.isVariationOptionRoot === true)) {
       for (const sub of obj.children) {
         this.classifySceneBranch(sub, box, size, center, floorFilter, deep);
       }
@@ -428,7 +434,7 @@ export class RoomLodController {
       if ((!deep || !this.containsCriticalInteractive(obj, true)) && (explicitTier === 1 || explicitTier === 2)) {
         const room = this.rooms.get(explicitZone);
         if (room) {
-          if (deep) obj.visible = room.currentTier >= explicitTier;
+          if (deep) obj.visible = obj.userData?.variationHidden === true ? false : room.currentTier >= explicitTier;
           room.managedObjects.push({ object: obj, tier: explicitTier });
           if (explicitTier === 2) {
             RoomLodController.disableShadowCasting(obj);
@@ -835,8 +841,9 @@ export class RoomLodController {
             // Runtime items are permanently non-shadow-casting: never dirties shadows.
             anyChanged = true;
           }
-          item.visible = wantVisible;
-          item.object.visible = wantVisible;
+          const effectiveVisible = item.object.userData?.variationHidden === true ? false : wantVisible;
+          item.visible = effectiveVisible;
+          item.object.visible = effectiveVisible;
         }
       }
     }
@@ -891,7 +898,7 @@ export class RoomLodController {
     room.heroGroup.visible = tier >= 2;
 
     for (const item of room.managedObjects) {
-      item.object.visible = tier >= item.tier;
+      item.object.visible = item.object.userData?.variationHidden === true ? false : tier >= item.tier;
     }
   }
 

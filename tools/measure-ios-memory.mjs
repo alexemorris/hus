@@ -9,7 +9,7 @@
  *
  * Usage:
  *   node tools/measure-ios-memory.mjs --all-examples
- *   node tools/measure-ios-memory.mjs --house /path/to/crox-farmhouse/index.ts
+ *   node tools/measure-ios-memory.mjs --house /path/to/my-house/index.ts
  *   node tools/measure-ios-memory.mjs --all-examples --json
  */
 

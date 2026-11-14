@@ -15,3 +15,12 @@ export type * from '../core/types/twin-api.ts';
 
 export { AssetInspectorPopover } from '../ui/shell/AssetInspectorPopover.tsx';
 export { assetInspectMode, inspectedAssetSnapshot } from '../state/asset-inspector-store.ts';
+
+export * from '../core/types/variations.ts';
+export * from '../core/variations-url.ts';
+export {
+  FloatingRoomVariationHud,
+  RoomVariationsSection,
+  TopBarVariationsButton,
+  VariationsPopover,
+} from '../ui/shell/VariationsControl.tsx';

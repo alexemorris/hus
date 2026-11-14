@@ -1,3 +1,4 @@
+import { RoomVariationController } from "../variations/room-variation-controller.ts";
 import * as THREE from 'three';
 import type {
   AcousticPortalState,
@@ -81,6 +82,7 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
   public readonly input: PointerInput;
   public readonly terrainSculpt: TerrainSculptController;
   public readonly assetInspector: AssetInspectorController;
+  public readonly variations: RoomVariationController;
   public readonly graphics: GraphicsService;
 
   private readonly canvas: HTMLCanvasElement;
@@ -365,8 +367,23 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
     this.environment.weather.indexExteriorMaterials(scene);
     this.syncSceneTimeOfDayIfChanged(this.environment.getTimeOfDay());
     batches.optimize();
+    this.variations = new RoomVariationController({
+      groups: content.variations,
+      onAfterVariationChange: () => {
+        this.staticScene.batchOptimizer.refreshManagedLights();
+        this.staticScene.batchOptimizer.stepFades(0);
+        this.cutaways.collectDynamicCutawayWalls();
+        this.cutaways.invalidateLodCache();
+        this.walkthrough.invalidateObstacleCache();
+        this.refreshView(true);
+        renderer.invalidateShadows();
+        renderer.requestRender();
+      },
+    });
     const budgetAnchorZone = profile.lodRegistrations.find((r) => r.isInterior !== false)?.zoneId;
     if (budgetAnchorZone) batches.setBudgetAnchorZone(budgetAnchorZone);
+    this.staticScene.batchOptimizer.refreshManagedLights();
+    this.staticScene.batchOptimizer.stepFades(0);
     this.refreshView(true);
     this.staticScene.freezeStaticMatrices();
     this.terrainSculpt = new TerrainSculptController({

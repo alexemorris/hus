@@ -1,3 +1,4 @@
+import { FloatingRoomVariationHud, VariationsPopover } from './VariationsControl.tsx';
 import type { ComponentType, JSX } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import {
@@ -97,6 +98,8 @@ export function HusShell({ ctl, annotator, devDrawer: DevDrawer }: HusShellProps
   return (
     <ShellContext.Provider value={ctl}>
       <TopBar />
+      <VariationsPopover />
+      <FloatingRoomVariationHud />
       <SkyWeatherHud />
       <MobileScrim />
       <RoomNavigator />

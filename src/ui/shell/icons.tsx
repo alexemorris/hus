@@ -48,7 +48,8 @@ export type IconName =
   | 'sculpt'
   | 'inspect'
   | 'external'
-  | 'palette';
+  | 'palette'
+  | 'layers';
 
 const PATHS: Readonly<Record<IconName, readonly string[]>> = {
   cube: ['M12 2 3 7v10l9 5 9-5V7z', 'M3 7l9 5 9-5', 'M12 12v10'],
@@ -137,6 +138,11 @@ const PATHS: Readonly<Record<IconName, readonly string[]>> = {
     'M10.5 7.5h.01',
     'M14.5 7.5h.01',
     'M16.5 11.5h.01',
+  ],
+  layers: [
+    'M12 2L2 7l10 5 10-5-10-5z',
+    'M2 17l10 5 10-5',
+    'M2 12l10 5 10-5',
   ],
   sculpt: [
     'M3 19l5.5-8.5 4 5.5 3.5-4.5L21 19H3z',

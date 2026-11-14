@@ -1,3 +1,4 @@
+import type { RoomVariationGroup, RoomVariationGroupInput } from "../engine/variations/room-variation-controller.ts";
 import { createDefaultHouseRuntime } from './default-runtime.ts';
 import { getLoadingScreen } from '../ui/shell/loading.ts';
 import { CircuitBus, type ElectricalSystemOptions } from '../core/electrical/index.ts';
@@ -94,6 +95,8 @@ export interface HouseRoomsConfig {
 
 export interface HouseZonesConfig<TSecurity extends SecurityOverlay3D = SecurityOverlay3D> {
   readonly modules?: readonly SceneZoneModule[];
+  /** Optional declarative room/design variation groups (or builder callback receiving `SceneBuilderContext`). */
+  readonly variations?: readonly (RoomVariationGroup | RoomVariationGroupInput)[] | ((ctx: SceneBuilderContext) => readonly (RoomVariationGroup | RoomVariationGroupInput)[]);
   createZoneRegistry?: () => SceneZoneRegistry;
   readonly lodRegistrations?: readonly RoomZoneLodRegistration[];
   readonly lodOptions?: RoomLodOptions;
@@ -157,6 +160,8 @@ export interface HouseDefinitionConfig<TSecurity extends SecurityOverlay3D = Sec
   readonly soundscape?: SoundscapeDescriptor;
   readonly rooms: HouseRoomsConfig;
   readonly zones: HouseZonesConfig<TSecurity>;
+  /** Optional top-level room/design variation groups (merged with `zones.variations` and `ctx.variations`). */
+  readonly variations?: readonly (RoomVariationGroup | RoomVariationGroupInput)[] | ((ctx: SceneBuilderContext) => readonly (RoomVariationGroup | RoomVariationGroupInput)[]);
   readonly portals?: HousePortalsConfig;
   readonly walkthrough?: HouseWalkthroughConfig;
   readonly cutsceneEntrySpawns?: Readonly<
@@ -352,6 +357,15 @@ export function defineHouse<TSecurity extends SecurityOverlay3D = SecurityOverla
       createZoneRegistry: createProfileZoneRegistry,
       lodRegistrations: profileLodRegistrations,
       roomManifest: config.rooms.manifest,
+      ...((config.zones.variations || config.variations)
+        ? {
+            variations: (ctx: SceneBuilderContext) => {
+              const fromZones = typeof config.zones.variations === "function" ? config.zones.variations(ctx) : (config.zones.variations ?? []);
+              const fromTop = typeof config.variations === "function" ? config.variations(ctx) : (config.variations ?? []);
+              return [...fromZones, ...fromTop];
+            },
+          }
+        : {}),
       ...(config.zones.lodOptions ? { lodOptions: config.zones.lodOptions } : {}),
       ...(config.zones.batchHooks ? { batchHooks: config.zones.batchHooks } : {}),
       ...(config.zones.cutawayOptions ? { cutawayOptions: config.zones.cutawayOptions } : {}),

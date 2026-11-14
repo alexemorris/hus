@@ -1,3 +1,4 @@
+import { isVariationHiddenInHierarchy } from "../util/object-utils.ts";
 /**
  * Auto-composed first-person walkthrough elevation & stairwell void solver.
  *
@@ -57,6 +58,7 @@ export interface IndexedStaircaseEntry {
 }
 
 interface WalkableTriangle {
+  readonly visibilityNode: THREE.Object3D;
   readonly ax: number;
   readonly az: number;
   readonly bx: number;
@@ -381,6 +383,7 @@ export function createAutoWalkthroughElevationComposer(
 
       const planeD = -(triNormal.x * vA.x + triNormal.y * vA.y + triNormal.z * vA.z);
       const tri: WalkableTriangle = {
+        visibilityNode: mesh,
         ax: vA.x,
         az: vA.z,
         bx: vB.x,
@@ -553,6 +556,7 @@ export function createAutoWalkthroughElevationComposer(
     if (floorElevationY <= lowestFloorY + 0.35) return false;
     for (let i = 0; i < indexedStairs.length; i++) {
       const stair = indexedStairs[i]!;
+      if (isVariationHiddenInHierarchy(stair.group)) continue;
       if (Math.abs(floorElevationY - stair.worldTopY) > 0.35) continue;
       if (x < stair.minX || x > stair.maxX || z < stair.minZ || z > stair.maxZ) continue;
       if (isStrictlyInsidePolygonXZ(x, z, stair.worldVoidXZ, 0.015)) {
@@ -633,6 +637,7 @@ export function createAutoWalkthroughElevationComposer(
     let bestSurfaceY: number | null = null;
     for (let i = 0; i < indexedStairs.length; i++) {
       const stair = indexedStairs[i]!;
+      if (isVariationHiddenInHierarchy(stair.group)) continue;
       if (x < stair.minX || x > stair.maxX || z < stair.minZ || z > stair.maxZ) continue;
       const stairY = stair.sampleWorldY(x, z);
       if (stairY === null) continue;
@@ -649,6 +654,7 @@ export function createAutoWalkthroughElevationComposer(
     if (bucket) {
       for (let i = 0; i < bucket.length; i++) {
         const tri = bucket[i]!;
+        if (isVariationHiddenInHierarchy(tri.visibilityNode)) continue;
         if (x < tri.minX || x > tri.maxX || z < tri.minZ || z > tri.maxZ) continue;
         if (!pointInTriangleXZ(x, z, tri)) continue;
         const surfY = -(tri.nx * x + tri.nz * z + tri.planeD) / tri.ny;

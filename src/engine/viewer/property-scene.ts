@@ -1,3 +1,5 @@
+import type { RoomVariationGroupInfo } from "../../core/types/variations.ts";
+import type { RoomVariationController, RoomVariationGroup, RoomVariationGroupInput } from "../variations/room-variation-controller.ts";
 import type * as THREE from 'three';
 import type {
   AccessPointEntityState,
@@ -90,6 +92,13 @@ export class PropertyScene<
   public getLodPolicyMode(): LodPolicyMode { return this.rooms.getLodPolicyMode(); }
   public setLodPolicyMode(mode: LodPolicyMode): void { this.rooms.setLodPolicyMode(mode); }
   public getZoneRegistry(): SceneZoneRegistry { return this.zoneRegistry; }
+  public getVariations(): RoomVariationController { return this.variations; }
+  public getVariationGroups(): readonly RoomVariationGroupInfo[] { return this.variations.list(); }
+  public selectVariationOption(groupId: string, optionId: string): boolean { return this.variations.selectOption(groupId, optionId); }
+  public cycleVariationOption(groupId: string, delta: -1 | 1 = 1): string | undefined { return this.variations.cycleOption(groupId, delta); }
+  public resetVariations(): boolean { return this.variations.resetDefaults(); }
+  public registerVariationGroup(group: RoomVariationGroup | RoomVariationGroupInput): RoomVariationGroup { return this.variations.registerGroup(group); }
+  public onVariationsChanged(cb: (groups: readonly RoomVariationGroupInfo[]) => void): Unsubscribe { return this.variations.onChanged(cb); }
   public getLodController(): RoomLodController { return this.lodController; }
   public getLodDiagnostics(): RoomLodDiagnostics { return this.lodController.getDiagnostics(); }
   public getFocusedRoomShortName(): string { return this.lodController.getFocusedRoomShortName(); }

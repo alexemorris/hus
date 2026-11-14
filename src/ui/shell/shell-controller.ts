@@ -28,6 +28,8 @@ import {
   navigatorOpen,
   roomPanelOpen,
   roomSheetSnap,
+  roomVariations,
+  variationsPopoverOpen,
   touchNavMode,
   type TouchNavMode,
   sectionCut,
@@ -150,6 +152,8 @@ export class ShellController {
       }
       assetInspectMode.value = api.assets?.isInspectMode() ?? false;
       inspectedAssetSnapshot.value = api.assets?.getInspected() ?? null;
+      roomVariations.value = api.variations?.list() ?? [];
+      if (roomVariations.value.length === 0) variationsPopoverOpen.value = false;
     });
     this.refreshGraphicsReadout();
 
@@ -194,6 +198,11 @@ export class ShellController {
 
     api.terrainSculpt?.onChanged((snap) => {
       terrainSculptSnapshot.value = snap;
+    });
+
+    api.variations?.onChanged((groups) => {
+      roomVariations.value = groups;
+      if (groups.length === 0) variationsPopoverOpen.value = false;
     });
 
     api.assets?.onChanged((snap) => {
@@ -726,12 +735,53 @@ export class ShellController {
     });
   }
 
+  // Room / Design Variations
+
+  public selectVariationOption(groupId: string, optionId: string): void {
+    const changed = this.api.variations?.selectOption(groupId, optionId) ?? false;
+    if (this.api.variations) {
+      roomVariations.value = this.api.variations.list();
+    }
+    if (changed) {
+      const group = roomVariations.value.find((g) => g.id === groupId);
+      const opt = group?.options.find((o) => o.id === optionId);
+      if (group && opt) {
+        showToast(`${group.label}: ${opt.label}`, 2200);
+      }
+    }
+  }
+
+  public cycleVariationOption(groupId: string, delta: -1 | 1 = 1): void {
+    const nextId = this.api.variations?.cycleOption(groupId, delta);
+    if (this.api.variations) {
+      roomVariations.value = this.api.variations.list();
+    }
+    if (nextId) {
+      const group = roomVariations.value.find((g) => g.id === groupId);
+      const opt = group?.options.find((o) => o.id === nextId);
+      if (group && opt) {
+        showToast(`${group.label}: ${opt.label}`, 2200);
+      }
+    }
+  }
+
+  public resetVariationDefaults(): void {
+    const changed = this.api.variations?.resetDefaults() ?? false;
+    if (this.api.variations) {
+      roomVariations.value = this.api.variations.list();
+    }
+    if (changed) {
+      showToast('Reset room variations to defaults', 2200);
+    }
+  }
+
   // Sharing
 
   public captureShareState(guest = true): ShareViewState {
     const { api } = this;
     const pose = api.camera.getPose();
     const room = api.rooms.getCurrent() ?? currentRoomId.value;
+    const vars = api.variations?.getSelections(false);
     return {
       cam: pose.position,
       target: pose.target,
@@ -740,6 +790,7 @@ export class ShellController {
       ...(room ? { room } : {}),
       view: api.trades.getView(),
       guest,
+      ...(vars && Object.keys(vars).length > 0 ? { vars } : {}),
     };
   }
 
@@ -759,6 +810,10 @@ export class ShellController {
   public applyShareState(s: ShareViewState): void {
     const { api } = this;
     guestMode.value = s.guest;
+    if (s.vars && api.variations) {
+      api.variations.applySelections(s.vars);
+      roomVariations.value = api.variations.list();
+    }
     api.trades.setView(s.view);
     tradeView.value = api.trades.getView();
     const room = s.room && isRoomZoneId(s.room) ? s.room : null;

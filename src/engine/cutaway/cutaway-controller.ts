@@ -1,3 +1,4 @@
+import { isVariationHiddenInHierarchy } from "../util/object-utils.ts";
 import * as THREE from 'three';
 import type { RoomLodController } from '../lod/lod-manager.ts';
 import type {
@@ -195,7 +196,7 @@ export class CutawayController {
   private revealCutawayGeometryForShadowPass(): void {
     if (!this.shadowCastersIgnoreCutaway || this.shadowPassRevealed.length > 0) return;
     this.forEachCutawayManagedObject((obj) => {
-      if (!obj.visible) {
+      if (!obj.visible && !isVariationHiddenInHierarchy(obj)) {
         obj.visible = true;
         this.shadowPassRevealed.push(obj);
       }
@@ -630,12 +631,14 @@ export class CutawayController {
       const hasUpperFloorFilter = !cameraInsideHouse && viewedFloorIndex >= 0;
       if (!this.allDynamicWallsShown || hasUpperFloorFilter) {
         for (const item of this.dynamicCutawayWallItems) {
-          const desiredVis = !isHiddenUpperFloorCutawayItem(
-            item.descriptor,
-            floors,
-            viewedFloorIndex,
-            cameraInsideHouse
-          );
+          const desiredVis =
+            !isVariationHiddenInHierarchy(item.obj) &&
+            !isHiddenUpperFloorCutawayItem(
+              item.descriptor,
+              floors,
+              viewedFloorIndex,
+              cameraInsideHouse
+            );
           if (item.obj.visible !== desiredVis) {
             item.obj.visible = desiredVis;
             changed = true;
@@ -736,6 +739,13 @@ export class CutawayController {
     }
 
     for (const { obj, descriptor, offsetX, offsetZ, rotationY } of this.dynamicCutawayWallItems) {
+      if (isVariationHiddenInHierarchy(obj)) {
+        if (obj.visible) {
+          obj.visible = false;
+          changed = true;
+        }
+        continue;
+      }
       if (isHiddenUpperFloorCutawayItem(descriptor, floors, viewedFloorIndex, cameraInsideHouse)) {
         if (obj.visible) {
           obj.visible = false;
@@ -775,12 +785,12 @@ export class CutawayController {
 
   private ensureCeilingSubgroupsVisible(): void {
     for (const child of this.layers.ceilingMeshGroup.children) {
-      if (child.userData?.isRoomContainer && !child.visible) {
+      if (child.userData?.isRoomContainer && !child.visible && child.userData?.variationHidden !== true) {
         child.visible = true;
       }
     }
     for (const child of this.layers.groundFloorCeilingGroup.children) {
-      if (child.userData?.isRoomContainer && !child.visible) {
+      if (child.userData?.isRoomContainer && !child.visible && child.userData?.variationHidden !== true) {
         child.visible = true;
       }
     }
@@ -788,7 +798,7 @@ export class CutawayController {
       for (const entry of this.layers.floorLayers) {
         if (entry.ceilingGroup === this.layers.groundFloorCeilingGroup) continue;
         for (const child of entry.ceilingGroup.children) {
-          if (child.userData?.isRoomContainer && !child.visible) {
+          if (child.userData?.isRoomContainer && !child.visible && child.userData?.variationHidden !== true) {
             child.visible = true;
           }
         }

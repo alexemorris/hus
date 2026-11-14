@@ -1,3 +1,4 @@
+import { isObjectVisibleInHierarchy } from "../../util/object-utils.ts";
 import type * as THREE from 'three';
 import {
   getClosedDoorwayGeometry,
@@ -124,7 +125,7 @@ export function bargeOpenWalkthroughDoor(
 ): boolean {
   if (!ctx.isWalkthroughDoor(id)) return false;
   const door = ctx.doors.get(id);
-  if (!door) return false;
+  if (!door || !isObjectVisibleInHierarchy(door.pivot)) return false;
 
   const lastCloseMs = ctx.getLastManualCloseMs(id);
   if (lastCloseMs > 0 && performance.now() - lastCloseMs < MANUAL_CLOSE_BARGE_COOLDOWN_MS) {
@@ -209,6 +210,7 @@ export function bargeNearbyWalkthroughDoors(
 
   for (const [id, door] of ctx.doors.entries()) {
     if (door.isOpen || door.axis !== 'y' || door.isWalkthroughCandidate === false) continue;
+    if (!isObjectVisibleInHierarchy(door.pivot)) continue;
     const geom = door.closedGeometry ?? getClosedDoorwayGeometry(door, ctx.tmpHingeWorld);
     const dx = footX - geom.centerX;
     const dz = footZ - geom.centerZ;

@@ -1,3 +1,4 @@
+import { RoomVariationsSection } from './VariationsControl.tsx';
 import type { JSX } from 'preact';
 import { useRef } from 'preact/hooks';
 import {
@@ -52,6 +53,7 @@ function RoomSections({ entry, sections }: { readonly entry: RoomManifestEntry; 
 
   return (
     <>
+      <RoomVariationsSection roomId={entry.zoneId} />
       {sections.lights && zone && <LightingSection zone={zone} levels={levels} showScenes={sections.scenes} />}
 
       {sections.lights && !zone && entry.lights.length > 0 && (
@@ -293,9 +295,12 @@ export function RoomPanel(): JSX.Element {
         {entry ? (
           <RoomSections entry={entry} sections={sections} />
         ) : (
-          <p class="shell-empty shell-empty-lg">
-            Pick a room from the list, or double-click inside the model, to see its lights, heating and notes.
-          </p>
+          <>
+            <RoomVariationsSection roomId={null} />
+            <p class="shell-empty shell-empty-lg">
+              Pick a room from the list, or double-click inside the model, to see its lights, heating and notes.
+            </p>
+          </>
         )}
         <NotesSection roomId={entry?.zoneId ?? null} />
         <WholeHouse sections={sections} />

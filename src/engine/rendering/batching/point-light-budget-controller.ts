@@ -1,3 +1,4 @@
+import { findVariationOptionRoot, isObjectVisibleInHierarchy } from "../../util/object-utils.ts";
 import * as THREE from 'three';
 import {
   type ClusterPointLightInput,
@@ -30,6 +31,7 @@ export interface ManagedPointLightEntry {
   readonly isFirstFloor: boolean;
   readonly isStandalone: boolean;
   readonly baseIntensity: number;
+  readonly variationRoot?: THREE.Object3D | null;
 }
 
 /** World-space anchor (or room id) used to pick which point lights stay inside the light budget. */
@@ -141,6 +143,9 @@ export class PointLightBudgetController {
    * or `baseIntensity × time-of-day scale` for standalone lights. Never depends on the camera.
    */
   private getManagedLightTargetIntensity(entry: ManagedPointLightEntry): number {
+    if (entry.variationRoot && !isObjectVisibleInHierarchy(entry.variationRoot)) {
+      return 0;
+    }
     if (entry.isStandalone) {
       return entry.baseIntensity * this.getStandaloneLightTodScale();
     }
@@ -384,6 +389,15 @@ export class PointLightBudgetController {
     setAnyPointLightsActive(anyCarrierLit);
     this.syncClusteredPointLightGrid();
     return changed;
+  }
+
+  public refreshManagedLights(): boolean {
+    this.recomputeBudgetTargets();
+    if (this.carrierPoolEnabled) {
+      this.carrierAssignmentDirty = true;
+      this.updateCarrierPoolAssignment(true);
+    }
+    return this.applyManagedLightIntensities();
   }
 
   public applyManagedLightIntensities(): boolean {
@@ -833,6 +847,7 @@ export class PointLightBudgetController {
         readonly worldPos: THREE.Vector3;
         readonly is1F: boolean;
         readonly hoist: boolean;
+        readonly variationRoot: THREE.Object3D | null;
       }>
     >();
 
@@ -847,6 +862,7 @@ export class PointLightBudgetController {
         originalDistance: light.distance,
       });
 
+      const variationRoot = findVariationOptionRoot(light);
       const worldPos = new THREE.Vector3();
       light.getWorldPosition(worldPos);
       const is1F = isInsideFirstFloor(light);
@@ -869,6 +885,7 @@ export class PointLightBudgetController {
           isFirstFloor: is1F,
           isStandalone: false,
           baseIntensity: light.intensity,
+          variationRoot,
         });
         continue;
       }
@@ -880,13 +897,13 @@ export class PointLightBudgetController {
       }
 
       // Group overlapping standalone PointLights into fine sub-zone clusters (~3.4m x 3.4m cells)
-      const clusterKey = `${is1F ? '1F' : 'GF'}:${Math.floor(worldPos.x / 3.4)}:${Math.floor(worldPos.z / 3.4)}`;
+      const clusterKey = `${is1F ? '1F' : 'GF'}:${variationRoot?.uuid ?? ''}:${Math.floor(worldPos.x / 3.4)}:${Math.floor(worldPos.z / 3.4)}`;
       let list = standaloneClusters.get(clusterKey);
       if (!list) {
         list = [];
         standaloneClusters.set(clusterKey, list);
       }
-      list.push({ light, worldPos, is1F, hoist });
+      list.push({ light, worldPos, is1F, hoist, variationRoot });
     }
 
     for (const list of standaloneClusters.values()) {
@@ -935,6 +952,7 @@ export class PointLightBudgetController {
         isFirstFloor: primary.is1F,
         isStandalone: true,
         baseIntensity: rawBaseIntensity,
+        variationRoot: primary.variationRoot,
       });
     }
 

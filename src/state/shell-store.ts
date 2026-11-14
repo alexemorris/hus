@@ -1,3 +1,4 @@
+import type { RoomVariationGroupInfo } from "../core/types/variations.ts";
 import { computed, signal, type ReadonlySignal, type Signal } from '@preact/signals';
 import type { CircuitLevels } from '../core/types/knx.ts';
 import type { FloorViewMode, TimeOfDay } from '../core/types/scene.ts';
@@ -111,6 +112,8 @@ export const helpStep: Signal<number> = signal(0);
 export const devDrawerOpen: Signal<boolean> = signal(false);
 export const devTab: Signal<DevTab> = signal<DevTab>('smart-home');
 export const skyHudPopover: Signal<SkyHudPopover> = signal<SkyHudPopover>('none');
+export const variationsPopoverOpen: Signal<boolean> = signal<boolean>(false);
+export const roomVariations: Signal<readonly RoomVariationGroupInfo[]> = signal<readonly RoomVariationGroupInfo[]>([]);
 export const skyWeatherSnapshot: Signal<SkyWeatherSnapshot | null> = signal<SkyWeatherSnapshot | null>(null);
 export const cameraCompassBearingDeg: Signal<number> = signal<number>(DEFAULT_HUS_PLUS_X_BEARING_DEG);
 
@@ -160,6 +163,10 @@ if (typeof window !== 'undefined') {
 
 /** Closes the top-most overlay. Returns true if something was closed. */
 export function closeTopOverlay(): boolean {
+  if (variationsPopoverOpen.value) {
+    variationsPopoverOpen.value = false;
+    return true;
+  }
   if (skyHudPopover.value !== 'none') {
     skyHudPopover.value = 'none';
     return true;

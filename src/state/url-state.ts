@@ -1,3 +1,15 @@
+import {
+  applyVariationsToUrl,
+  isSafeVariationId,
+} from '../core/variations-url.ts';
+export {
+  VARIATION_PARAM_PREFIX,
+  VARIATIONS_QUERY_PARAM,
+  applyVariationsToUrl,
+  formatVariationSearchParam,
+  isSafeVariationId,
+  parseVariationSearchParams,
+} from "../core/variations-url.ts";
 import type { FloorViewMode } from '../core/types/scene.ts';
 import type { RoomZoneId } from '../core/types/topology.ts';
 import type { ShareViewState, TradeView } from '../core/types/twin-ux.ts';
@@ -65,6 +77,7 @@ interface CompactShareState {
   readonly r?: string;
   readonly w: number;
   readonly g: number;
+  readonly vr?: Readonly<Record<string, string>>;
 }
 
 function round2(n: number): number {
@@ -143,6 +156,7 @@ export function encodeShareState(s: ShareViewState, options?: ShareStateCodecOpt
     ...(isAcceptedRoom(s.room, opts) ? { r: s.room } : {}),
     w: Math.max(0, TRADE_VIEWS.indexOf(s.view)),
     g: s.guest ? 1 : 0,
+    ...(s.vars && Object.keys(s.vars).length > 0 ? { vr: s.vars } : {}),
   };
   return toBase64Url(JSON.stringify(compact));
 }
@@ -170,6 +184,16 @@ export function decodeShareState(
   const viewIdx = typeof parsed.w === 'number' ? parsed.w : 0;
   const view = TRADE_VIEWS[viewIdx] ?? 'owner';
   const room = isAcceptedRoom(parsed.r, opts) ? parsed.r : undefined;
+  let vars: Record<string, string> | undefined;
+  if (isRecord(parsed.vr)) {
+    const cleanVars: Record<string, string> = {};
+    for (const [k, v] of Object.entries(parsed.vr)) {
+      if (isSafeVariationId(k) && isSafeVariationId(v)) {
+        cleanVars[k] = v;
+      }
+    }
+    if (Object.keys(cleanVars).length > 0) vars = cleanVars;
+  }
 
   return {
     cam,
@@ -179,6 +203,7 @@ export function decodeShareState(
     ...(room ? { room } : {}),
     view,
     guest: parsed.g !== 0,
+    ...(vars ? { vars } : {}),
   };
 }
 
@@ -194,7 +219,7 @@ export function buildShareUrl(
   url.searchParams.delete('dev');
   url.searchParams.delete('knxWs');
   url.searchParams.set(SHARE_URL_PARAM, encodeShareState(s, options));
-  return url.toString();
+  return applyVariationsToUrl(url.toString(), s.vars ?? {});
 }
 
 /** Reads `?v=` from the current location (or the given search string). */

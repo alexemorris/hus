@@ -1,3 +1,4 @@
+import { applyVariationsToUrl, parseVariationSearchParams } from './url-state.ts';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { ShareViewState } from '../core/types/twin-ux.ts';
 import {
@@ -159,5 +160,40 @@ describe('share-link codec', () => {
     expect(url.searchParams.get('keep')).toBe('1');
     expect(url.searchParams.has(SHARE_URL_PARAM)).toBe(true);
     expect(readShareStateFromLocation(url.search)).toEqual(SAMPLE);
+  });
+});
+
+describe('url-state room variation selections', () => {
+  it('preserves room variation selections in ShareViewState and ?vars= / ?var.<id>= URLs', () => {
+    expect(parseVariationSearchParams('?vars=east-wall:cupboards&var.island=oak')).toEqual({
+      'east-wall': 'cupboards',
+      island: 'oak',
+    });
+    const encoded = encodeShareState({
+      cam: [1, 2, 3],
+      target: [0, 1, 0],
+      floor: 'first',
+      ortho: false,
+      room: 'studio',
+      view: 'architect',
+      guest: true,
+      vars: { 'east-wall': 'cupboards' },
+    });
+    expect(decodeShareState(encoded)?.vars).toEqual({ 'east-wall': 'cupboards' });
+    const shareHref = buildShareUrl(
+      {
+        cam: [1, 2, 3],
+        target: [0, 1, 0],
+        floor: 'first',
+        ortho: false,
+        view: 'owner',
+        guest: true,
+        vars: { 'east-wall': 'cupboards' },
+      },
+      'https://example.com/?dev=1'
+    );
+    expect(shareHref).toContain('vars=east-wall%3Acupboards');
+    expect(shareHref).not.toContain('dev=1');
+    expect(applyVariationsToUrl(shareHref, {})).not.toContain('vars=');
   });
 });

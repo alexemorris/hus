@@ -442,6 +442,7 @@ export class BatchRestorationStore {
         node !== scene &&
         !topContainers.has(node as THREE.Group) &&
         !protectedObjects.has(node) &&
+        node.userData?.isVariationOptionRoot !== true &&
         node.visible
       ) {
         node.userData.__prunedEmptyBatchGroup = true;

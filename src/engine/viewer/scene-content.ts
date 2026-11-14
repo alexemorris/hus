@@ -1,3 +1,4 @@
+import { VariationRegistry, type RoomVariationGroup } from "../variations/room-variation-controller.ts";
 import * as THREE from 'three';
 import { setRoomZoneRegistrations } from '../rooms/room-zone-registry.ts';
 import type { RoomLodController } from '../lod/lod-manager.ts';
@@ -227,6 +228,7 @@ export interface PropertySceneContent<TSecurity extends SecurityOverlay3D> {
   readonly ufhSystem: UfhSystemOverlay3D | null;
   readonly tvArtTextures: readonly THREE.CanvasTexture[];
   readonly tvOffTexture: THREE.CanvasTexture;
+  readonly variations: readonly RoomVariationGroup[];
 }
 
 export interface BuildPropertySceneContentOptions<TSecurity extends SecurityOverlay3D> {
@@ -620,6 +622,7 @@ export function buildPropertySceneContent<TSecurity extends SecurityOverlay3D>(
   const interactions = new SceneInteractionManager(interactiveMeshes);
   if (options.profile.doorPolicy) interactions.setDoorPolicy(options.profile.doorPolicy);
   const roomSwitchLedMats: RoomSwitchLedBinding[] = [];
+  const variationRegistry = new VariationRegistry();
 
   const floorScopeCache = new Map<string, FloorBuilderScope>();
   const resolveFloorScope = (floorId: string): FloorBuilderScope => {
@@ -661,6 +664,8 @@ export function buildPropertySceneContent<TSecurity extends SecurityOverlay3D>(
     interactiveMeshes,
     interactions,
     lightGroups,
+    variations: variationRegistry,
+    registerVariation: (group) => variationRegistry.register(group),
     addGlowPool: (circuitId, x, y, z, radius, maxOpacity = 0.35, rotX = -Math.PI / 2) => {
       const mat = new THREE.MeshBasicMaterial({
         map: radialGlowTex,
@@ -702,6 +707,10 @@ export function buildPropertySceneContent<TSecurity extends SecurityOverlay3D>(
   const indicatorMats = options.registry.buildAllZones(ctx);
   const security = options.profile.buildSecurityOverlay(ctx);
   const ufhSystem = options.profile.buildUfhOverlay?.(ctx) ?? null;
+  if (options.profile.variations) {
+    const extraVars = typeof options.profile.variations === 'function' ? options.profile.variations(ctx) : options.profile.variations;
+    variationRegistry.registerAll(extraVars);
+  }
   bindSmartAssetsInScene(scene, interactions);
 
   // Stamp per-room finish swatches & architectural notes onto 3D room roots.
@@ -728,5 +737,6 @@ export function buildPropertySceneContent<TSecurity extends SecurityOverlay3D>(
     ufhSystem,
     tvArtTextures,
     tvOffTexture,
+    variations: variationRegistry.getGroups(),
   };
 }

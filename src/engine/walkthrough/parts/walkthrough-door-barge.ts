@@ -6,6 +6,9 @@ import { sampleGenericWalkableElevation } from './walkthrough-elevation-solver.t
 function isColliderVisibleInHierarchy(object: THREE.Object3D): boolean {
   let cur: THREE.Object3D | null = object;
   while (cur) {
+    if (cur.userData?.variationHidden === true) {
+      return false;
+    }
     if (!cur.visible && cur.userData?.__prunedEmptyBatchGroup !== true) {
       return false;
     }
@@ -15,6 +18,7 @@ function isColliderVisibleInHierarchy(object: THREE.Object3D): boolean {
 }
 
 interface CachedDoorwayOpening {
+  readonly visibilityNode: THREE.Object3D;
   readonly centerX: number;
   readonly centerZ: number;
   readonly minY: number;
@@ -701,6 +705,7 @@ export class WalkthroughDoorBargeAndCollisionSolver {
       const tangentX = distFromHinge >= 1e-4 ? dx / distFromHinge : 1;
       const tangentZ = distFromHinge >= 1e-4 ? dz / distFromHinge : 0;
       doorwayList.push({
+        visibilityNode: doorGroup,
         centerX,
         centerZ,
         minY: this.tmpBox.min.y,
@@ -1390,6 +1395,7 @@ export class WalkthroughDoorBargeAndCollisionSolver {
     let inActiveDoorway = false;
     for (let dIdx = 0; dIdx < this.cachedDoorways.length; dIdx++) {
       const dw = this.cachedDoorways[dIdx]!;
+      if (!isColliderVisibleInHierarchy(dw.visibilityNode)) continue;
       if (dw.maxY <= fromFoot.y + 0.25 || dw.minY >= fromFoot.y + 1.78) continue;
       const relX = fromFoot.x - dw.centerX;
       const relZ = fromFoot.z - dw.centerZ;

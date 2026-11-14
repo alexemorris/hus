@@ -130,6 +130,8 @@ export function collectProtectedObjects(
     if (!u) return;
     if (u.isBifoldDoor || u.isAnnotationGroup || u.isSecurityFovCone) {
       markSubtree(obj);
+    } else if (u.isVariationOptionRoot === true && !(obj instanceof THREE.Group)) {
+      protectedSet.add(obj);
     }
   });
 
@@ -223,6 +225,7 @@ export function collectVisibilityContainers(
       const u = obj.userData;
       if (
         u?.ufhZoneId ||
+        u?.isVariationOptionRoot === true ||
         u?.isBatchSubContainer === true ||
         hooks.isBatchSubContainer?.(obj) === true ||
         (!obj.visible && (!obj.parent || obj.parent.visible))

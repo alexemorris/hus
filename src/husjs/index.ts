@@ -58,3 +58,16 @@ export * from '../core/assets/asset-metadata.ts';
 
 export { paintSpecFromSwatch } from '../engine/textures/paint-system.ts';
 export { detectIOS, detectMobile } from '../engine/perf/device-tier.ts';
+
+export * from '../core/types/variations.ts';
+export * from '../core/variations-url.ts';
+export {
+  RoomVariationController,
+  VariationRegistry,
+  createRoomVariationGroup,
+  type RoomVariationChangeListener,
+  type RoomVariationControllerOptions,
+  type RoomVariationGroup,
+  type RoomVariationGroupInput,
+  type RoomVariationOption,
+} from '../engine/variations/room-variation-controller.ts';

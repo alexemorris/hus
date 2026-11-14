@@ -1,6 +1,6 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
-import { currentRoomId, isMobile, liveLevels, navigatorOpen } from '../../state/shell-store.ts';
+import { currentRoomId, isMobile, liveLevels, navigatorOpen, roomVariations } from '../../state/shell-store.ts';
 import type { CircuitLevels } from '../../core/types/knx.ts';
 import type { RoomManifestEntry } from '../../core/types/twin-ux.ts';
 import type { TwinLightingZone } from '../../core/types/twin-api.ts';
@@ -34,6 +34,7 @@ export function RoomNavigator(): JSX.Element {
   const current = currentRoomId.value;
   const currentEntry = current ? ctl.api.rooms.getManifest(current) : undefined;
   const levels = liveLevels.value;
+  const variations = roomVariations.value;
   const open = navigatorOpen.value;
   const q = query.trim().toLowerCase();
 
@@ -89,6 +90,7 @@ export function RoomNavigator(): JSX.Element {
                   {rooms.map((room) => {
                     const isCurrent = currentEntry?.zoneId === room.zoneId;
                     const lightsOn = countLightsOn(room, ctl.api.lighting.zones.get(room.zoneId), levels);
+                    const varCount = variations.filter((g) => g.zoneId === room.zoneId).length;
                     return (
                       <li key={room.zoneId}>
                         <button
@@ -104,6 +106,15 @@ export function RoomNavigator(): JSX.Element {
                           onPointerLeave={() => ctl.highlightRoom(null)}
                         >
                           <span class="shell-nav-room-label">{room.label}</span>
+                          {varCount > 0 && (
+                            <span
+                              class="shell-nav-var"
+                              title={`${varCount} design variation${varCount === 1 ? "" : "s"}`}
+                            >
+                              <Icon name="layers" size={11} />
+                              {varCount > 1 ? varCount : ""}
+                            </span>
+                          )}
                           {lightsOn > 0 && (
                             <span class="shell-nav-lit" title={`${lightsOn} light${lightsOn === 1 ? '' : 's'} on`}>
                               <Icon name="bulb" size={12} />

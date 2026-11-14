@@ -121,4 +121,6 @@ export interface ShareViewState {
   readonly room?: RoomZoneId;
   readonly view: TradeView;
   readonly guest: boolean;
+  /** Optional non-default room variation selections (`groupId -> optionId`). */
+  readonly vars?: Readonly<Record<string, string>>;
 }

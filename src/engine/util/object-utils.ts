@@ -1,10 +1,30 @@
 import type * as THREE from 'three';
 
-/** True if `obj` and every ancestor are visible. */
+/** True if `obj` or any ancestor is currently hidden as an inactive room/design variation. */
+export function isVariationHiddenInHierarchy(obj: THREE.Object3D | null | undefined): boolean {
+  let cur: THREE.Object3D | null | undefined = obj;
+  while (cur) {
+    if (cur.userData?.variationHidden === true) return true;
+    cur = cur.parent;
+  }
+  return false;
+}
+
+/** Finds the nearest ancestor (including `obj`) tagged as a room variation option root, if any. */
+export function findVariationOptionRoot(obj: THREE.Object3D | null | undefined): THREE.Object3D | null {
+  let cur: THREE.Object3D | null | undefined = obj;
+  while (cur) {
+    if (cur.userData?.isVariationOptionRoot === true) return cur;
+    cur = cur.parent;
+  }
+  return null;
+}
+
+/** True if `obj` and every ancestor are visible (and not hidden by an inactive room variation). */
 export function isObjectVisibleInHierarchy(obj: THREE.Object3D): boolean {
   let cur: THREE.Object3D | null = obj;
   while (cur) {
-    if (!cur.visible) return false;
+    if (!cur.visible || cur.userData?.variationHidden === true) return false;
     cur = cur.parent;
   }
   return true;
@@ -14,7 +34,8 @@ const ascSort = (a: THREE.Intersection, b: THREE.Intersection): number => a.dist
 
 /**
  * Raycasts only visible objects (and visible hierarchy branches when `recursive = true`),
- * pruning hidden floors, cutaway walls, overlays, and LOD-culled props before testing geometry.
+ * pruning hidden floors, cutaway walls, inactive room variations, overlays, and LOD-culled props
+ * before testing geometry.
  */
 export function intersectVisibleObjects(
   raycaster: THREE.Raycaster,
@@ -24,7 +45,7 @@ export function intersectVisibleObjects(
 ): THREE.Intersection[] {
   if (recursive) {
     const visit = (obj: THREE.Object3D): void => {
-      if (!obj.visible) return;
+      if (!obj.visible || obj.userData?.variationHidden === true) return;
       if (obj.layers.test(raycaster.layers)) {
         obj.raycast(raycaster, intersects);
       }

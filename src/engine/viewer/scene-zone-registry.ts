@@ -181,6 +181,9 @@ export class SceneZoneRegistry {
     let merged: ZoneIndicatorMaterials = {};
     for (const mod of this.modules) {
       const res = mod.build(ctx);
+      if (mod.variations && mod.variations.length > 0) {
+        ctx.variations?.registerAll(mod.variations);
+      }
       merged = { ...merged, ...res };
     }
     return merged;

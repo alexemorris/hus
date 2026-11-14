@@ -1,3 +1,5 @@
+import type { TwinVariationsApi } from "./variations.ts";
+export type { RoomVariationGroupInfo, RoomVariationOptionInfo, TwinVariationsApi } from "./variations.ts";
 import type { TwinAssetInspectorApi } from '../assets/asset-metadata.ts';
 /**
  * TwinApi — the UI-facing facade over the 3D engine and the smart-home
@@ -550,5 +552,6 @@ export interface TwinApi {
   readonly sky?: TwinSkyWeatherApi;
   readonly terrainSculpt?: TwinTerrainSculptApi;
   readonly assets?: TwinAssetInspectorApi;
+  readonly variations?: TwinVariationsApi;
 }
 

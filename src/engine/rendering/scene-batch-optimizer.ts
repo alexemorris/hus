@@ -300,6 +300,10 @@ export class SceneBatchOptimizer {
     return this.lightController.setBudgetAnchorZone(anchor);
   }
 
+  public refreshManagedLights(): boolean {
+    return this.lightController.refreshManagedLights();
+  }
+
   public stepFades(dtSeconds: number): boolean {
     return this.lightController.stepFades(dtSeconds);
   }
