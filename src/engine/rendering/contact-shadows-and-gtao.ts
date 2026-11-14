@@ -64,9 +64,79 @@ const GTAO_SLICE_COUNT = 3;
 const GTAO_STEPS_PER_SIDE = 3;
 const CONTACT_SHADOW_STEPS = 10;
 
+/** Safe viewport UV margin so horizon / contact-shadow taps never sample clamped border depth. */
+export const VIEWPORT_SAFE_UV_MIN = 0.002;
+export const VIEWPORT_SAFE_UV_MAX = 0.998;
+
+/** Maximum perspective GTAO search radius as a fraction of `|viewZ|` (`worldRadius / scaleDist`). */
+export const GTAO_MAX_REL_SCREEN_RADIUS = 0.135;
+
+/** Minimum `dot(N, L)` for a surface to receive direct sun and screen-space sun contact shadows. */
+export const CONTACT_SHADOW_MIN_NDOTL = 0.05;
+
 const sunPosScratch = new THREE.Vector3();
 const targetPosScratch = new THREE.Vector3();
 const worldDirScratch = new THREE.Vector3();
+
+/**
+ * Pure CPU reference for the perspective-capped GTAO world-space search radius (metres)
+ * and close-range 1PV strength scale at `scaleDist` (`-viewZ` in metres).
+ *
+ * At close first-person wall distances (`scaleDist < 0.85 m`), capping `worldRadius` to
+ * `scaleDist * 0.135` prevents `radiusPx` from blowing up across hundreds of screen pixels,
+ * and `closeRangeWeight` smoothly attenuates micro-horizon noise when walking beside walls.
+ */
+export function computeGtaoRadiusAndCloseRangeWeight(scaleDistMeters: number): {
+  readonly worldRadiusM: number;
+  readonly closeRangeWeight: number;
+} {
+  const safeDist = Math.max(0.1, scaleDistMeters);
+  const worldRadiusM = THREE.MathUtils.clamp(safeDist * GTAO_MAX_REL_SCREEN_RADIUS, 0.024, 0.44);
+  const closeRangeWeight = THREE.MathUtils.smoothstep(safeDist, 0.28, 0.85);
+  return { worldRadiusM, closeRangeWeight };
+}
+
+/**
+ * Pure CPU reference check for whether a screen-space UV tap lies strictly inside the valid
+ * un-clamped viewport (`[0.002, 0.998]^2`). Any tap outside this box must be skipped rather
+ * than sampling clamped border depth with an unclamped `uv`, which would otherwise bend
+ * oblique close walls into phantom 90-degree screen-edge corners.
+ */
+export function isScreenUvInsideSafeViewport(u: number, v: number): boolean {
+  return (
+    u > VIEWPORT_SAFE_UV_MIN &&
+    u < VIEWPORT_SAFE_UV_MAX &&
+    v > VIEWPORT_SAFE_UV_MIN &&
+    v < VIEWPORT_SAFE_UV_MAX
+  );
+}
+
+/**
+ * Pure CPU reference for Screen-Space Contact Shadow sun-facing weight and grazing-aware depth
+ * bias (metres). Surfaces facing away from or nearly parallel to the sun (`nDotL <= 0.05`)
+ * receive zero sun contact shadow (`facingWeight = 0`), and grazing camera angles (`nDotV` small)
+ * scale `minBias` by `1 / max(nDotV, 0.15)` so flat oblique walls never self-shadow.
+ */
+export function computeContactShadowFacingAndBias(
+  nDotL: number,
+  nDotV: number,
+  tMeters: number,
+  scaleDistMeters: number
+): {
+  readonly facingWeight: number;
+  readonly minBiasM: number;
+} {
+  const facingWeight =
+    nDotL <= CONTACT_SHADOW_MIN_NDOTL
+      ? 0.0
+      : THREE.MathUtils.smoothstep(nDotL, CONTACT_SHADOW_MIN_NDOTL, 0.2);
+  const grazingScale = 1.0 / Math.max(0.15, nDotV);
+  const baseBias = 0.0016 + tMeters * 0.026 + Math.max(0.1, scaleDistMeters) * 0.0008;
+  return {
+    facingWeight,
+    minBiasM: baseBias * grazingScale,
+  };
+}
 
 /**
  * Discovers the primary active directional sun/moon light in `scene` and computes its
@@ -152,9 +222,17 @@ function sampleClampedDepth(
   return depthNode.sample(clamp(sampleUv, 0.001, 0.999)).r;
 }
 
+function isUvInSafeViewportNode(sampleUv: ShaderNodeObject<Node>): ShaderNodeObject<Node> {
+  return sampleUv.x
+    .greaterThan(VIEWPORT_SAFE_UV_MIN)
+    .and(sampleUv.x.lessThan(VIEWPORT_SAFE_UV_MAX))
+    .and(sampleUv.y.greaterThan(VIEWPORT_SAFE_UV_MIN))
+    .and(sampleUv.y.lessThan(VIEWPORT_SAFE_UV_MAX));
+}
+
 /**
  * Reconstructs view-space surface normal from depth using closest-depth-delta neighbor taps
- * so foreground silhouettes never produce false bevels or dark halo ringing.
+ * so foreground silhouettes and viewport borders never produce false bevels or tilted normals.
  */
 export function reconstructMinDeltaViewNormal(
   depthNode: ShaderNodeObject<TextureNode>,
@@ -163,20 +241,33 @@ export function reconstructMinDeltaViewNormal(
   stepUv: ShaderNodeObject<UniformNode<THREE.Vector2>>,
   uProjMatrixInverse: ShaderNodeObject<UniformNode<THREE.Matrix4>>
 ): ShaderNodeObject<Node> {
-  const uvR = centerUv.add(vec2(stepUv.x, 0.0));
-  const uvL = centerUv.sub(vec2(stepUv.x, 0.0));
-  const uvD = centerUv.add(vec2(0.0, stepUv.y));
-  const uvU = centerUv.sub(vec2(0.0, stepUv.y));
+  const rawUvR = centerUv.add(vec2(stepUv.x, 0.0));
+  const rawUvL = centerUv.sub(vec2(stepUv.x, 0.0));
+  const rawUvD = centerUv.add(vec2(0.0, stepUv.y));
+  const rawUvU = centerUv.sub(vec2(0.0, stepUv.y));
 
-  const posR = getViewPosition(uvR, sampleClampedDepth(depthNode, uvR), uProjMatrixInverse).toVar();
-  const posL = getViewPosition(uvL, sampleClampedDepth(depthNode, uvL), uProjMatrixInverse).toVar();
-  const posD = getViewPosition(uvD, sampleClampedDepth(depthNode, uvD), uProjMatrixInverse).toVar();
-  const posU = getViewPosition(uvU, sampleClampedDepth(depthNode, uvU), uProjMatrixInverse).toVar();
+  // Clamp UV BEFORE both depth sample and getViewPosition so border pixels never pair
+  // clamped depth with an out-of-frustum ray direction, and prefer the interior neighbor at edges.
+  const uvR = clamp(rawUvR, 0.001, 0.999).toVar();
+  const uvL = clamp(rawUvL, 0.001, 0.999).toVar();
+  const uvD = clamp(rawUvD, 0.001, 0.999).toVar();
+  const uvU = clamp(rawUvU, 0.001, 0.999).toVar();
 
-  const useRight = abs(posR.z.sub(centerViewPos.z)).lessThan(abs(centerViewPos.z.sub(posL.z)));
+  const posR = getViewPosition(uvR, depthNode.sample(uvR).r, uProjMatrixInverse).toVar();
+  const posL = getViewPosition(uvL, depthNode.sample(uvL).r, uProjMatrixInverse).toVar();
+  const posD = getViewPosition(uvD, depthNode.sample(uvD).r, uProjMatrixInverse).toVar();
+  const posU = getViewPosition(uvU, depthNode.sample(uvU).r, uProjMatrixInverse).toVar();
+
+  const validR = rawUvR.x.lessThan(0.999);
+  const validL = rawUvL.x.greaterThan(0.001);
+  const closerR = abs(posR.z.sub(centerViewPos.z)).lessThan(abs(centerViewPos.z.sub(posL.z)));
+  const useRight = select(validR.and(validL), closerR, validR);
   const dpdx = select(useRight, posR.sub(centerViewPos), centerViewPos.sub(posL));
 
-  const useUp = abs(posU.z.sub(centerViewPos.z)).lessThan(abs(centerViewPos.z.sub(posD.z)));
+  const validD = rawUvD.y.lessThan(0.999);
+  const validU = rawUvU.y.greaterThan(0.001);
+  const closerU = abs(posU.z.sub(centerViewPos.z)).lessThan(abs(centerViewPos.z.sub(posD.z)));
+  const useUp = select(validU.and(validD), closerU, validU);
   const dpdyUp = select(useUp, posU.sub(centerViewPos), centerViewPos.sub(posD));
 
   const rawCross = cross(dpdx, dpdyUp);
@@ -186,7 +277,8 @@ export function reconstructMinDeltaViewNormal(
 /**
  * Evaluates multi-slice cosine-space Ground-Truth Ambient Occlusion (Jimenez 2016) at half resolution.
  * Integrates projected surface-normal visibility across 3 rotated hemisphere slices (18 horizon taps)
- * with thickness-aware distance falloff so foreground furniture legs never cast halos onto far walls.
+ * with strict viewport-bounds rejection, close-range radius capping, and grazing-plane self-occlusion
+ * rejection so walking beside oblique walls in 1PV produces zero camera-following dark bands.
  */
 export function evaluateHalfResGtao(
   depthNode: ShaderNodeObject<TextureNode>,
@@ -208,7 +300,7 @@ export function evaluateHalfResGtao(
   const scaleDist = select(
     uIsOrtho.greaterThan(0.5),
     uOrthoEquivDepth,
-    max(0.22, centerViewPos.z.negate())
+    max(0.12, centerViewPos.z.negate())
   ).toVar();
 
   If(uAoIntensity.greaterThan(0.001).and(scaleDist.lessThan(26.0)), () => {
@@ -226,8 +318,15 @@ export function evaluateHalfResGtao(
       normalize(centerViewPos.negate())
     ).toVar();
 
-    const worldRadius = clamp(scaleDist.mul(0.135), 0.085, 0.44).toVar();
-    const normalBias = viewNormal.mul(clamp(scaleDist.mul(0.0022), 0.0012, 0.009)).toVar();
+    const nDotV = max(0.15, dot(viewNormal, viewDir)).toVar();
+    const grazingBiasScale = float(1.0).div(nDotV).toVar();
+
+    // Proportional radius cap (`0.135 * scaleDist`, min `2.4 cm` instead of `8.5 cm`) prevents
+    // screen-space `radiusPx` blow-up when walking within `0.2..1.0 m` of walls in 1PV.
+    const worldRadius = clamp(scaleDist.mul(GTAO_MAX_REL_SCREEN_RADIUS), 0.024, 0.44).toVar();
+    const normalBias = viewNormal
+      .mul(clamp(scaleDist.mul(0.0025), 0.0015, 0.01).mul(grazingBiasScale))
+      .toVar();
     const ignAngle = spatialInterleavedGradientNoise(screenCoordinate.xy).mul(PI).toVar();
     const ignRadial = spatialInterleavedGradientNoise(
       screenCoordinate.xy.add(vec2(19.0, 37.0))
@@ -264,38 +363,62 @@ export function evaluateHalfResGtao(
         const viewOffset = sampleDir.mul(stepMeters);
 
         const uvPos = getScreenPosition(centerViewPos.add(viewOffset), uProjMatrix).toVar();
-        const depthPos = sampleClampedDepth(depthNode, uvPos).toVar();
-        If(depthPos.lessThan(0.9999), () => {
-          const samplePos = getViewPosition(uvPos, depthPos, uProjMatrixInverse);
-          const delta = samplePos.sub(centerViewPos).sub(normalBias).toVar();
-          const distSq = dot(delta, delta);
-          If(distSq.greaterThan(1e-7), () => {
-            const dist = sqrt(distSq);
-            const falloff = float(1.0)
-              .sub(smoothstep(worldRadius.mul(0.62), worldRadius.mul(1.28), dist))
-              .mul(float(1.0).sub(smoothstep(worldRadius.mul(0.85), worldRadius.mul(1.35), abs(delta.z))));
-            const shc = dot(viewDir, delta.div(dist));
-            cosHx.addAssign(max(0.0, shc.sub(cosHx).mul(falloff)));
+        If(isUvInSafeViewportNode(uvPos), () => {
+          const depthPos = depthNode.sample(uvPos).r.toVar();
+          If(depthPos.lessThan(0.9999), () => {
+            const samplePos = getViewPosition(uvPos, depthPos, uProjMatrixInverse);
+            const rawDeltaPos = samplePos.sub(centerViewPos).toVar();
+            const delta = rawDeltaPos.sub(normalBias).toVar();
+            const distSq = dot(delta, delta);
+            If(distSq.greaterThan(1e-7), () => {
+              const dist = sqrt(distSq);
+              // Reject coplanar/grazing depth-quantization self-occlusion on flat walls while
+              // preserving crisp 90-degree architectural corner, skirting, and frame crevices.
+              const planeElev = dot(rawDeltaPos, viewNormal);
+              const minPlaneElev = max(0.0025, dist.mul(0.036)).mul(grazingBiasScale);
+              const planeGate = smoothstep(minPlaneElev, minPlaneElev.mul(2.4), planeElev);
+              const falloff = planeGate
+                .mul(float(1.0).sub(smoothstep(worldRadius.mul(0.62), worldRadius.mul(1.28), dist)))
+                .mul(
+                  float(1.0).sub(
+                    smoothstep(worldRadius.mul(0.85), worldRadius.mul(1.35), abs(delta.z))
+                  )
+                );
+              const shc = dot(viewDir, delta.div(dist));
+              cosHx.addAssign(max(0.0, shc.sub(cosHx).mul(falloff)));
+            });
           });
         });
 
         const uvNeg = getScreenPosition(centerViewPos.sub(viewOffset), uProjMatrix).toVar();
-        const depthNeg = sampleClampedDepth(depthNode, uvNeg).toVar();
-        If(depthNeg.lessThan(0.9999), () => {
-          const sampleNeg = getViewPosition(uvNeg, depthNeg, uProjMatrixInverse);
-          const deltaNeg = sampleNeg.sub(centerViewPos).sub(normalBias).toVar();
-          const distSqNeg = dot(deltaNeg, deltaNeg);
-          If(distSqNeg.greaterThan(1e-7), () => {
-            const distNeg = sqrt(distSqNeg);
-            const falloffNeg = float(1.0)
-              .sub(smoothstep(worldRadius.mul(0.62), worldRadius.mul(1.28), distNeg))
-              .mul(
-                float(1.0).sub(
-                  smoothstep(worldRadius.mul(0.85), worldRadius.mul(1.35), abs(deltaNeg.z))
-                )
+        If(isUvInSafeViewportNode(uvNeg), () => {
+          const depthNeg = depthNode.sample(uvNeg).r.toVar();
+          If(depthNeg.lessThan(0.9999), () => {
+            const sampleNeg = getViewPosition(uvNeg, depthNeg, uProjMatrixInverse);
+            const rawDeltaNeg = sampleNeg.sub(centerViewPos).toVar();
+            const deltaNeg = rawDeltaNeg.sub(normalBias).toVar();
+            const distSqNeg = dot(deltaNeg, deltaNeg);
+            If(distSqNeg.greaterThan(1e-7), () => {
+              const distNeg = sqrt(distSqNeg);
+              const planeElevNeg = dot(rawDeltaNeg, viewNormal);
+              const minPlaneElevNeg = max(0.0025, distNeg.mul(0.036)).mul(grazingBiasScale);
+              const planeGateNeg = smoothstep(
+                minPlaneElevNeg,
+                minPlaneElevNeg.mul(2.4),
+                planeElevNeg
               );
-            const shcNeg = dot(viewDir, deltaNeg.div(distNeg));
-            cosHy.addAssign(max(0.0, shcNeg.sub(cosHy).mul(falloffNeg)));
+              const falloffNeg = planeGateNeg
+                .mul(
+                  float(1.0).sub(smoothstep(worldRadius.mul(0.62), worldRadius.mul(1.28), distNeg))
+                )
+                .mul(
+                  float(1.0).sub(
+                    smoothstep(worldRadius.mul(0.85), worldRadius.mul(1.35), abs(deltaNeg.z))
+                  )
+                );
+              const shcNeg = dot(viewDir, deltaNeg.div(distNeg));
+              cosHy.addAssign(max(0.0, shcNeg.sub(cosHy).mul(falloffNeg)));
+            });
           });
         });
       }
@@ -312,7 +435,12 @@ export function evaluateHalfResGtao(
     }
 
     const rawVisibility = clamp(visAccum.div(float(GTAO_SLICE_COUNT)), 0.0, 1.0);
-    const distanceFade = float(1.0).sub(smoothstep(16.0, 25.0, scaleDist));
+    const closeFade = select(
+      uIsOrtho.greaterThan(0.5),
+      float(1.0),
+      smoothstep(0.28, 0.85, scaleDist)
+    );
+    const distanceFade = float(1.0).sub(smoothstep(16.0, 25.0, scaleDist)).mul(closeFade);
     const shapedAo = pow(rawVisibility, uAoIntensity.mul(1.85));
     aoOut.assign(clamp(mix(float(1.0), shapedAo, distanceFade), 0.36, 1.0));
   });
@@ -353,13 +481,15 @@ export function upsampleBilateralGtao(
   ];
 
   for (const off of offsets) {
-    const tapUv = clamp(vUv.add(off), 0.001, 0.999);
+    const rawTapUv = vUv.add(off);
+    const inBounds = isUvInSafeViewportNode(rawTapUv);
+    const tapUv = clamp(rawTapUv, 0.001, 0.999);
     const tapDepth = sampleClampedDepth(depthNode, tapUv);
     const tapPos = getViewPosition(tapUv, tapDepth, uProjMatrixInverse);
     const planeDist = abs(dot(tapPos.sub(centerViewPos), centerViewNormal));
     const zGap = abs(tapPos.z.sub(centerViewPos.z));
     const w = exp(planeDist.mul(3.5).add(zGap.mul(0.65)).mul(invSigma).negate()).mul(
-      select(tapDepth.lessThan(0.9999), float(1.0), float(0.0))
+      select(inBounds.and(tapDepth.lessThan(0.9999)), float(1.0), float(0.0))
     );
     weightedSum.addAssign(sampleHalfAo(tapUv).mul(w));
     weightTotal.addAssign(w);
@@ -371,7 +501,8 @@ export function upsampleBilateralGtao(
 /**
  * Full-resolution thickness-bounded Screen-Space Contact Shadows (10 steps covering ~5–20 cm)
  * marching toward `uSunViewDir` so chair legs, table feet, skirting quirks, window mullions,
- * frames, hardware, and cobbles cast crisp grounded micro-shadows without peter-panning.
+ * frames, hardware, and cobbles cast crisp grounded micro-shadows without peter-panning or
+ * grazing-wall self-shadowing.
  */
 export function evaluateScreenSpaceContactShadow(
   depthNode: ShaderNodeObject<TextureNode>,
@@ -380,20 +511,35 @@ export function evaluateScreenSpaceContactShadow(
   scaleDist: ShaderNodeObject<Node>,
   uniforms: GtaoAndContactShadowUniforms
 ): ShaderNodeObject<Node> {
-  const { uProjMatrix, uProjMatrixInverse, uSunViewDir, uContactShadowStrength, uAoIntensity } =
-    uniforms;
+  const {
+    uProjMatrix,
+    uProjMatrixInverse,
+    uIsOrtho,
+    uSunViewDir,
+    uContactShadowStrength,
+    uAoIntensity,
+  } = uniforms;
 
   const shadowVis = float(1.0).toVar();
   const activeStrength = uContactShadowStrength.mul(smoothstep(0.0, 0.15, uAoIntensity)).toVar();
 
   If(activeStrength.greaterThan(0.005).and(scaleDist.lessThan(26.0)), () => {
     const nDotL = dot(centerViewNormal, uSunViewDir).toVar();
-    const facingWeight = smoothstep(-0.03, 0.14, nDotL).toVar();
+    // Surfaces facing away from or grazing to the sun (`nDotL <= 0.05`) cannot receive direct sun
+    // or cast a sun contact shadow onto themselves.
+    If(nDotL.greaterThan(CONTACT_SHADOW_MIN_NDOTL), () => {
+      const facingWeight = smoothstep(CONTACT_SHADOW_MIN_NDOTL, 0.2, nDotL).toVar();
+      const viewDir = select(
+        uIsOrtho.greaterThan(0.5),
+        vec3(0.0, 0.0, 1.0),
+        normalize(centerViewPos.negate())
+      ).toVar();
+      const nDotV = max(0.15, dot(centerViewNormal, viewDir)).toVar();
+      const grazingScale = float(1.0).div(nDotV).toVar();
 
-    If(facingWeight.greaterThan(0.005), () => {
-      const rayLength = clamp(scaleDist.mul(0.044), 0.055, 0.2).toVar();
+      const rayLength = clamp(scaleDist.mul(0.044), 0.032, 0.2).toVar();
       const maxThickness = clamp(rayLength.mul(0.58), 0.038, 0.13).toVar();
-      const originBias = clamp(scaleDist.mul(0.0016), 0.001, 0.007);
+      const originBias = clamp(scaleDist.mul(0.0018), 0.0012, 0.008).mul(grazingScale);
       const rayOrigin = centerViewPos.add(centerViewNormal.mul(originBias)).toVar();
       const jitter = spatialInterleavedGradientNoise(
         screenCoordinate.xy.add(vec2(43.0, 11.0))
@@ -409,30 +555,40 @@ export function evaluateScreenSpaceContactShadow(
         const rayPos = rayOrigin.add(uSunViewDir.mul(tMeters)).toVar();
         const rayUv = getScreenPosition(rayPos, uProjMatrix).toVar();
 
-        const inViewport = rayUv.x
-          .greaterThan(0.0015)
-          .and(rayUv.x.lessThan(0.9985))
-          .and(rayUv.y.greaterThan(0.0015))
-          .and(rayUv.y.lessThan(0.9985));
-
-        If(inViewport, () => {
+        If(isUvInSafeViewportNode(rayUv), () => {
           const sampleD = depthNode.sample(rayUv).r;
           If(sampleD.lessThan(0.9999), () => {
             const scenePos = getViewPosition(rayUv, sampleD, uProjMatrixInverse);
             const depthDiff = scenePos.z.sub(rayPos.z);
-            const minBias = float(0.0014).add(tMeters.mul(0.024)).add(scaleDist.mul(0.0007));
+            const minBias = float(0.0016)
+              .add(tMeters.mul(0.026))
+              .add(scaleDist.mul(0.0008))
+              .mul(grazingScale);
+
+            // Also require the occluder to rise above the receiver tangent plane so flat oblique
+            // walls never self-shadow along raking rays.
+            const planeElev = dot(scenePos.sub(centerViewPos), centerViewNormal);
+            const minPlaneElev = max(0.0022, tMeters.mul(0.04)).mul(grazingScale);
+            const planeGate = smoothstep(minPlaneElev, minPlaneElev.mul(2.2), planeElev);
 
             const enterHit = smoothstep(minBias, minBias.mul(2.4).add(0.002), depthDiff);
             const thicknessExit = float(1.0).sub(
               smoothstep(maxThickness.mul(0.62), maxThickness, depthDiff)
             );
             const stepAtten = float(1.0).sub(sNorm.mul(0.42));
-            maxOcclusion.assign(max(maxOcclusion, enterHit.mul(thicknessExit).mul(stepAtten)));
+            maxOcclusion.assign(
+              max(maxOcclusion, enterHit.mul(thicknessExit).mul(stepAtten).mul(planeGate))
+            );
           });
         });
       }
 
-      const distFade = float(1.0).sub(smoothstep(17.0, 26.0, scaleDist));
+      const closeFade = select(
+        uIsOrtho.greaterThan(0.5),
+        float(1.0),
+        smoothstep(0.25, 0.75, scaleDist)
+      );
+      const distFade = float(1.0).sub(smoothstep(17.0, 26.0, scaleDist)).mul(closeFade);
       const contactDarken = maxOcclusion
         .mul(activeStrength)
         .mul(facingWeight)
