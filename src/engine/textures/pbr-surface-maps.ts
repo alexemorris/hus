@@ -252,7 +252,11 @@ export function derivePbrNormalAndRoughnessMaps(
   const surfaceRoughnessMin = options.surfaceRoughnessMin ?? 0.66;
   const surfaceRoughnessMax = options.surfaceRoughnessMax ?? 0.9;
   const microGrainRoughness = options.microGrainRoughness ?? 0.05;
-  const maxDimension = !isRecordingCanvasStub(heightCanvas) && detectMobile() ? Math.min(512, options.maxDimension ?? 512) : (options.maxDimension ?? 1024);
+  const isMobileBudget = !isRecordingCanvasStub(heightCanvas) && detectMobile();
+  const maxDimension = isMobileBudget
+    ? Math.min(256, options.maxDimension ?? 256)
+    : (options.maxDimension ?? 1024);
+  const dataTexAnisotropy = isMobileBudget ? 4 : 8;
 
   const isRecording = isRecordingCanvasStub(heightCanvas);
   const probeCtx = !isRecording ? heightCanvas.getContext('2d', { willReadFrequently: true }) : null;
@@ -386,7 +390,7 @@ export function derivePbrNormalAndRoughnessMaps(
   normalMap.wrapS = wrappingS;
   normalMap.wrapT = wrappingT;
   normalMap.colorSpace = THREE.NoColorSpace;
-  normalMap.anisotropy = 8;
+  normalMap.anisotropy = dataTexAnisotropy;
   normalMap.flipY = true;
   normalMap.magFilter = THREE.LinearFilter;
   normalMap.minFilter = THREE.LinearMipmapLinearFilter;
@@ -403,7 +407,7 @@ export function derivePbrNormalAndRoughnessMaps(
   roughnessMap.wrapS = wrappingS;
   roughnessMap.wrapT = wrappingT;
   roughnessMap.colorSpace = THREE.NoColorSpace;
-  roughnessMap.anisotropy = 8;
+  roughnessMap.anisotropy = dataTexAnisotropy;
   roughnessMap.flipY = true;
   roughnessMap.unpackAlignment = 1;
   roughnessMap.magFilter = THREE.LinearFilter;

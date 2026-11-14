@@ -16,6 +16,7 @@ import type { AssetMetadata } from '../../core/assets/asset-metadata.ts';
 import { getExposureEnvelope, type VegetationExposure } from '../../core/geo/climate-phenology.ts';
 import { attachAssetMetadata } from '../../engine/assets/smart-asset.ts';
 import { tagCollisionRole } from '../../engine/geometry/mesh-traits.ts';
+import { detectMobile } from '../../engine/perf/device-tier.ts';
 import {
   getOrCreateSoilTextures,
   type SoilSubstrate,
@@ -438,8 +439,9 @@ export function createSoilBed(options: CreateSoilBedOptions = {}): SoilBedHandle
   const crownHeightM = options.crownHeightM ?? 0.036;
   const furrowAmp = options.furrowAmplitudeM ?? (substrate === 'tilled-veg-earth' ? 0.014 : 0);
   const furrowSpacing = Math.max(0.08, options.furrowSpacingM ?? 0.24);
-  const step = THREE.MathUtils.clamp(options.gridStepM ?? 0.22, 0.04, 1.5);
-  const maxVerts = 2400;
+  const mobileSoil = detectMobile();
+  const step = THREE.MathUtils.clamp(options.gridStepM ?? (mobileSoil ? 0.34 : 0.22), 0.04, 1.5);
+  const maxVerts = mobileSoil ? 900 : 2400;
 
   const plantings = (options.plantings ?? []).map((p) => {
     const stemR = Math.max(0.008, p.stemRadius ?? 0.03);

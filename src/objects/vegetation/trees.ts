@@ -5,6 +5,7 @@ import type {
   VegetationOrganKind,
 } from '../../core/geo/climate-phenology.ts';
 import type { BarkTextureStyle } from '../../engine/vegetation/vegetation-textures.ts';
+import { detectMobile } from '../../engine/perf/device-tier.ts';
 import type { VegetationUniforms } from '../../engine/vegetation/vegetation-uniforms.ts';
 import {
   OrganCollector,
@@ -559,6 +560,8 @@ export function createTree(options: CreateTreeOptions): THREE.Group {
   const spread = options.spread ?? height * spec.spreadRatio;
   const crownRadius = spread * 0.5;
   const rng = createBotanicalRng(options.seed ?? 101 + options.species.length * 37);
+  // Phones/tablets grow fewer whorls and twig stations to cut canopy vertex memory.
+  const mobileBudget = detectMobile();
 
   const bark = new OrganCollector();
   const foliage = new OrganCollector();
@@ -602,7 +605,7 @@ export function createTree(options: CreateTreeOptions): THREE.Group {
 
   if (spec.fastigiate) {
     // Columnar cypress whorls along the vertical axis
-    const whorls = 14;
+    const whorls = mobileBudget ? 9 : 14;
     for (let w = 0; w < whorls; w++) {
       const wf = w / (whorls - 1);
       const yFrac = THREE.MathUtils.lerp(spec.clearTrunkRatio, 0.98, wf);
@@ -610,7 +613,7 @@ export function createTree(options: CreateTreeOptions): THREE.Group {
       origin.y = height * yFrac;
       const env = Math.sin(Math.pow(wf, 0.65) * Math.PI);
       const rWhorl = Math.max(0.14, crownRadius * (0.28 + 0.85 * env));
-      const branchesInWhorl = 5;
+      const branchesInWhorl = mobileBudget ? 4 : 5;
       for (let b = 0; b < branchesInWhorl; b++) {
         const az = (w * 0.85) + (b / branchesInWhorl) * Math.PI * 2 + rng.signed() * 0.2;
         const tip = new THREE.Vector3(
@@ -670,7 +673,7 @@ export function createTree(options: CreateTreeOptions): THREE.Group {
         populateTwigOrgans({ spec, tip, dir: endDir, foliage, reactivity, scaleFactor, rng });
       }
       if (depth <= 1) {
-        for (const f of [0.28, 0.55, 0.8, 1.0]) {
+        for (const f of mobileBudget ? [0.45, 1.0] : [0.28, 0.55, 0.8, 1.0]) {
           const station = f <= 0.5
             ? origin.clone().lerp(mid, f * 2)
             : mid.clone().lerp(tip, (f - 0.5) * 2);

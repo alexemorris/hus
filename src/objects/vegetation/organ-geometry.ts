@@ -3,6 +3,7 @@ import {
   VEGETATION_ORGAN_CODES,
   type VegetationOrganKind,
 } from '../../core/geo/climate-phenology.ts';
+import { detectMobile } from '../../engine/perf/device-tier.ts';
 import { VEG_META_ATTR, VEG_PIVOT_ATTR } from './phenology-material.ts';
 
 export interface BotanicalRng {
@@ -65,6 +66,11 @@ export class OrganCollector {
   private readonly metas: number[] = [];
   private readonly indices: number[] = [];
   private vertexCount = 0;
+  /**
+   * Phone/tablet geometry budget, resolved once per collector (`detectMobile()` parses the URL).
+   * Desktop and headless Node builds keep full organ tessellation.
+   */
+  private readonly mobileBudget = detectMobile();
 
   public isEmpty(): boolean {
     return this.vertexCount === 0 || this.indices.length === 0;
@@ -122,7 +128,8 @@ export class OrganCollector {
   }): void {
     const pts = opts.points;
     if (pts.length < 2) return;
-    const radSegs = Math.max(4, opts.radialSegments ?? 7);
+    const fullRadSegs = Math.max(4, opts.radialSegments ?? 7);
+    const radSegs = this.mobileBudget ? Math.min(fullRadSegs, 4) : fullRadSegs;
     const organCode = VEGETATION_ORGAN_CODES.bark;
     const jitter = opts.jitter ?? 0.5;
     const reactivity = opts.reactivity ?? 1.0;
@@ -220,8 +227,14 @@ export class OrganCollector {
         : shape === 'ivy-palmate' || shape === 'serrated-vine'
           ? 5
           : 3;
-    const segsT = Math.max(2, opts.segsLength ?? defaultSegsT);
-    const segsS = Math.max(2, opts.segsWidth ?? 2);
+    // Mobile keeps the V-cup midrib only on large blades (monstera, agave); small hedge and tree
+    // leaves become flat two-segment blades.
+    const segsT = this.mobileBudget ? 2 : Math.max(2, opts.segsLength ?? defaultSegsT);
+    const segsS = this.mobileBudget
+      ? opts.length < 0.16
+        ? 1
+        : 2
+      : Math.max(2, opts.segsWidth ?? 2);
     const archDrop = opts.archDrop ?? opts.length * 0.22;
     const cupDepth = opts.cupDepth ?? opts.width * 0.16;
     const organCode = VEGETATION_ORGAN_CODES[opts.meta.organ];
@@ -326,7 +339,12 @@ export class OrganCollector {
     readonly rng: BotanicalRng;
     readonly droop?: number;
   }): void {
-    const count = Math.max(2, opts.leafCount);
+    // Mobile emits fewer, larger leaves so the canopy keeps its volume at ~45% of the triangles.
+    const count = this.mobileBudget
+      ? Math.max(2, Math.ceil(opts.leafCount * 0.45))
+      : Math.max(2, opts.leafCount);
+    const leafLength = this.mobileBudget ? opts.leafLength * 1.22 : opts.leafLength;
+    const leafWidth = this.mobileBudget ? opts.leafWidth * 1.25 : opts.leafWidth;
     const outDir = opts.normal.clone().normalize();
     if (outDir.lengthSq() < 1e-6) outDir.set(0, 1, 0);
     const ref = Math.abs(outDir.y) > 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
@@ -355,9 +373,9 @@ export class OrganCollector {
       this.addCuppedLeafBlade({
         pivot: opts.pivot,
         direction: dir,
-        length: opts.leafLength * scaleJit,
-        width: opts.leafWidth * scaleJit,
-        archDrop: opts.leafLength * scaleJit * (0.18 + droop * 0.45),
+        length: leafLength * scaleJit,
+        width: leafWidth * scaleJit,
+        archDrop: leafLength * scaleJit * (0.18 + droop * 0.45),
         shape: opts.shape,
         color: leafCol,
         meta: {
@@ -491,7 +509,8 @@ export class OrganCollector {
     readonly meta: OrganMetaInput;
     readonly rng: BotanicalRng;
   }): void {
-    const count = THREE.MathUtils.clamp(opts.berryCount ?? 22, 14, 30);
+    const fullCount = THREE.MathUtils.clamp(opts.berryCount ?? 22, 14, 30);
+    const count = this.mobileBudget ? Math.min(fullCount, 10) : fullCount;
     const bunchLen = opts.length ?? 0.145;
     const shoulderR = opts.shoulderRadius ?? 0.034;
     const baseBerryR = opts.berryRadius ?? 0.013;
@@ -557,8 +576,9 @@ export class OrganCollector {
     readonly meta: OrganMetaInput;
     readonly rng: BotanicalRng;
   }): void {
-    const petals = Math.max(4, opts.petalCount ?? 5);
-    const layers = Math.max(1, opts.layers ?? 1);
+    const fullPetals = Math.max(4, opts.petalCount ?? 5);
+    const petals = this.mobileBudget ? Math.min(fullPetals, 4) : fullPetals;
+    const layers = this.mobileBudget ? 1 : Math.max(1, opts.layers ?? 1);
     const cup = opts.cupFactor ?? 0.35;
     const axis = opts.normal.clone().normalize();
     if (axis.lengthSq() < 1e-6) axis.set(0, 1, 0);
@@ -608,8 +628,10 @@ export class OrganCollector {
     readonly color: THREE.Color;
     readonly meta: OrganMetaInput;
   }): void {
-    const latSegs = Math.max(3, opts.latSegments ?? 5);
-    const lonSegs = Math.max(5, opts.lonSegments ?? 7);
+    const fullLatSegs = Math.max(3, opts.latSegments ?? 5);
+    const fullLonSegs = Math.max(5, opts.lonSegments ?? 7);
+    const latSegs = this.mobileBudget ? Math.min(fullLatSegs, 3) : fullLatSegs;
+    const lonSegs = this.mobileBudget ? Math.min(fullLonSegs, 4) : fullLonSegs;
     const organCode = VEGETATION_ORGAN_CODES[opts.meta.organ];
     const cx = opts.pivot.x + opts.centerOffset.x;
     const cy = opts.pivot.y + opts.centerOffset.y;
@@ -662,7 +684,8 @@ export class OrganCollector {
     readonly groundY?: number;
   }): void {
     const yBase = opts.groundY ?? 0.012;
-    for (let i = 0; i < opts.count; i++) {
+    const count = this.mobileBudget ? Math.min(opts.count, 10) : opts.count;
+    for (let i = 0; i < count; i++) {
       const angle = opts.rng.range(0, Math.PI * 2);
       const r = Math.sqrt(opts.rng.next()) * (opts.radiusMax - opts.radiusMin) + opts.radiusMin;
       const piv = new THREE.Vector3(Math.cos(angle) * r, yBase + opts.rng.range(0, 0.008), Math.sin(angle) * r);

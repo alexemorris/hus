@@ -13,6 +13,7 @@
 import * as THREE from 'three';
 import { detectMobile } from '../perf/device-tier.ts';
 import { createRuntimeOrHeadlessCanvas } from './headless-canvas.ts';
+import { boxDownsampleTexels, type DownsampledTexelBuffer } from './texture-downsample.ts';
 
 interface RecordingCanvasLike {
   readonly log?: readonly string[];
@@ -64,6 +65,14 @@ function isSnapshotRecordingEnvironment(): boolean {
   const probe = document.createElement('canvas');
   cachedIsSnapshotRecordingEnv = isSnapshotRecordingCanvas(probe);
   return cachedIsSnapshotRecordingEnv;
+}
+
+/**
+ * True when mobile texture memory caps apply: a phone/tablet session (`detectMobile()`) outside
+ * headless snapshot recording, so desktop and recorded output stay bit-for-bit identical.
+ */
+export function isMobileTextureBudgetActive(): boolean {
+  return detectMobile() && !isSnapshotRecordingEnvironment();
 }
 
 function isStatefulRecordingCanvas(canvas: HTMLCanvasElement): boolean {
@@ -355,7 +364,9 @@ export function createScalarDataTextureFromCanvas(
     return null;
   }
 
-  const maxDim = options.maxDimension ?? (detectMobile() ? 512 : 1024);
+  const maxDim = detectMobile()
+    ? Math.min(options.maxDimension ?? 256, 256)
+    : (options.maxDimension ?? 1024);
   const srcW = Math.max(1, sourceCanvas.width);
   const srcH = Math.max(1, sourceCanvas.height);
   const scale = Math.min(1, maxDim / Math.max(srcW, srcH));
@@ -456,10 +467,12 @@ export function compactScalarRgbaDataTexture(
     }
   }
 
+  const mobileCompact =
+    detectMobile() && (w > 256 || h > 256) ? boxDownsampleTexels(dst, w, h, channels, 256) : null;
   const tex = new THREE.DataTexture(
-    dst,
-    w,
-    h,
+    mobileCompact ? mobileCompact.data : dst,
+    mobileCompact ? mobileCompact.width : w,
+    mobileCompact ? mobileCompact.height : h,
     channels === 1 ? THREE.RedFormat : THREE.RGFormat,
     THREE.UnsignedByteType
   );
@@ -482,6 +495,104 @@ export function compactScalarRgbaDataTexture(
   return tex;
 }
 
+let mobileDownsampledBufferCache = new WeakMap<
+  object,
+  Map<number, DownsampledTexelBuffer | null>
+>();
+let mobileDownsampledTexCache = new WeakMap<THREE.DataTexture, Map<number, THREE.DataTexture>>();
+
+function copyTextureUvTransform(target: THREE.Texture, source: THREE.Texture): void {
+  target.wrapS = source.wrapS;
+  target.wrapT = source.wrapT;
+  target.repeat.copy(source.repeat);
+  target.offset.copy(source.offset);
+  target.center.copy(source.center);
+  target.rotation = source.rotation;
+  target.channel = source.channel;
+  target.matrixAutoUpdate = source.matrixAutoUpdate;
+  target.matrix.copy(source.matrix);
+}
+
+/**
+ * On mobile (`detectMobile()`), returns a box-filtered copy of an 8-bit `RGBAFormat` /
+ * `RGFormat` / `RedFormat` `DataTexture` whose longest edge exceeds `maxDimension`, sharing one
+ * downsampled buffer per source `image.data` + `maxDimension`. Desktop, headless recording, and
+ * textures that already fit return `tex` unchanged.
+ */
+export function downsampleDataTextureForMobile(
+  tex: THREE.DataTexture,
+  maxDimension = 512
+): THREE.DataTexture {
+  if (!isMobileTextureBudgetActive() || tex.type !== THREE.UnsignedByteType) return tex;
+  const channels: 0 | 1 | 2 | 4 =
+    tex.format === THREE.RGBAFormat
+      ? 4
+      : tex.format === THREE.RGFormat
+        ? 2
+        : tex.format === THREE.RedFormat
+          ? 1
+          : 0;
+  if (channels === 0) return tex;
+  const img = tex.image as { data?: unknown; width?: number; height?: number } | undefined;
+  const srcData = img?.data;
+  if (
+    !img ||
+    !(srcData instanceof Uint8Array || srcData instanceof Uint8ClampedArray) ||
+    typeof img.width !== 'number' ||
+    typeof img.height !== 'number' ||
+    (img.width <= maxDimension && img.height <= maxDimension)
+  ) {
+    return tex;
+  }
+
+  let perTex = mobileDownsampledTexCache.get(tex);
+  const cachedTex = perTex?.get(maxDimension);
+  if (cachedTex) {
+    copyTextureUvTransform(cachedTex, tex);
+    return cachedTex;
+  }
+
+  let perBuffer = mobileDownsampledBufferCache.get(srcData);
+  if (!perBuffer) {
+    perBuffer = new Map();
+    mobileDownsampledBufferCache.set(srcData, perBuffer);
+  }
+  let small = perBuffer.get(maxDimension);
+  if (small === undefined) {
+    small = boxDownsampleTexels(srcData, img.width, img.height, channels, maxDimension);
+    perBuffer.set(maxDimension, small);
+  }
+  if (!small) return tex;
+
+  const out = new THREE.DataTexture(
+    small.data,
+    small.width,
+    small.height,
+    tex.format as THREE.PixelFormat,
+    tex.type
+  );
+  out.name = tex.name;
+  out.mapping = tex.mapping;
+  copyTextureUvTransform(out, tex);
+  out.magFilter = tex.magFilter;
+  out.minFilter = tex.minFilter;
+  out.anisotropy = tex.anisotropy;
+  out.internalFormat = tex.internalFormat;
+  out.colorSpace = tex.colorSpace;
+  out.flipY = tex.flipY;
+  out.premultiplyAlpha = tex.premultiplyAlpha;
+  out.unpackAlignment = channels === 4 ? tex.unpackAlignment : 1;
+  out.generateMipmaps = tex.generateMipmaps;
+  out.needsUpdate = true;
+
+  if (!perTex) {
+    perTex = new Map();
+    mobileDownsampledTexCache.set(tex, perTex);
+  }
+  perTex.set(maxDimension, out);
+  return out;
+}
+
 export interface RgbaDataTextureOptions extends ScalarDataTextureOptions {
   readonly colorSpace?: THREE.ColorSpace;
 }
@@ -501,7 +612,9 @@ export function createRgbaDataTextureFromCanvas(
   }
   const srcW = Math.max(1, sourceCanvas.width);
   const srcH = Math.max(1, sourceCanvas.height);
-  const maxDim = options.maxDimension ?? Math.max(srcW, srcH);
+  const maxDim = detectMobile()
+    ? Math.min(options.maxDimension ?? 512, Math.max(srcW, srcH) >= 1024 ? 512 : 256)
+    : (options.maxDimension ?? Math.max(srcW, srcH));
   const scale = Math.min(1, maxDim / Math.max(srcW, srcH));
   const targetW =
     scale < 1 ? Math.max(4, Math.round((srcW * scale) / 4) * 4) : srcW;
@@ -586,10 +699,20 @@ export function createBrowserDataOrCanvasTextureFromImageData(
   options: RgbaDataTextureOptions = {}
 ): THREE.CanvasTexture {
   if (!isRecordingCanvasStub(canvas)) {
+    const isMobile = detectMobile();
+    const fullRes = new Uint8Array(
+      imgData.data.buffer,
+      imgData.data.byteOffset,
+      imgData.data.byteLength
+    );
+    const mobileFit =
+      isMobile && (imgData.width > 512 || imgData.height > 512)
+        ? boxDownsampleTexels(fullRes, imgData.width, imgData.height, 4, 512)
+        : null;
     const tex = new THREE.DataTexture(
-      new Uint8Array(imgData.data.buffer, imgData.data.byteOffset, imgData.data.byteLength),
-      imgData.width,
-      imgData.height,
+      mobileFit ? mobileFit.data : fullRes,
+      mobileFit ? mobileFit.width : imgData.width,
+      mobileFit ? mobileFit.height : imgData.height,
       THREE.RGBAFormat,
       THREE.UnsignedByteType
     );
@@ -600,7 +723,7 @@ export function createBrowserDataOrCanvasTextureFromImageData(
     if (options.center) tex.center.set(options.center[0], options.center[1]);
     tex.rotation = options.rotation ?? 0;
     tex.colorSpace = options.colorSpace ?? THREE.SRGBColorSpace;
-    tex.anisotropy = options.anisotropy ?? 8;
+    tex.anisotropy = isMobile ? Math.min(options.anisotropy ?? 4, 4) : (options.anisotropy ?? 8);
     tex.flipY = options.flipY ?? true;
     tex.magFilter = THREE.LinearFilter;
     tex.minFilter = THREE.LinearMipmapLinearFilter;
@@ -686,6 +809,8 @@ export function releaseUploadedStaticCanvases(
  */
 export function clearTextureRegistryCache(): void {
   rgbaDataCache = new WeakMap();
+  mobileDownsampledBufferCache = new WeakMap();
+  mobileDownsampledTexCache = new WeakMap();
   compactedScalarDataTexCache.clear();
   canvasCache.clear();
   canvasPairCache.clear();

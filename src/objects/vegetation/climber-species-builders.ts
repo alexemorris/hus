@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { detectMobile } from '../../engine/perf/device-tier.ts';
 import {
   OrganCollector,
   type BotanicalRng,
@@ -186,7 +187,8 @@ export function buildEnglishIvyClimber(ctx: ClimberBuildContext): void {
   }
 
   const area = Math.max(0.6, width * height);
-  const shingleNodes = Math.round(THREE.MathUtils.clamp(area * 42 * density, 75, 560));
+  const mobileIvy = detectMobile();
+  const shingleNodes = Math.round(THREE.MathUtils.clamp(area * (mobileIvy ? 19 : 42) * density, mobileIvy ? 36 : 75, mobileIvy ? 240 : 560));
   const golden = Math.PI * (3 - Math.sqrt(5));
 
   for (let n = 0; n < shingleNodes; n++) {
@@ -197,7 +199,7 @@ export function buildEnglishIvyClimber(ctx: ClimberBuildContext): void {
 
     const isFringe = margin < 0.19 || v > 0.86;
     const fr = ctx.sampleFrame(u, v);
-    const layerCount = isFringe ? 2 : 3;
+    const layerCount = mobileIvy ? (isFringe ? 1 : 2) : isFringe ? 2 : 3;
 
     for (let layer = 0; layer < layerCount; layer++) {
       const zLift = 0.014 + layer * 0.022 + rng.range(0, 0.014);
@@ -275,7 +277,8 @@ export function buildVirginiaCreeperClimber(ctx: ClimberBuildContext): void {
     bark.addTaperedTube({ points: pts, radii, radialSegments: 5, color: woodyCol, jitter: rng.next(), reactivity });
   }
 
-  const extraCurtainNodes = Math.round(THREE.MathUtils.clamp(width * height * 16 * density, 24, 190));
+  const mobileCreeper = detectMobile();
+  const extraCurtainNodes = Math.round(THREE.MathUtils.clamp(width * height * (mobileCreeper ? 7 : 16) * density, mobileCreeper ? 12 : 24, mobileCreeper ? 85 : 190));
   for (let k = 0; k < extraCurtainNodes; k++) {
     const u = rng.range(0.05, 0.95);
     const v = rng.range(0.12, 0.95);
@@ -284,7 +287,8 @@ export function buildVirginiaCreeperClimber(ctx: ClimberBuildContext): void {
     sprayNodes.push({ pos: fr.pos.clone().addScaledVector(fr.normal, rng.range(0.02, 0.055)), frame: fr, isTrailing: v < 0.35 || rng.next() < 0.35 });
   }
 
-  for (const node of sprayNodes) {
+  const activeSprays = mobileCreeper ? sprayNodes.filter((_, i) => i % 2 === 0) : sprayNodes;
+  for (const node of activeSprays) {
     const jitter = rng.next();
     const outNormal = node.frame.normal.clone().multiplyScalar(0.65).addScaledVector(node.frame.tangentV, node.isTrailing ? -0.52 : -0.18).addScaledVector(node.frame.tangentU, rng.signed() * 0.28).normalize();
     foliage.addCompoundPalmateSpray({
@@ -448,7 +452,8 @@ export function buildGrapevineClimber(ctx: ClimberBuildContext): void {
   }
 
   const spanArea = support === 'pergola-wire' ? width * depth : width * height;
-  const extraCanopyCount = Math.round(THREE.MathUtils.clamp(spanArea * 26 * density, 55, 380));
+  const mobileGrape = detectMobile();
+  const extraCanopyCount = Math.round(THREE.MathUtils.clamp(spanArea * (mobileGrape ? 11 : 26) * density, mobileGrape ? 24 : 55, mobileGrape ? 160 : 380));
   for (let i = 0; i < extraCanopyCount; i++) {
     const u = rng.range(0.03, 0.97);
     const v = support === 'pergola-wire' ? rng.range(0.33, 0.99) : rng.range(0.18, 0.97);
@@ -458,7 +463,8 @@ export function buildGrapevineClimber(ctx: ClimberBuildContext): void {
     if (i % 6 === 0 && v > 0.34) cordonAnchors.push({ pos: fr.pos.clone().addScaledVector(fr.normal, 0.024), frame: fr });
   }
 
-  for (const site of canopySites) {
+  const activeCanopySites = mobileGrape ? canopySites.filter((_, i) => Math.floor((i + 1) * 0.55) > Math.floor(i * 0.55)) : canopySites;
+  for (const site of activeCanopySites) {
     const jitter = rng.next();
     const leavesHere = site.isUpperCanopy ? 3 : 2;
     for (let l = 0; l < leavesHere; l++) {
@@ -516,7 +522,7 @@ export function buildGrapevineClimber(ctx: ClimberBuildContext): void {
 
       foliage.addConicalGrapeBunch({
         pivot: hangPivot,
-        berryCount: rng.int(18, 26),
+        berryCount: mobileGrape ? rng.int(9, 13) : rng.int(18, 26),
         length: rng.range(0.125, 0.165),
         shoulderRadius: support === 'wall-plane' ? rng.range(0.026, 0.033) : rng.range(0.03, 0.04),
         berryRadius: rng.range(0.011, 0.015),
@@ -573,14 +579,16 @@ export function buildClimbingRoseClimber(ctx: ClimberBuildContext): void {
     }
   }
 
-  const lateralShoots = Math.round(THREE.MathUtils.clamp(width * height * 12 * density, 18, 130));
+  const mobileRose = detectMobile();
+  const lateralShoots = Math.round(THREE.MathUtils.clamp(width * height * (mobileRose ? 6 : 12) * density, mobileRose ? 10 : 18, mobileRose ? 65 : 130));
   for (let k = 0; k < lateralShoots; k++) {
     const v = rng.range(0.14, 0.94);
     const fr = ctx.sampleFrame(rng.range(0.06, 0.94), v);
     shootNodes.push({ pos: fr.pos.clone().addScaledVector(fr.normal, rng.range(0.02, 0.052)), frame: fr, caneDir: fr.tangentV.clone().addScaledVector(fr.tangentU, rng.signed() * 0.65).normalize(), t: v });
   }
 
-  for (const nd of shootNodes) {
+  const activeShoots = mobileRose ? shootNodes.filter((_, i) => Math.floor((i + 1) * 0.55) > Math.floor(i * 0.55)) : shootNodes;
+  for (const nd of activeShoots) {
     const jitter = rng.next();
     for (const sgn of [-1, 1]) {
       if (sgn === 1 && rng.next() > 0.65 * Math.sqrt(density)) continue;
@@ -690,7 +698,15 @@ export function buildWisteriaClimber(ctx: ClimberBuildContext): void {
     branchNodes.push({ pos: fr.pos.clone().addScaledVector(fr.normal, rng.range(0.022, 0.055)), frame: fr });
   }
 
-  for (const nd of branchNodes) {
+  // Phones/tablets keep ~55% of the frond/raceme stations with larger leaflets so the curtain
+  // stays full while the climber's vertex buffers shrink.
+  const mobileBudget = detectMobile();
+  const stations = mobileBudget
+    ? branchNodes.filter((_, i) => Math.floor((i + 1) * 0.55) > Math.floor(i * 0.55))
+    : branchNodes;
+  const leafletScale = mobileBudget ? 1.18 : 1;
+
+  for (const nd of stations) {
     const jitter = rng.next();
     for (let f = 0, fronds = rng.int(1, 2); f < fronds; f++) {
       const az = rng.range(0, Math.PI * 2);
@@ -702,8 +718,8 @@ export function buildWisteriaClimber(ctx: ClimberBuildContext): void {
         normal: nd.frame.normal,
         leafletPairs: rng.int(3, 4),
         frondLength: rng.range(0.16, 0.23),
-        leafletLength: rng.range(0.052, 0.072),
-        leafletWidth: rng.range(0.022, 0.032),
+        leafletLength: rng.range(0.052, 0.072) * leafletScale,
+        leafletWidth: rng.range(0.022, 0.032) * leafletScale,
         shape: 'lanceolate',
         color: pinnateGreen,
         rng,

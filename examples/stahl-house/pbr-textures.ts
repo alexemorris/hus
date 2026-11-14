@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { getOrCreateCachedTexture } from 'husjs/materials';
+import { createPbrDataTex } from './pbr-mobile-downsample.ts';
 
 export interface PbrTextureSuite {
   readonly map: THREE.DataTexture;
@@ -191,16 +192,7 @@ export function configureDataTex(
   srgb: boolean,
   repeat: readonly [number, number] = [1, 1]
 ): THREE.DataTexture {
-  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(repeat[0], repeat[1]);
-  tex.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
-  tex.magFilter = THREE.LinearFilter;
-  tex.minFilter = THREE.LinearMipmapLinearFilter;
-  tex.generateMipmaps = true;
-  tex.anisotropy = 8;
-  tex.needsUpdate = true;
-  return tex;
+  return createPbrDataTex(data, size, srgb ? 'srgb' : 'linear', repeat);
 }
 
 function makeSuite(
@@ -213,7 +205,7 @@ function makeSuite(
   return {
     map: configureDataTex(colorData, size, true, repeat),
     normalMap: configureDataTex(normalData, size, false, repeat),
-    roughnessMap: configureDataTex(roughData, size, false, repeat),
+    roughnessMap: createPbrDataTex(roughData, size, 'roughness', repeat),
   };
 }
 

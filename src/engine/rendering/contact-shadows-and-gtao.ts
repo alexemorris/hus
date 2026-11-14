@@ -215,11 +215,22 @@ export function spatialInterleavedGradientNoise(
   return fract(float(52.9829189).mul(fract(dot(coordXY, magic))));
 }
 
+/**
+ * Samples scene depth at explicit mip level 0 (`textureSampleLevel`) so WGSL never needs implicit
+ * screen-space derivatives inside non-uniform fragment `If(...)` blocks (rejected by WebKit WebGPU).
+ */
+function sampleDepthLevel0(
+  depthNode: ShaderNodeObject<TextureNode>,
+  sampleUv: ShaderNodeObject<Node>
+): ShaderNodeObject<Node> {
+  return (depthNode.sample(sampleUv) as unknown as ShaderNodeObject<TextureNode>).level(float(0)).r;
+}
+
 function sampleClampedDepth(
   depthNode: ShaderNodeObject<TextureNode>,
   sampleUv: ShaderNodeObject<Node>
 ): ShaderNodeObject<Node> {
-  return depthNode.sample(clamp(sampleUv, 0.001, 0.999)).r;
+  return sampleDepthLevel0(depthNode, clamp(sampleUv, 0.001, 0.999));
 }
 
 function isUvInSafeViewportNode(sampleUv: ShaderNodeObject<Node>): ShaderNodeObject<Node> {
@@ -253,10 +264,10 @@ export function reconstructMinDeltaViewNormal(
   const uvD = clamp(rawUvD, 0.001, 0.999).toVar();
   const uvU = clamp(rawUvU, 0.001, 0.999).toVar();
 
-  const posR = getViewPosition(uvR, depthNode.sample(uvR).r, uProjMatrixInverse).toVar();
-  const posL = getViewPosition(uvL, depthNode.sample(uvL).r, uProjMatrixInverse).toVar();
-  const posD = getViewPosition(uvD, depthNode.sample(uvD).r, uProjMatrixInverse).toVar();
-  const posU = getViewPosition(uvU, depthNode.sample(uvU).r, uProjMatrixInverse).toVar();
+  const posR = getViewPosition(uvR, sampleDepthLevel0(depthNode, uvR), uProjMatrixInverse).toVar();
+  const posL = getViewPosition(uvL, sampleDepthLevel0(depthNode, uvL), uProjMatrixInverse).toVar();
+  const posD = getViewPosition(uvD, sampleDepthLevel0(depthNode, uvD), uProjMatrixInverse).toVar();
+  const posU = getViewPosition(uvU, sampleDepthLevel0(depthNode, uvU), uProjMatrixInverse).toVar();
 
   const validR = rawUvR.x.lessThan(0.999);
   const validL = rawUvL.x.greaterThan(0.001);
@@ -364,7 +375,7 @@ export function evaluateHalfResGtao(
 
         const uvPos = getScreenPosition(centerViewPos.add(viewOffset), uProjMatrix).toVar();
         If(isUvInSafeViewportNode(uvPos), () => {
-          const depthPos = depthNode.sample(uvPos).r.toVar();
+          const depthPos = sampleDepthLevel0(depthNode, uvPos).toVar();
           If(depthPos.lessThan(0.9999), () => {
             const samplePos = getViewPosition(uvPos, depthPos, uProjMatrixInverse);
             const rawDeltaPos = samplePos.sub(centerViewPos).toVar();
@@ -392,7 +403,7 @@ export function evaluateHalfResGtao(
 
         const uvNeg = getScreenPosition(centerViewPos.sub(viewOffset), uProjMatrix).toVar();
         If(isUvInSafeViewportNode(uvNeg), () => {
-          const depthNeg = depthNode.sample(uvNeg).r.toVar();
+          const depthNeg = sampleDepthLevel0(depthNode, uvNeg).toVar();
           If(depthNeg.lessThan(0.9999), () => {
             const sampleNeg = getViewPosition(uvNeg, depthNeg, uProjMatrixInverse);
             const rawDeltaNeg = sampleNeg.sub(centerViewPos).toVar();
@@ -556,7 +567,7 @@ export function evaluateScreenSpaceContactShadow(
         const rayUv = getScreenPosition(rayPos, uProjMatrix).toVar();
 
         If(isUvInSafeViewportNode(rayUv), () => {
-          const sampleD = depthNode.sample(rayUv).r;
+          const sampleD = sampleDepthLevel0(depthNode, rayUv);
           If(sampleD.lessThan(0.9999), () => {
             const scenePos = getViewPosition(rayUv, sampleD, uProjMatrixInverse);
             const depthDiff = scenePos.z.sub(rayPos.z);

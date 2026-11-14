@@ -1,7 +1,12 @@
 import * as THREE from 'three';
 import { toCreasedNormals } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { SkyWeatherSnapshot } from 'husjs';
-import { applyMetricBoxUVs, getOrCreateCachedTexture } from 'husjs/materials';
+import {
+  applyMetricBoxUVs,
+  boxDownsampleTexels,
+  detectMobile,
+  getOrCreateCachedTexture,
+} from 'husjs/materials';
 import { prepGeo, tagCollisionRole } from 'husjs/objects';
 import { VEG_META_ATTR, VEG_PIVOT_ATTR, createShrub, createTree, createXerophyte } from 'husjs/vegetation';
 import { getStonePbr1024, hashCell2D } from './pbr-textures.ts';
@@ -188,7 +193,15 @@ function createLaCityGridTexture(): THREE.DataTexture {
       }
     }
 
-    const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+    // Phones/tablets upload a 512px box-filtered grid; alpha-weighted averaging keeps the
+    // additive street-light energy of every road line identical to the 1024px source.
+    const fit = detectMobile() ? boxDownsampleTexels(data, size, size, 4, 512) : null;
+    const tex = new THREE.DataTexture(
+      fit ? fit.data : data,
+      fit ? fit.width : size,
+      fit ? fit.height : size,
+      THREE.RGBAFormat
+    );
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
     tex.colorSpace = THREE.SRGBColorSpace;

@@ -1,6 +1,7 @@
 export {
   classifyGpu,
   detectDeviceProfile,
+  detectIOS,
   detectMobile,
   isRealBrowserMobile,
   estimateInitialTier,

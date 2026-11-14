@@ -51,10 +51,18 @@ export {
   type PbrSurfaceMapOptions,
 } from '../engine/textures/pbr-surface-maps.ts';
 
+export { detectIOS, detectMobile } from '../engine/perf/device-tier.ts';
+
+export {
+  boxDownsampleTexels,
+  type DownsampledTexelBuffer,
+} from '../engine/textures/texture-downsample.ts';
+
 export {
   clearTextureRegistryCache,
   createBrowserDataOrCanvasTexture,
   createSharedSourceTextureVariant,
+  downsampleDataTextureForMobile,
   getOrCreateCachedCanvas,
   getOrCreateCachedCanvasPair,
   getOrCreateCachedTexture,

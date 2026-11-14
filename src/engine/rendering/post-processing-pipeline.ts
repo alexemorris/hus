@@ -268,7 +268,11 @@ export class PostProcessingPipeline {
   }
 
   public applyTierSettings(settings: GraphicsTierSettings): void {
+    const wasPostEnabled = this.postEnabled;
     this.assignTierSettings(settings);
+    if (wasPostEnabled && !this.postEnabled) {
+      this.dispose();
+    }
     this.syncRendererPixelRatio();
     this.hasPrevMatrix = false;
     this.saveSettings();
@@ -365,6 +369,11 @@ export class PostProcessingPipeline {
 
     const scenePass = pass(scene, camera, { samples: 1 });
     scenePass.renderTarget.samples = 1;
+    if (scenePass.renderTarget.depthTexture) {
+      scenePass.renderTarget.depthTexture.minFilter = THREE.NearestFilter;
+      scenePass.renderTarget.depthTexture.magFilter = THREE.NearestFilter;
+      scenePass.renderTarget.depthTexture.generateMipmaps = false;
+    }
     const passInternal = scenePass as unknown as {
       _width: number;
       _height: number;

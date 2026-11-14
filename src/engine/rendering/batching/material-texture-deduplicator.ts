@@ -4,6 +4,8 @@ import {
   compactScalarRgbaDataTexture,
   createRgbaDataTextureFromCanvas,
   createScalarDataTextureFromCanvas,
+  downsampleDataTextureForMobile,
+  isMobileTextureBudgetActive,
   isRecordingCanvasStub,
 } from '../../textures/texture-registry.ts';
 import { consolidateMultiMaterialGeometry } from '../multi-material-batch-utils.ts';
@@ -14,6 +16,7 @@ import {
   LEAF_OR_MICRO_SHADOW_EXCLUDE_RE,
   SHADOW_PASS_HOOK_FLAG,
 } from './scene-batch-classification.ts';
+import { MaterialUvColorBaker } from './material-uv-color-baker.ts';
 
 export interface MaterialDeduplicationDeps {
   readonly lodController: RoomLodController;
@@ -36,20 +39,7 @@ export class MaterialTextureDeduplicator {
   private readonly canonicalTexBySig = new Map<string, THREE.Texture>();
   private readonly scalarTexCache = new Map<string, THREE.DataTexture | null>();
   private readonly rgbaTexCache = new Map<string, THREE.DataTexture | null>();
-  private readonly uvBakedGeoCache = new WeakMap<
-    THREE.BufferGeometry,
-    Map<string, THREE.BufferGeometry>
-  >();
-  private readonly bakedColorGeos = new WeakMap<
-    THREE.BufferGeometry,
-    Map<string, THREE.BufferGeometry>
-  >();
-  private readonly bakedMultiColorGeos = new WeakMap<
-    THREE.BufferGeometry,
-    Map<string, THREE.BufferGeometry>
-  >();
-  private readonly whiteVcSlotCache = new WeakMap<THREE.Material, THREE.Material>();
-  private readonly unitUvGeoCache = new WeakMap<THREE.BufferGeometry, boolean>();
+  private readonly baker = new MaterialUvColorBaker();
 
   public deduplicateMaterialsAndCullSmallShadows(
     scene: THREE.Scene,
@@ -63,7 +53,8 @@ export class MaterialTextureDeduplicator {
     const canonicalTexBySig = this.canonicalTexBySig;
     const scalarTexCache = this.scalarTexCache;
     const rgbaTexCache = this.rgbaTexCache;
-    const uvBakedGeoCache = this.uvBakedGeoCache;
+    const baker = this.baker;
+    const mobileTextureBudget = isMobileTextureBudgetActive();
 
     interface ImageSlotUsage {
       colorOrVector: boolean;
@@ -192,9 +183,13 @@ export class MaterialTextureDeduplicator {
           const scalarCacheKey = `${cId}:${channels}:${tex.wrapS}:${tex.wrapT}:${repX}:${repY}:${offX}:${offY}:${ctrX}:${ctrY}:${rot}:${tex.flipY ? 1 : 0}`;
           const isRepeatTiled =
             tex.wrapS === THREE.RepeatWrapping || tex.wrapT === THREE.RepeatWrapping;
-          const scalarMaxDim = isRepeatTiled
-            ? Math.min(1024, Math.max(tex.image.width, tex.image.height))
-            : 512;
+          const scalarMaxDim = mobileTextureBudget
+            ? isRepeatTiled
+              ? 256
+              : 128
+            : isRepeatTiled
+              ? Math.min(1024, Math.max(tex.image.width, tex.image.height))
+              : 512;
           let scalarTex = scalarTexCache.get(scalarCacheKey);
           if (scalarTex === undefined) {
             scalarTex = createScalarDataTextureFromCanvas(
@@ -225,11 +220,17 @@ export class MaterialTextureDeduplicator {
             working.wrapS === THREE.ClampToEdgeWrapping &&
             working.wrapT === THREE.ClampToEdgeWrapping &&
             Boolean(usage && usage.maxWorldSpanM <= 3.2);
-          const targetMaxDim = isSmallClampedProp
-            ? usage!.maxWorldSpanM > 0 && usage!.maxWorldSpanM < 0.65
-              ? 256
-              : 512
-            : Math.max(tex.image.width, tex.image.height);
+          const targetMaxDim = mobileTextureBudget
+            ? isSmallClampedProp
+              ? usage!.maxWorldSpanM > 0 && usage!.maxWorldSpanM < 1.2
+                ? 128
+                : 256
+              : Math.min(512, Math.max(tex.image.width, tex.image.height))
+            : isSmallClampedProp
+              ? usage!.maxWorldSpanM > 0 && usage!.maxWorldSpanM < 0.65
+                ? 256
+                : 512
+              : Math.max(tex.image.width, tex.image.height);
           const cId = getImgId(tex.image);
           const repX = forceUnitUv ? 1 : working.repeat.x;
           const repY = forceUnitUv ? 1 : working.repeat.y;
@@ -260,22 +261,23 @@ export class MaterialTextureDeduplicator {
             working = dataTex;
           }
         }
-      } else if (
-        (tex as THREE.DataTexture).isDataTexture &&
-        initKeyObj &&
-        usage &&
-        !usage.colorOrVector &&
-        (usage.roughness || usage.scalarR)
-      ) {
-        const dId = getImgId(initKeyObj);
-        const channels: 1 | 2 = usage.roughness ? 2 : 1;
-        const compacted = compactScalarRgbaDataTexture(
-          `sbo-dtex:${dId}`,
-          tex as THREE.DataTexture,
-          channels
-        );
-        if (compacted) {
-          working = compacted;
+      } else if ((tex as THREE.DataTexture).isDataTexture) {
+        let dataTex = tex as THREE.DataTexture;
+        if (mobileTextureBudget) {
+          const isSmallClampedProp =
+            tex.wrapS === THREE.ClampToEdgeWrapping &&
+            tex.wrapT === THREE.ClampToEdgeWrapping &&
+            Boolean(usage && usage.maxWorldSpanM <= 3.2);
+          dataTex = downsampleDataTextureForMobile(dataTex, isSmallClampedProp ? 256 : 512);
+          working = dataTex;
+        }
+        if (initKeyObj && usage && !usage.colorOrVector && (usage.roughness || usage.scalarR)) {
+          const dId = getImgId(initKeyObj);
+          const channels: 1 | 2 = usage.roughness ? 2 : 1;
+          const compacted = compactScalarRgbaDataTexture(`sbo-dtex:${dId}`, dataTex, channels);
+          if (compacted) {
+            working = compacted;
+          }
         }
       }
 
@@ -331,149 +333,10 @@ export class MaterialTextureDeduplicator {
       return canon;
     };
 
-    const getBakedUvGeometry = (
-      geo: THREE.BufferGeometry,
-      sampleTex: THREE.Texture
-    ): THREE.BufferGeometry | null => {
-      const uvAttr = geo.getAttribute('uv');
-      if (
-        !uvAttr ||
-        uvAttr.itemSize !== 2 ||
-        (uvAttr as THREE.InterleavedBufferAttribute).isInterleavedBufferAttribute
-      ) {
-        return null;
-      }
-      const transformSig = `${sampleTex.repeat.x.toFixed(5)}|${sampleTex.repeat.y.toFixed(5)}|${sampleTex.offset.x.toFixed(5)}|${sampleTex.offset.y.toFixed(5)}|${sampleTex.rotation.toFixed(5)}|${sampleTex.center.x.toFixed(5)}|${sampleTex.center.y.toFixed(5)}`;
-      let perGeo = uvBakedGeoCache.get(geo);
-      if (!perGeo) {
-        perGeo = new Map<string, THREE.BufferGeometry>();
-        uvBakedGeoCache.set(geo, perGeo);
-      }
-      let cached = perGeo.get(transformSig);
-      if (cached) return cached;
-
-      sampleTex.updateMatrix();
-      const e = sampleTex.matrix.elements;
-      const e0 = e[0]!;
-      const e1 = e[1]!;
-      const e3 = e[3]!;
-      const e4 = e[4]!;
-      const e6 = e[6]!;
-      const e7 = e[7]!;
-
-      const count = uvAttr.count;
-      const dst = new Float32Array(count * 2);
-      for (let i = 0; i < count; i++) {
-        const u0 = uvAttr.getX(i);
-        const v0 = uvAttr.getY(i);
-        dst[i * 2] = e0 * u0 + e3 * v0 + e6;
-        dst[i * 2 + 1] = e1 * u0 + e4 * v0 + e7;
-      }
-      const clonedGeo = geo.clone();
-      clonedGeo.setAttribute('uv', new THREE.BufferAttribute(dst, 2));
-      perGeo.set(transformSig, clonedGeo);
-      return clonedGeo;
-    };
-
-    const canBakeUniformRepeatUv = (
-      mat: THREE.MeshPhysicalMaterial,
-      allowUvBake: boolean
-    ): THREE.Texture | null => {
-      if (!allowUvBake) return null;
-      if (
-        mat.aoMap ||
-        mat.lightMap ||
-        mat.displacementMap ||
-        mat.clearcoatNormalMap ||
-        mat.anisotropyMap ||
-        mat.transmissionMap ||
-        mat.thicknessMap ||
-        mat.sheenColorMap ||
-        mat.sheenRoughnessMap ||
-        mat.specularIntensityMap ||
-        mat.specularColorMap
-      ) {
-        return null;
-      }
-      const effectiveBump = mat.normalMap ? null : mat.bumpMap;
-      const slots: (THREE.Texture | null | undefined)[] = [
-        mat.map,
-        mat.normalMap,
-        mat.roughnessMap,
-        effectiveBump,
-        mat.alphaMap,
-        mat.emissiveMap,
-        mat.metalnessMap,
-        mat.clearcoatMap,
-        mat.clearcoatRoughnessMap,
-      ];
-      let ref: THREE.Texture | null = null;
-      for (let i = 0; i < slots.length; i++) {
-        const t = slots[i];
-        if (!t) continue;
-        if (
-          t.channel !== 0 ||
-          t.matrixAutoUpdate === false ||
-          t.wrapS !== THREE.RepeatWrapping ||
-          t.wrapT !== THREE.RepeatWrapping ||
-          t.repeat.x <= 0 ||
-          t.repeat.y <= 0
-        ) {
-          return null;
-        }
-        if (!ref) {
-          ref = t;
-        } else if (
-          Math.abs(t.repeat.x - ref.repeat.x) > 1e-4 ||
-          Math.abs(t.repeat.y - ref.repeat.y) > 1e-4 ||
-          Math.abs(t.offset.x - ref.offset.x) > 1e-4 ||
-          Math.abs(t.offset.y - ref.offset.y) > 1e-4 ||
-          Math.abs(t.rotation - ref.rotation) > 1e-4 ||
-          (Math.abs(ref.rotation) > 1e-4 &&
-            (Math.abs(t.center.x - ref.center.x) > 1e-4 ||
-              Math.abs(t.center.y - ref.center.y) > 1e-4))
-        ) {
-          return null;
-        }
-      }
-      if (!ref) return null;
-      const isIdentity =
-        Math.abs(ref.repeat.x - 1) <= 1e-5 &&
-        Math.abs(ref.repeat.y - 1) <= 1e-5 &&
-        Math.abs(ref.offset.x) <= 1e-5 &&
-        Math.abs(ref.offset.y) <= 1e-5 &&
-        Math.abs(ref.rotation) <= 1e-5;
-      return isIdentity ? null : ref;
-    };
-
-    const bakedColorGeos = this.bakedColorGeos;
-    const bakedMultiColorGeos = this.bakedMultiColorGeos;
-    const whiteVcSlotCache = this.whiteVcSlotCache;
-    const unitUvGeoCache = this.unitUvGeoCache;
-    const hasOnlyUnitUvs = (g: THREE.BufferGeometry): boolean => {
-      const cached = unitUvGeoCache.get(g);
-      if (cached !== undefined) return cached;
-      const uv = g.getAttribute('uv') as THREE.BufferAttribute | undefined;
-      if (!uv) {
-        unitUvGeoCache.set(g, true);
-        return true;
-      }
-      let ok = true;
-      for (let i = 0, n = uv.count; i < n; i++) {
-        const u = uv.getX(i);
-        const v = uv.getY(i);
-        if (u < -1e-4 || u > 1.0001 || v < -1e-4 || v > 1.0001) {
-          ok = false;
-          break;
-        }
-      }
-      unitUvGeoCache.set(g, ok);
-      return ok;
-    };
     const nonUnitUvMaterials = new WeakSet<THREE.Material>();
     scene.traverse((obj) => {
       if (!(obj instanceof THREE.Mesh) || Array.isArray(obj.material) || !obj.material) return;
-      if (!hasOnlyUnitUvs(obj.geometry)) {
+      if (!baker.hasOnlyUnitUvs(obj.geometry)) {
         nonUnitUvMaterials.add(obj.material);
       }
     });
@@ -498,15 +361,25 @@ export class MaterialTextureDeduplicator {
         Boolean(rawMat.userData?.isVegetationMaterial) ||
         isDynamicMaterial(mat, mutableMaterials)
       ) {
+        // Three.js ignores bumpMap whenever normalMap is present, so drop the dead reference on
+        // mobile to let its texel buffer be collected instead of retained for the session.
+        if (
+          mobileTextureBudget &&
+          mat.normalMap &&
+          mat.bumpMap &&
+          !isDynamicMaterial(mat, mutableMaterials)
+        ) {
+          mat.bumpMap = null;
+        }
         return { material: rawMat, geometry: geo };
       }
 
       let outGeo = geo;
       let forceUnitUv = allowUvBake === 'prebaked';
       const allowVcConsolidation = Boolean(allowUvBake);
-      const uvRefTex = allowUvBake === true ? canBakeUniformRepeatUv(mat, true) : null;
+      const uvRefTex = allowUvBake === true ? baker.canBakeUniformRepeatUv(mat, true) : null;
       if (uvRefTex) {
-        const baked = getBakedUvGeometry(geo, uvRefTex);
+        const baked = baker.getBakedUvGeometry(geo, uvRefTex);
         if (baked) {
           outGeo = baked;
           forceUnitUv = true;
@@ -663,54 +536,9 @@ export class MaterialTextureDeduplicator {
         needsBakeVertexColors || canShareExistingOpaqueVc || canTintExistingOpaqueVc;
 
       if (canTintExistingOpaqueVc && existingColorAttr && posAttrForVc) {
-        const vcGeoKey = `tintvc|${mat.color.getHexString()}`;
-        let perGeo = bakedColorGeos.get(outGeo);
-        if (!perGeo) {
-          perGeo = new Map<string, THREE.BufferGeometry>();
-          bakedColorGeos.set(outGeo, perGeo);
-        }
-        let vcGeo = perGeo.get(vcGeoKey);
-        if (!vcGeo) {
-          const vCount = posAttrForVc.count;
-          const srcArr = existingColorAttr.array as Float32Array;
-          const colArr = new Float32Array(vCount * 3);
-          const cr = mat.color.r;
-          const cg = mat.color.g;
-          const cb = mat.color.b;
-          for (let i = 0, n = vCount * 3; i < n; i += 3) {
-            colArr[i] = srcArr[i]! * cr;
-            colArr[i + 1] = srcArr[i + 1]! * cg;
-            colArr[i + 2] = srcArr[i + 2]! * cb;
-          }
-          vcGeo = outGeo.clone();
-          vcGeo.setAttribute('color', new THREE.BufferAttribute(colArr, 3));
-          perGeo.set(vcGeoKey, vcGeo);
-        }
-        outGeo = vcGeo;
+        outGeo = baker.bakeTintedVertexColorGeometry(outGeo, existingColorAttr, mat.color);
       } else if (needsBakeVertexColors && posAttrForVc) {
-        const vcGeoKey = mat.color.getHexString();
-        let perGeo = bakedColorGeos.get(outGeo);
-        if (!perGeo) {
-          perGeo = new Map<string, THREE.BufferGeometry>();
-          bakedColorGeos.set(outGeo, perGeo);
-        }
-        let vcGeo = perGeo.get(vcGeoKey);
-        if (!vcGeo) {
-          const vCount = posAttrForVc.count;
-          const colArr = new Float32Array(vCount * 3);
-          const cr = mat.color.r;
-          const cg = mat.color.g;
-          const cb = mat.color.b;
-          for (let i = 0, n = vCount * 3; i < n; i += 3) {
-            colArr[i] = cr;
-            colArr[i + 1] = cg;
-            colArr[i + 2] = cb;
-          }
-          vcGeo = outGeo.clone();
-          vcGeo.setAttribute('color', new THREE.BufferAttribute(colArr, 3));
-          perGeo.set(vcGeoKey, vcGeo);
-        }
-        outGeo = vcGeo;
+        outGeo = baker.bakeSolidVertexColorGeometry(outGeo, mat.color);
       }
 
       const rawRough = mat.roughness ?? 0.5;
@@ -981,196 +809,15 @@ export class MaterialTextureDeduplicator {
         }
 
         if (Array.isArray(node.material)) {
-          let workGeo = node.geometry;
-          const posAttrMm = workGeo.getAttribute('position');
-          const hasExistingColorMm = Boolean(workGeo.getAttribute('color'));
-          const slotVcEligible: boolean[] = new Array(node.material.length).fill(false);
-          let anySlotVc = false;
-          if (
-            posAttrMm &&
-            posAttrMm.count > 0 &&
-            !hasExistingColorMm &&
-            workGeo.groups.length > 0
-          ) {
-            for (let s = 0; s < node.material.length; s++) {
-              const sm = node.material[s] as THREE.MeshPhysicalMaterial | undefined;
-              if (!sm || isDynamicMaterial(sm, mutableMaterials)) continue;
-              const isStd =
-                sm.type === 'MeshStandardMaterial' || sm.type === 'MeshPhysicalMaterial';
-              const noSpecial =
-                !sm.normalMap &&
-                !sm.roughnessMap &&
-                !sm.bumpMap &&
-                !sm.alphaMap &&
-                !sm.emissiveMap &&
-                !sm.metalnessMap &&
-                !sm.displacementMap &&
-                !sm.clearcoatMap &&
-                !sm.clearcoatRoughnessMap &&
-                !sm.clearcoatNormalMap &&
-                !sm.sheenColorMap &&
-                !sm.sheenRoughnessMap;
-              const zeroEm =
-                (sm.emissiveIntensity ?? 0) === 0 ||
-                ((sm.emissive?.r ?? 0) === 0 &&
-                  (sm.emissive?.g ?? 0) === 0 &&
-                  (sm.emissive?.b ?? 0) === 0);
-              const simplePhys =
-                (sm.transmission ?? 0) === 0 &&
-                (sm.clearcoat ?? 0) === 0 &&
-                (sm.sheen ?? 0) === 0 &&
-                (sm.iridescence ?? 0) === 0 &&
-                sm.clearcoatNormalMap == null &&
-                (sm.ior === undefined || Math.abs(sm.ior - 1.5) <= 1e-3) &&
-                (sm.specularIntensity === undefined || Math.abs(sm.specularIntensity - 1) <= 1e-3);
-              if (
-                isStd &&
-                Boolean(sm.color) &&
-                !sm.transparent &&
-                (sm.opacity ?? 1) >= 0.999 &&
-                !sm.vertexColors &&
-                noSpecial &&
-                zeroEm &&
-                simplePhys
-              ) {
-                slotVcEligible[s] = true;
-                anySlotVc = true;
-              }
-            }
-          }
-          const uvAttrMm = workGeo.getAttribute('uv');
-          const hasValidUvAttrMm = Boolean(
-            uvAttrMm &&
-              uvAttrMm.itemSize === 2 &&
-              !(uvAttrMm as THREE.InterleavedBufferAttribute).isInterleavedBufferAttribute
-          );
-          const slotUvRefTex = new Array<THREE.Texture | null>(node.material.length).fill(null);
-          const slotUvSig = new Array<string>(node.material.length).fill('');
-          let anySlotUv = false;
-          if (hasValidUvAttrMm) {
-            for (let s = 0; s < node.material.length; s++) {
-              const sm = node.material[s] as THREE.MeshPhysicalMaterial | undefined;
-              if (!sm || isDynamicMaterial(sm, mutableMaterials)) continue;
-              const refTex = canBakeUniformRepeatUv(sm, true);
-              if (refTex) {
-                slotUvRefTex[s] = refTex;
-                slotUvSig[s] =
-                  `${refTex.repeat.x.toFixed(5)},${refTex.repeat.y.toFixed(5)},${refTex.offset.x.toFixed(5)},${refTex.offset.y.toFixed(5)},${refTex.rotation.toFixed(5)},${refTex.center.x.toFixed(5)},${refTex.center.y.toFixed(5)}`;
-                anySlotUv = true;
-              }
-            }
-          }
-          let bakedPerGroupVc = false;
-          let bakedPerGroupUv = false;
-          if ((anySlotVc || anySlotUv) && posAttrMm) {
-            const vCount = posAttrMm.count;
-            const ownerSig = new Array<string | undefined>(vCount);
-            const ownerSlot = new Int32Array(vCount).fill(-1);
-            const srcIdx = workGeo.index?.array;
-            let conflict = false;
-            for (let g = 0; g < workGeo.groups.length && !conflict; g++) {
-              const grp = workGeo.groups[g]!;
-              if (grp.count <= 0) continue;
-              const mIdx = grp.materialIndex ?? 0;
-              const sm = node.material[mIdx] as THREE.MeshStandardMaterial | undefined;
-              const hex = slotVcEligible[mIdx] && sm?.color ? sm.color.getHexString() : 'ffffff';
-              const uSig = slotUvSig[mIdx] ?? '';
-              const combinedSig = `${hex}@${uSig}`;
-              for (let k = 0; k < grp.count; k++) {
-                const v = srcIdx ? srcIdx[grp.start + k]! : grp.start + k;
-                const prev = ownerSig[v];
-                if (prev !== undefined && prev !== combinedSig) {
-                  conflict = true;
-                  break;
-                }
-                ownerSig[v] = combinedSig;
-                ownerSlot[v] = mIdx;
-              }
-            }
-            if (!conflict) {
-              bakedPerGroupVc = anySlotVc;
-              bakedPerGroupUv = anySlotUv;
-              const keyParts: string[] = [];
-              for (let g = 0; g < workGeo.groups.length; g++) {
-                const grp = workGeo.groups[g]!;
-                if (grp.count <= 0) continue;
-                const mIdx = grp.materialIndex ?? 0;
-                const sm = node.material[mIdx] as THREE.MeshStandardMaterial | undefined;
-                const hex = slotVcEligible[mIdx] && sm?.color ? sm.color.getHexString() : 'ffffff';
-                const uSig = slotUvSig[mIdx] ?? '';
-                keyParts.push(`${hex}@${uSig}`);
-              }
-              const mmKey = keyParts.join('|');
-              let perMmGeo = bakedMultiColorGeos.get(workGeo);
-              if (!perMmGeo) {
-                perMmGeo = new Map<string, THREE.BufferGeometry>();
-                bakedMultiColorGeos.set(workGeo, perMmGeo);
-              }
-              let cachedMmGeo = perMmGeo.get(mmKey);
-              if (!cachedMmGeo) {
-                const clonedMm = workGeo.clone();
-                if (anySlotVc) {
-                  const colArr = new Float32Array(vCount * 3);
-                  colArr.fill(1);
-                  for (let g = 0; g < workGeo.groups.length; g++) {
-                    const grp = workGeo.groups[g]!;
-                    if (grp.count <= 0) continue;
-                    const mIdx = grp.materialIndex ?? 0;
-                    if (!slotVcEligible[mIdx]) continue;
-                    const sm = node.material[mIdx] as THREE.MeshStandardMaterial;
-                    const cr = sm.color.r;
-                    const cg = sm.color.g;
-                    const cb = sm.color.b;
-                    for (let k = 0; k < grp.count; k++) {
-                      const v3 = (srcIdx ? srcIdx[grp.start + k]! : grp.start + k) * 3;
-                      colArr[v3] = cr;
-                      colArr[v3 + 1] = cg;
-                      colArr[v3 + 2] = cb;
-                    }
-                  }
-                  clonedMm.setAttribute('color', new THREE.BufferAttribute(colArr, 3));
-                }
-                if (anySlotUv && uvAttrMm) {
-                  const uvCount = uvAttrMm.count;
-                  const dstUv = new Float32Array(uvCount * 2);
-                  for (let s = 0; s < slotUvRefTex.length; s++) {
-                    slotUvRefTex[s]?.updateMatrix();
-                  }
-                  for (let vi = 0; vi < uvCount; vi++) {
-                    const u0 = uvAttrMm.getX(vi);
-                    const v0 = uvAttrMm.getY(vi);
-                    const sIdx = vi < ownerSlot.length ? ownerSlot[vi]! : -1;
-                    const refTex = sIdx >= 0 ? slotUvRefTex[sIdx] : null;
-                    if (refTex) {
-                      const e = refTex.matrix.elements;
-                      dstUv[vi * 2] = e[0]! * u0 + e[3]! * v0 + e[6]!;
-                      dstUv[vi * 2 + 1] = e[1]! * u0 + e[4]! * v0 + e[7]!;
-                    } else {
-                      dstUv[vi * 2] = u0;
-                      dstUv[vi * 2 + 1] = v0;
-                    }
-                  }
-                  clonedMm.setAttribute('uv', new THREE.BufferAttribute(dstUv, 2));
-                }
-                perMmGeo.set(mmKey, clonedMm);
-                cachedMmGeo = clonedMm;
-              }
-              workGeo = cachedMmGeo;
-            }
-          }
+          const baked = baker.bakeMultiMaterialGroups(node.geometry, node.material, mutableMaterials);
+          const workGeo = baked.geometry;
+          const { slotVcEligible, slotUvRefTex, bakedPerGroupVc, bakedPerGroupUv } = baked;
           const canonSlots = node.material.map((m, idx) => {
             if (!m) return m;
             const uvMode: boolean | 'prebaked' =
               bakedPerGroupUv && Boolean(slotUvRefTex[idx]) ? 'prebaked' : false;
             if (bakedPerGroupVc && slotVcEligible[idx]) {
-              let whiteVc = whiteVcSlotCache.get(m);
-              if (!whiteVc) {
-                const c = m.clone() as THREE.MeshStandardMaterial;
-                c.color.setRGB(1, 1, 1);
-                c.vertexColors = true;
-                whiteVcSlotCache.set(m, c);
-                whiteVc = c;
-              }
+              const whiteVc = baker.getWhiteVertexColorSlotMaterial(m);
               return canonicalizeMaterial(whiteVc, workGeo, uvMode, isInteriorScope).material;
             }
             return canonicalizeMaterial(m, workGeo, uvMode, isInteriorScope).material;

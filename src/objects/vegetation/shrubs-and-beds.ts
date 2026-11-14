@@ -5,6 +5,7 @@ import type {
   VegetationOrganKind,
 } from '../../core/geo/climate-phenology.ts';
 import { tagCollisionRole } from '../../engine/geometry/mesh-traits.ts';
+import { detectMobile } from '../../engine/perf/device-tier.ts';
 import type { VegetationUniforms } from '../../engine/vegetation/vegetation-uniforms.ts';
 import {
   OrganCollector,
@@ -245,7 +246,10 @@ function populateShrubIntoCollectors(opts: {
   readonly rng: BotanicalRng;
 }): void {
   const { spec, origin, radius, height, reactivity, bark, foliage, rng } = opts;
-  const stems = Math.max(12, Math.round(radius * (spec.thornyArching ? 32 : 28)));
+  const mobileBudget = detectMobile();
+  const baseStems = Math.max(12, Math.round(radius * (spec.thornyArching ? 32 : 28)));
+  const stems = mobileBudget ? Math.max(7, Math.round(baseStems * 0.52)) : baseStems;
+  const leafScale = mobileBudget ? 1.18 : 1;
   const barkCol = new THREE.Color(spec.barkColor);
   const leafCol = new THREE.Color(spec.leafColor);
 
@@ -297,8 +301,8 @@ function populateShrubIntoCollectors(opts: {
         pivot: nodePt,
         normal: nDir,
         leafCount: nodePt === tip ? 6 : 5,
-        leafLength: spec.leafLen * rng.range(0.88, 1.12),
-        leafWidth: spec.leafLen * 0.58,
+        leafLength: spec.leafLen * leafScale * rng.range(0.88, 1.12),
+        leafWidth: spec.leafLen * leafScale * 0.58,
         shape: spec.leafShape,
         color: leafCol,
         droop: spec.thornyArching ? 0.24 : 0.16,
@@ -544,7 +548,8 @@ export function createFlowerBed(options: CreateFlowerBedOptions): THREE.Group {
   }
 
   const area = Math.max(0.4, (maxX - minX) * (maxZ - minZ));
-  const targetCount = Math.min(48, Math.max(8, Math.round(area * 8)));
+  const mobileBed = detectMobile();
+  const targetCount = mobileBed ? Math.min(26, Math.max(6, Math.round(area * 4.5))) : Math.min(48, Math.max(8, Math.round(area * 8)));
   const cropPositions: { x: number; z: number }[] = [];
 
   if (options.style === 'kitchen-garden-bed' && !hasCustomPoly) {

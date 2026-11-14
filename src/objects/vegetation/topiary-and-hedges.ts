@@ -4,6 +4,7 @@ import type {
   VegetationExposure,
   VegetationOrganKind,
 } from '../../core/geo/climate-phenology.ts';
+import { detectMobile } from '../../engine/perf/device-tier.ts';
 import type { VegetationUniforms } from '../../engine/vegetation/vegetation-uniforms.ts';
 import {
   OrganCollector,
@@ -46,6 +47,8 @@ export function createTopiary(options: CreateTopiaryOptions): THREE.Group {
   const reactivity = resolveReactivity(exposure);
   const seedVal = options.seed ?? 307 + options.form.length * 19;
   const rng = createBotanicalRng(seedVal);
+  // Phones/tablets clip the shell from ~45% of the clusters with larger leaves to hold silhouette.
+  const mobileBudget = detectMobile();
   const namePrefix = options.name ?? `topiary.${options.form}`;
   const group = new THREE.Group();
   group.name = namePrefix;
@@ -104,8 +107,10 @@ export function createTopiary(options: CreateTopiaryOptions): THREE.Group {
       pivot: pt,
       normal,
       leafCount: 6,
-      leafLength: leafSize,
-      leafWidth: leafSize * (options.form === 'olive-planter' ? 0.38 : 0.64),
+      leafLength: mobileBudget ? leafSize * 1.28 : leafSize,
+      leafWidth:
+        (mobileBudget ? leafSize * 1.28 : leafSize) *
+        (options.form === 'olive-planter' ? 0.38 : 0.64),
       shape: options.form === 'olive-planter' ? 'lanceolate' : 'ovate',
       color: leafCol,
       droop: 0.1,
@@ -131,7 +136,8 @@ export function createTopiary(options: CreateTopiaryOptions): THREE.Group {
       reactivity,
     });
 
-    const samples = options.form === 'olive-planter' ? 96 : 120;
+    const fullSamples = options.form === 'olive-planter' ? 96 : 120;
+    const samples = mobileBudget ? Math.round(fullSamples * 0.45) : fullSamples;
     const golden = Math.PI * (3 - Math.sqrt(5));
     for (let i = 0; i < samples; i++) {
       const yNorm = 1 - (i / (samples - 1)) * 2;
@@ -162,7 +168,7 @@ export function createTopiary(options: CreateTopiaryOptions): THREE.Group {
       jitter: rng.next(),
       reactivity,
     });
-    const samples = 110;
+    const samples = mobileBudget ? Math.round(110 * 0.45) : 110;
     const golden = Math.PI * (3 - Math.sqrt(5));
     for (let i = 0; i < samples; i++) {
       const yNorm = 1 - (i / (samples - 1)) * 1.85;
@@ -181,7 +187,7 @@ export function createTopiary(options: CreateTopiaryOptions): THREE.Group {
       jitter: rng.next(),
       reactivity,
     });
-    const rings = 11;
+    const rings = mobileBudget ? 7 : 11;
     for (let r = 0; r < rings; r++) {
       const t = r / (rings - 1);
       const ringY = baseY + 0.04 + t * (plantH - 0.06);
@@ -202,7 +208,7 @@ export function createTopiary(options: CreateTopiaryOptions): THREE.Group {
       jitter: rng.next(),
       reactivity,
     });
-    const steps = 64;
+    const steps = mobileBudget ? 30 : 64;
     for (let s = 0; s < steps; s++) {
       const t = s / (steps - 1);
       const y = baseY + 0.05 + t * (plantH - 0.08);
@@ -307,6 +313,8 @@ export function createHedge(options: CreateHedgeOptions): THREE.Group {
   const exposure = options.exposure ?? 'outdoor';
   const reactivity = resolveReactivity(exposure);
   const natural = options.natural ?? spec.defaultNatural;
+  // Phones/tablets build hedges from wider-spaced, larger leaf clusters to cut vertex memory.
+  const mobileBudget = detectMobile();
   const height = Math.max(0.3, options.height ?? (natural ? 1.55 : 1.4));
   const thickness = Math.max(0.24, options.thickness ?? (natural ? 0.95 : 0.55));
   const halfT = thickness * 0.5;
@@ -391,7 +399,7 @@ export function createHedge(options: CreateHedgeOptions): THREE.Group {
     const normal2 = new THREE.Vector2(-tangent.y, tangent.x);
 
     if (natural) {
-      const moundSpacing = 0.52;
+      const moundSpacing = mobileBudget ? 0.88 : 0.52;
       const moundCount = Math.max(3, Math.ceil(segLen / moundSpacing));
 
       for (let m = 0; m <= moundCount; m++) {
@@ -410,7 +418,7 @@ export function createHedge(options: CreateHedgeOptions): THREE.Group {
         const localH = height * crownMult;
         const localR = halfT * billowMult;
 
-        const stemsHere = options.species === 'bramble' ? 4 : 3;
+        const stemsHere = mobileBudget ? 2 : options.species === 'bramble' ? 4 : 3;
         for (let st = 0; st < stemsHere; st++) {
           const leanSide = rng.signed() * localR * 0.85;
           const leanAlong = rng.signed() * 0.28;
@@ -439,7 +447,9 @@ export function createHedge(options: CreateHedgeOptions): THREE.Group {
           });
         }
 
-        const samples = Math.max(12, Math.round(16 * billowMult));
+        const samples = mobileBudget
+          ? Math.max(6, Math.round(7 * billowMult))
+          : Math.max(12, Math.round(16 * billowMult));
         const golden = Math.PI * (3 - Math.sqrt(5));
         for (let k = 0; k < samples; k++) {
           const yFrac = 0.1 + 0.9 * (k / (samples - 1));
@@ -532,7 +542,9 @@ export function createHedge(options: CreateHedgeOptions): THREE.Group {
           if (yFrac > 0.22 && rng.next() < 0.36) {
             const isSloe = options.species === 'blackthorn-sloe' || (options.species === 'mixed-field-hedgerow' && k % 2 === 0);
             const berryCol = isSloe ? sloeBlue : blackberryDark;
-            for (let bIdx = 0, berryCount = isSloe ? rng.int(2, 4) : rng.int(3, 5); bIdx < berryCount; bIdx++) {
+            const fullBerryCount = isSloe ? rng.int(2, 4) : rng.int(3, 5);
+            const berryCount = mobileBudget ? Math.min(fullBerryCount, 1) : fullBerryCount;
+            for (let bIdx = 0; bIdx < berryCount; bIdx++) {
               foliage.addSpheroidOrgan({
                 pivot: piv,
                 centerOffset: new THREE.Vector3(nrm.x * 0.024 + rng.signed() * 0.022, -0.01 + rng.signed() * 0.018, nrm.z * 0.024 + rng.signed() * 0.022),
@@ -570,7 +582,7 @@ export function createHedge(options: CreateHedgeOptions): THREE.Group {
       });
     }
 
-    const spacing = 0.15;
+    const spacing = mobileBudget ? 0.28 : 0.15;
     const nAlong = Math.max(2, Math.ceil(segLen / spacing));
     const nVert = Math.max(2, Math.ceil(height / spacing));
     const nAcross = Math.max(2, Math.ceil(thickness / spacing));
@@ -580,7 +592,7 @@ export function createHedge(options: CreateHedgeOptions): THREE.Group {
         pivot: new THREE.Vector3(px + rng.signed() * 0.018, py + rng.signed() * 0.018, pz + rng.signed() * 0.018),
         normal: new THREE.Vector3(nx, ny, nz).normalize(),
         leafCount: 6,
-        leafLength: spec.leafLen,
+        leafLength: mobileBudget ? spec.leafLen * 1.35 : spec.leafLen,
         leafWidth: spec.leafLen * (options.species === 'yew' ? 0.52 : 0.72),
         shape: options.species === 'yew' ? 'needle-spray' : 'ovate',
         color: leafCol,

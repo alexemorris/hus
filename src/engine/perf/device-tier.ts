@@ -13,6 +13,7 @@ export interface DeviceProfile {
   readonly deviceMemoryGb: number | null;
   readonly devicePixelRatio: number;
   readonly isMobile: boolean;
+  readonly isIOS?: boolean;
   readonly isTouch: boolean;
   readonly maxTextureSize: number;
 }
@@ -150,6 +151,35 @@ function probeEphemeralWebGlGpuInfo(): EphemeralWebGlGpuInfo {
   return cachedEphemeralWebGlInfo;
 }
 
+function readUrlBooleanOverride(paramName: string): boolean | null {
+  if (typeof window === 'undefined' || !window.location?.search) return null;
+  try {
+    const raw = new URLSearchParams(window.location.search).get(paramName);
+    if (raw === '1' || raw === 'true') return true;
+    if (raw === '0' || raw === 'false') return false;
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+/**
+ * Detects iPhone, iPod, iPad, and iPadOS 13+ / iOS "Request Desktop Website" Safari sessions
+ * (which report a `Macintosh` User-Agent paired with `navigator.maxTouchPoints > 1`),
+ * without false-flagging desktop Macs (`maxTouchPoints === 0`) or Windows/Linux touch PCs.
+ */
+export function detectIOS(
+  nav: ExtendedNavigator | null = typeof navigator !== 'undefined' ? navigator : null
+): boolean {
+  const urlOverride = readUrlBooleanOverride('ios');
+  if (urlOverride !== null) return urlOverride;
+  if (!nav) return false;
+  const ua = nav.userAgent || '';
+  if (/iPhone|iPad|iPod/i.test(ua)) return true;
+  if (/Macintosh/i.test(ua) && (nav.maxTouchPoints || 0) > 1) return true;
+  return false;
+}
+
 /**
  * Detects phones, tablets, and unfolded foldables (e.g. Google Pixel Fold unfolded ~884x736,
  * where `userAgentData.mobile === false` and Chrome Android's "Desktop site" strips `"Android"`).
@@ -157,14 +187,16 @@ function probeEphemeralWebGlGpuInfo(): EphemeralWebGlGpuInfo {
 export function detectMobile(
   nav: ExtendedNavigator | null = typeof navigator !== 'undefined' ? navigator : null
 ): boolean {
+  const urlMobile = readUrlBooleanOverride('mobile');
+  if (urlMobile !== null) return urlMobile;
+  if (readUrlBooleanOverride('ios') === true) return true;
   if (!nav) return false;
+  if (detectIOS(nav)) return true;
   if (typeof nav.userAgentData?.mobile === 'boolean' && nav.userAgentData.mobile) return true;
   const ua = nav.userAgent || '';
-  if (/Android|iPhone|iPad|iPod|Mobile|Silk|Kindle|Opera Mini|IEMobile|Pixel\s+Fold|SM-F9/i.test(ua)) {
+  if (/Android|Mobile|Silk|Kindle|Opera Mini|IEMobile|Pixel\s+Fold|SM-F9/i.test(ua)) {
     return true;
   }
-  // iPadOS 13+ reports a desktop Mac user agent but has multi-touch.
-  if (/Macintosh/.test(ua) && (nav.maxTouchPoints || 0) > 1) return true;
 
   if (typeof window !== 'undefined') {
     // Primary check: every phone, foldable, and tablet — even under Chrome Android "Desktop site"
@@ -285,7 +317,8 @@ export function detectDeviceProfile(
 
   const nav: ExtendedNavigator | null = typeof navigator !== 'undefined' ? navigator : null;
   const deviceMemory = nav?.deviceMemory;
-  const isMobile = detectMobile(nav);
+  const isIOS = detectIOS(nav);
+  const isMobile = isIOS || detectMobile(nav);
   const hasFineDesktopPointer =
     !isMobile &&
     typeof window !== 'undefined' &&
@@ -305,6 +338,7 @@ export function detectDeviceProfile(
     devicePixelRatio:
       typeof window !== 'undefined' && window.devicePixelRatio > 0 ? window.devicePixelRatio : 1,
     isMobile,
+    isIOS,
     isTouch,
     maxTextureSize,
   };
@@ -394,6 +428,12 @@ export function estimateInitialTier(profile: DeviceProfile): GraphicsTier {
   const memory = profile.deviceMemoryGb;
 
   if (profile.isMobile) tier = minTier(tier, 'medium');
+  if (
+    profile.isIOS ||
+    (profile.isMobile && /apple\s*gpu/i.test(profile.gpuRenderer) && memory === null)
+  ) {
+    tier = 'low';
+  }
   if (memory !== null && memory <= 4) tier = minTier(tier, 'medium');
   if (cores > 0 && cores <= 4) tier = minTier(tier, 'medium');
   if (tier === 'ultra' && cores > 0 && cores < 8) tier = 'high';

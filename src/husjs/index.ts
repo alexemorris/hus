@@ -57,3 +57,4 @@ export * from '../core/types/twin-ux.ts';
 export * from '../core/assets/asset-metadata.ts';
 
 export { paintSpecFromSwatch } from '../engine/textures/paint-system.ts';
+export { detectIOS, detectMobile } from '../engine/perf/device-tier.ts';

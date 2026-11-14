@@ -9,6 +9,97 @@ import {
 } from '../../rendering/post-processing-pipeline.ts';
 import type { RenderInvalidator } from './viewer-types.ts';
 
+export interface NegotiatedWebGpuLimits {
+  maxSampledTexturesPerShaderStage?: number;
+  maxSamplersPerShaderStage?: number;
+  maxTextureDimension2D?: number;
+  maxBufferSize?: number;
+  maxStorageBufferBindingSize?: number;
+}
+
+export function buildSafeRequiredWebGpuLimits(
+  adapterLimits: Partial<Record<keyof NegotiatedWebGpuLimits, number>> | null | undefined,
+  isMobile: boolean
+): NegotiatedWebGpuLimits {
+  if (!adapterLimits) return {};
+  const out: NegotiatedWebGpuLimits = {};
+  if (
+    typeof adapterLimits.maxSampledTexturesPerShaderStage === "number" &&
+    adapterLimits.maxSampledTexturesPerShaderStage > 16
+  ) {
+    out.maxSampledTexturesPerShaderStage = Math.min(
+      adapterLimits.maxSampledTexturesPerShaderStage,
+      32
+    );
+  }
+  if (
+    typeof adapterLimits.maxSamplersPerShaderStage === "number" &&
+    adapterLimits.maxSamplersPerShaderStage > 16
+  ) {
+    out.maxSamplersPerShaderStage = Math.min(adapterLimits.maxSamplersPerShaderStage, 32);
+  }
+  const desiredMaxTex = isMobile ? 4096 : 8192;
+  if (
+    typeof adapterLimits.maxTextureDimension2D === "number" &&
+    adapterLimits.maxTextureDimension2D >= 2048
+  ) {
+    out.maxTextureDimension2D = Math.min(adapterLimits.maxTextureDimension2D, desiredMaxTex);
+  }
+  const desiredMaxBuf = isMobile ? 256 * 1024 * 1024 : 512 * 1024 * 1024;
+  if (
+    typeof adapterLimits.maxBufferSize === "number" &&
+    adapterLimits.maxBufferSize >= 256 * 1024 * 1024
+  ) {
+    out.maxBufferSize = Math.min(adapterLimits.maxBufferSize, desiredMaxBuf);
+  }
+  if (
+    typeof adapterLimits.maxStorageBufferBindingSize === "number" &&
+    adapterLimits.maxStorageBufferBindingSize >= 128 * 1024 * 1024
+  ) {
+    out.maxStorageBufferBindingSize = Math.min(
+      adapterLimits.maxStorageBufferBindingSize,
+      desiredMaxBuf
+    );
+  }
+  return out;
+}
+
+async function configureAdapterRequiredLimits(
+  renderer: WebGPURenderer,
+  isMobile: boolean
+): Promise<void> {
+  const backend = (
+    renderer as unknown as {
+      backend?: {
+        isWebGPUBackend?: boolean;
+        parameters?: {
+          powerPreference?: GPUPowerPreference;
+          requiredLimits?: Record<string, number>;
+        };
+      };
+    }
+  ).backend;
+  if (!backend?.isWebGPUBackend || !backend.parameters) return;
+  const gpu = (typeof navigator !== "undefined" ? (navigator as Navigator & { gpu?: GPU }).gpu : undefined);
+  if (!gpu || typeof gpu.requestAdapter !== "function") return;
+  try {
+    const adapter = await gpu.requestAdapter({
+      powerPreference: backend.parameters.powerPreference,
+    });
+    if (!adapter?.limits) return;
+    const negotiated = buildSafeRequiredWebGpuLimits(
+      adapter.limits as unknown as Partial<Record<keyof NegotiatedWebGpuLimits, number>>,
+      isMobile
+    );
+    backend.parameters.requiredLimits = {
+      ...(backend.parameters.requiredLimits ?? {}),
+      ...negotiated,
+    };
+  } catch {
+    // Fall back to default WebGPU limits if adapter probe fails
+  }
+}
+
 /**
  * Owns the WebGPU renderer (with automatic WebGL2 backend fallback), the
  * post-processing pipeline and the on-demand render flag. Frames are only
@@ -40,25 +131,42 @@ export class ViewerRenderer implements RenderInvalidator {
       powerPreference: isMobile ? undefined : 'high-performance',
       logarithmicDepthBuffer: false,
     });
-    this.renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
-    this.renderer.setPixelRatio(1);
+    const initW = Math.max(1, canvas.clientWidth || 1);
+    const initH = Math.max(1, canvas.clientHeight || 1);
+    this.renderer.setPixelRatio(isMobile ? 0.85 : 1);
+    this.renderer.setSize(initW, initH, false);
     this.renderer.sortObjects = true;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = RENDERER_TONE_MAPPING;
     this.renderer.toneMappingExposure = 1.12;
 
-    this.post = new PostProcessingPipeline(this.renderer, canvas.clientWidth, canvas.clientHeight);
+    this.post = new PostProcessingPipeline(this.renderer, initW, initH);
   }
 
   public init(): Promise<void> {
     if (this.initialized) return Promise.resolve();
     if (!this.initPromise) {
-      this.initPromise = this.renderer.init().then(() => {
-        this.initialized = true;
-        this.needsRender = true;
-        this.shadowsDirty = true;
-      });
+      const isMobile = detectMobile();
+      this.initPromise = configureAdapterRequiredLimits(this.renderer, isMobile)
+        .then(() => this.renderer.init())
+        .catch((err) => {
+          const backend = (
+            this.renderer as unknown as {
+              backend?: { parameters?: { requiredLimits?: Record<string, number> } };
+            }
+          ).backend;
+          if (backend?.parameters?.requiredLimits && Object.keys(backend.parameters.requiredLimits).length > 0) {
+            backend.parameters.requiredLimits = {};
+            return this.renderer.init();
+          }
+          throw err;
+        })
+        .then(() => {
+          this.initialized = true;
+          this.needsRender = true;
+          this.shadowsDirty = true;
+        });
     }
     return this.initPromise;
   }

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { detectIOS, detectMobile } from '../../perf/device-tier.ts';
 import type { WebGPURenderer } from 'three/webgpu';
 import {
   husCloudPenumbraShadowFilter,
@@ -44,7 +45,7 @@ export interface ShadowFrustumDiagnostics {
 export class DirectionalShadowController {
   private readonly sunLight: THREE.DirectionalLight;
   private readonly renderer?: WebGPURenderer;
-  private shadowMapSize: 1024 | 2048 | 4096 = 4096;
+  private shadowMapSize: 1024 | 2048 | 4096 = detectIOS() ? 1024 : detectMobile() ? 2048 : 4096;
   private interactiveScrubShadow = false;
   private shadowMapStaleWhileExtinct = false;
   private shadowCameraFitted = false;

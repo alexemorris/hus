@@ -108,11 +108,16 @@ async function fetchAndDecodeDetailWebp(
       const targetH =
         srcW > safeMaxW ? Math.max(256, Math.round((srcH * targetW) / srcW)) : srcH;
       const canvas = new OffscreenCanvas(targetW, targetH);
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      if (!ctx) return null;
-      ctx.drawImage(bitmap, 0, 0, targetW, targetH);
-      const imgData = ctx.getImageData(0, 0, targetW, targetH);
-      return { data: imgData.data, width: targetW, height: targetH };
+      try {
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (!ctx) return null;
+        ctx.drawImage(bitmap, 0, 0, targetW, targetH);
+        const imgData = ctx.getImageData(0, 0, targetW, targetH);
+        return { data: imgData.data, width: targetW, height: targetH };
+      } finally {
+        canvas.width = 0;
+        canvas.height = 0;
+      }
     } finally {
       bitmap.close();
     }

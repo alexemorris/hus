@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { AssetMetadata } from '../../core/assets/asset-metadata.ts';
 import { VEGETATION_ORGAN_CODES, type VegetationExposure } from '../../core/geo/climate-phenology.ts';
 import { tagCollisionRole } from '../../engine/geometry/mesh-traits.ts';
+import { detectMobile } from '../../engine/perf/device-tier.ts';
 import type { VegetationUniforms } from '../../engine/vegetation/vegetation-uniforms.ts';
 import {
   OrganCollector,
@@ -437,7 +438,17 @@ export function createGrassPatch(options: CreateGrassPatchOptions = {}): THREE.G
   const rng = createBotanicalRng(options.seed ?? 2117);
   const sampleY = options.sampleGroundY;
 
-  const { placements, spanX, spanZ } = sampleTuftPlacements(options, style, spec.tuftsPerSqM, density, rng);
+  const mobileBudget = detectMobile();
+  const effectiveSpec: GrassStyleSpec = mobileBudget
+    ? {
+        ...spec,
+        bladeWidthFactor: spec.bladeWidthFactor * 1.35,
+        tuftsPerSqM: spec.tuftsPerSqM * 0.4,
+        minBlades: Math.max(2, Math.floor(spec.minBlades * 0.6)),
+        maxBlades: Math.max(3, Math.ceil(spec.maxBlades * 0.6)),
+      }
+    : spec;
+  const { placements, spanX, spanZ } = sampleTuftPlacements(options, style, effectiveSpec.tuftsPerSqM, density, rng);
   const foliage = new OrganCollector();
   const baseRootCol = new THREE.Color(spec.baseHex);
   const tipRootCol = new THREE.Color(spec.tipHex);
@@ -445,7 +456,7 @@ export function createGrassPatch(options: CreateGrassPatchOptions = {}): THREE.G
   for (let i = 0; i < placements.length; i++) {
     const p = placements[i]!;
     const gy = sampleY ? sampleY(p.x, p.z) : 0;
-    addGrassTuft(foliage, p.x, gy, p.z, meanHeight, spec, baseRootCol, tipRootCol, p.outwardAz, reactivity, rng);
+    addGrassTuft(foliage, p.x, gy, p.z, meanHeight, effectiveSpec, baseRootCol, tipRootCol, p.outwardAz, reactivity, rng);
     if (wildflowers) {
       addWildflowerAccent(foliage, p.x, gy, p.z, meanHeight, style === 'meadow-verge' ? 1.25 : 1.0, reactivity, rng);
     }

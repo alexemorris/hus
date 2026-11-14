@@ -18,6 +18,48 @@ export const GAINMAP_SHOULDER_K = 0.85;
 /** Default maximum 2D equirectangular background texture width (`8192×4096`). */
 export const DEFAULT_MAX_HDR_DETAIL_WIDTH = 8192;
 
+/** Maximum HDR equirectangular width on mobile / iOS / iPadOS devices (`2048x1024`). */
+export const MOBILE_MAX_HDR_DETAIL_WIDTH = 2048;
+
+export interface HdrDeviceLimitsLike {
+  readonly maxTextureDimension2D?: number;
+  readonly maxBufferSize?: number;
+}
+
+/**
+ * Computes the aligned WebGPU staging byte size for a `width x (width / 2)` `RGBA16F` (8 B/px)
+ * equirectangular panorama upload (WebGPU `bytesPerRow` alignment = 256 bytes).
+ */
+export function computeEquirectHalfFloatUploadBytes(width: number): number {
+  const w = Math.max(2, Math.floor(width));
+  const h = Math.max(1, Math.floor(w / 2));
+  const unalignedRowBytes = w * 8;
+  const alignedRowBytes = Math.ceil(unalignedRowBytes / 256) * 256;
+  return alignedRowBytes * h;
+}
+
+/**
+ * Resolves a safe `maxDetailWidth` respecting mobile memory caps (`<= 2048`),
+ * `device.limits.maxTextureDimension2D`, and `device.limits.maxBufferSize`.
+ */
+export function resolveMaxHdrDetailWidth(
+  limits?: HdrDeviceLimitsLike | null,
+  isMobile = false
+): number {
+  let maxW = isMobile ? MOBILE_MAX_HDR_DETAIL_WIDTH : DEFAULT_MAX_HDR_DETAIL_WIDTH;
+  const texLimit = limits?.maxTextureDimension2D;
+  if (typeof texLimit === "number" && Number.isFinite(texLimit) && texLimit >= 512) {
+    maxW = Math.min(maxW, Math.floor(texLimit));
+  }
+  const bufLimit = limits?.maxBufferSize;
+  if (typeof bufLimit === "number" && Number.isFinite(bufLimit) && bufLimit >= 4 * 1024 * 1024) {
+    while (maxW > 512 && computeEquirectHalfFloatUploadBytes(maxW) > bufLimit) {
+      maxW = Math.max(512, Math.floor(maxW / 2));
+    }
+  }
+  return maxW;
+}
+
 const SRGB_BYTE_TO_LINEAR_LUT = (() => {
   const lut = new Float32Array(256);
   for (let i = 0; i < 256; i++) {
@@ -103,13 +145,17 @@ export function configureEquirect(tex: THREE.Texture): void {
  */
 export function deriveDetailWebpUrl(
   hdrUrl: string,
-  detailOverrideUrl?: string | null
+  detailOverrideUrl?: string | null,
+  isMobile = false
 ): string | null {
-  if (detailOverrideUrl) {
-    return detailOverrideUrl;
+  if (isMobile) {
+    return null;
   }
   if (!/_2k\.hdr(\?.*)?$/i.test(hdrUrl)) {
     return null;
+  }
+  if (detailOverrideUrl) {
+    return detailOverrideUrl;
   }
   return hdrUrl.replace(/_2k\.hdr(\?.*)?$/i, '_8k.webp$1');
 }

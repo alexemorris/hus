@@ -2,7 +2,9 @@ import * as THREE from 'three';
 import {
   createRuntimeOrHeadlessCanvas,
 } from './headless-canvas.ts';
+import { boxDownsampleTexels } from './texture-downsample.ts';
 import {
+  isMobileTextureBudgetActive,
   isRecordingCanvasStub,
 } from './texture-registry.ts';
 
@@ -301,28 +303,28 @@ export function buildFloorPbrTextureBundle(
     return tex;
   };
 
-  const colorMap = configDataTex(
-    new THREE.DataTexture(albedo, width, height, THREE.RGBAFormat, THREE.UnsignedByteType),
-    'albedo',
-    true
-  );
-  const bumpMap = configDataTex(
-    new THREE.DataTexture(bumpBytes, width, height, THREE.RedFormat, THREE.UnsignedByteType),
-    'bump',
-    false,
-    true
-  );
-  const normalMap = configDataTex(
-    new THREE.DataTexture(normalBytes, width, height, THREE.RGBAFormat, THREE.UnsignedByteType),
-    'normal',
-    false
-  );
-  const roughnessMap = configDataTex(
-    new THREE.DataTexture(roughRgBytes, width, height, THREE.RGFormat, THREE.UnsignedByteType),
-    'roughness',
-    false,
-    true
-  );
+  const capForMobile = isMobileTextureBudgetActive() && (width > 512 || height > 512);
+  const fitTexels = (
+    texels: Uint8Array,
+    channels: 1 | 2 | 4,
+    mobileMaxDim: number
+  ): THREE.DataTexture => {
+    const fit = capForMobile
+      ? boxDownsampleTexels(texels, width, height, channels, mobileMaxDim)
+      : null;
+    return new THREE.DataTexture(
+      fit ? fit.data : texels,
+      fit ? fit.width : width,
+      fit ? fit.height : height,
+      channels === 4 ? THREE.RGBAFormat : channels === 2 ? THREE.RGFormat : THREE.RedFormat,
+      THREE.UnsignedByteType
+    );
+  };
+
+  const colorMap = configDataTex(fitTexels(albedo, 4, 512), 'albedo', true);
+  const bumpMap = configDataTex(fitTexels(bumpBytes, 1, 256), 'bump', false, true);
+  const normalMap = configDataTex(fitTexels(normalBytes, 4, 512), 'normal', false);
+  const roughnessMap = configDataTex(fitTexels(roughRgBytes, 2, 256), 'roughness', false, true);
 
   return {
     colorMap: colorMap as unknown as THREE.CanvasTexture,
