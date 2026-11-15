@@ -27,6 +27,7 @@ import {
 
 export type MicroSurfaceClass =
   | 'plaster-stipple'
+  | 'heritage-lime-plaster'
   | 'honed-stone'
   | 'timber-pore'
   | 'brushed-metal'
@@ -52,6 +53,7 @@ export interface ThinFabricShadeOptions {
 export const MICRO_SURFACE_MAP_SIZE = 256;
 
 const detailMapCache = new Map<MicroSurfaceClass, MicroSurfaceDetailMaps>();
+let heritageLimeNormalMapCache: THREE.DataTexture | null = null;
 const fabricMaterialCache = new Map<string, THREE.MeshPhysicalMaterial>();
 const colorScratch = new THREE.Color();
 const sheenScratch = new THREE.Color();
@@ -110,9 +112,37 @@ function addOctaveToField(
   }
 }
 
+function addPeriodicDirectionalFloatSwirl(
+  out: Float32Array,
+  size: number,
+  freqU: number,
+  freqV: number,
+  phase: number,
+  weight: number
+): void {
+  const invSize = (Math.PI * 2) / size;
+  for (let y = 0; y < size; y++) {
+    const basePhase = y * freqV * invSize + phase;
+    const rowOut = y * size;
+    for (let x = 0; x < size; x++) {
+      out[rowOut + x]! += (Math.sin(x * freqU * invSize + basePhase) * 0.5 + 0.5) * weight;
+    }
+  }
+}
+
 function evaluateSurfaceHeightField(surfaceClass: MicroSurfaceClass, size: number): Float32Array {
   const field = new Float32Array(size * size);
-  if (surfaceClass === 'plaster-stipple') {
+  if (surfaceClass === 'heritage-lime-plaster') {
+    // Low-frequency periodic hand-trowelled lime plaster (2.4 m physical tile):
+    // Octave 1 (~1.20 m broad mason float swells), Octave 2 (~0.48 m trowel passes),
+    // Octave 3 (~0.22 m lime-skim ripples) + subtle diagonal trowel sweep.
+    addOctaveToField(field, size, 2, 2, 151, 0.42);
+    addPeriodicDirectionalFloatSwirl(field, size, 1, 1, 0.7, 0.10);
+    addPeriodicDirectionalFloatSwirl(field, size, 2, -1, 2.1, 0.06);
+    addOctaveToField(field, size, 5, 5, 263, 0.24);
+    addPeriodicDirectionalFloatSwirl(field, size, -2, 3, 1.4, 0.05);
+    addOctaveToField(field, size, 11, 11, 389, 0.13);
+  } else if (surfaceClass === 'plaster-stipple') {
     addOctaveToField(field, size, 16, 16, 101, 0.36);
     addOctaveToField(field, size, 48, 48, 211, 0.4);
     addOctaveToField(field, size, 128, 128, 307, 0.24);
@@ -155,6 +185,8 @@ function getSlopeAndRoughnessCalibration(surfaceClass: MicroSurfaceClass): {
   switch (surfaceClass) {
     case 'plaster-stipple':
       return { slopeGain: 0.32, roughCenter: 240, roughSwing: 26, repeat: 6 };
+    case 'heritage-lime-plaster':
+      return { slopeGain: 8.5, roughCenter: 242, roughSwing: 18, repeat: 1 };
     case 'honed-stone':
       return { slopeGain: 0.36, roughCenter: 236, roughSwing: 32, repeat: 5 };
     case 'timber-pore':
@@ -174,6 +206,65 @@ function getSlopeAndRoughnessCalibration(surfaceClass: MicroSurfaceClass): {
  * `SceneBatchOptimizer` vertex-color-consolidated `0.35` batches preserve subtle architectural
  * plaster/mineral relief without harsh sandpaper contrast.
  */
+/**
+ * Returns a single shared 256x256 periodic hand-trowelled lime-plaster tangent-space normal
+ * `DataTexture` (~0.33 MiB total GPU footprint including mipmaps) reused across all historic
+ * painted plaster materials.
+ */
+export function getHeritageLimePlasterNormalMap(): THREE.DataTexture {
+  if (heritageLimeNormalMapCache) {
+    return heritageLimeNormalMapCache;
+  }
+  const existingPair = detailMapCache.get('heritage-lime-plaster');
+  if (existingPair) {
+    heritageLimeNormalMapCache = existingPair.normalMap;
+    return existingPair.normalMap;
+  }
+
+  const size = MICRO_SURFACE_MAP_SIZE;
+  const heightField = evaluateSurfaceHeightField('heritage-lime-plaster', size);
+  const { slopeGain, repeat } = getSlopeAndRoughnessCalibration('heritage-lime-plaster');
+  const normalData = new Uint8Array(size * size * 4);
+  const mask = size - 1;
+
+  for (let y = 0; y < size; y++) {
+    const rowC = y * size;
+    const rowM = ((y - 1) & mask) * size;
+    const rowP = ((y + 1) & mask) * size;
+    for (let x = 0; x < size; x++) {
+      const xm = (x - 1) & mask;
+      const xp = (x + 1) & mask;
+      const idx = rowC + x;
+      const p4 = idx << 2;
+      const dx = (heightField[rowC + xp]! - heightField[rowC + xm]!) * slopeGain;
+      const dy = (heightField[rowP + x]! - heightField[rowM + x]!) * slopeGain;
+      const invLen = 1 / Math.sqrt(dx * dx + dy * dy + 1);
+      const nx = ((-dx * invLen * 0.5 + 0.5) * 255 + 0.5) | 0;
+      const ny = ((-dy * invLen * 0.5 + 0.5) * 255 + 0.5) | 0;
+      const nz = ((invLen * 0.5 + 0.5) * 255 + 0.5) | 0;
+      normalData[p4] = nx < 0 ? 0 : nx > 255 ? 255 : nx;
+      normalData[p4 + 1] = ny < 0 ? 0 : ny > 255 ? 255 : ny;
+      normalData[p4 + 2] = nz < 0 ? 0 : nz > 255 ? 255 : nz;
+      normalData[p4 + 3] = 255;
+    }
+  }
+
+  const normalMap = new THREE.DataTexture(normalData, size, size, THREE.RGBAFormat);
+  normalMap.name = 'microDetail:heritage-lime-plaster:normal';
+  normalMap.wrapS = THREE.RepeatWrapping;
+  normalMap.wrapT = THREE.RepeatWrapping;
+  normalMap.repeat.set(repeat, repeat);
+  normalMap.colorSpace = THREE.NoColorSpace;
+  normalMap.generateMipmaps = true;
+  normalMap.minFilter = THREE.LinearMipmapLinearFilter;
+  normalMap.magFilter = THREE.LinearFilter;
+  normalMap.anisotropy = 4;
+  normalMap.needsUpdate = true;
+
+  heritageLimeNormalMapCache = normalMap;
+  return normalMap;
+}
+
 export function getMicroSurfaceDetailMaps(
   surfaceClass: MicroSurfaceClass
 ): MicroSurfaceDetailMaps {
@@ -232,16 +323,25 @@ export function getMicroSurfaceDetailMaps(
   roughnessMap.magFilter = THREE.LinearFilter;
   roughnessMap.needsUpdate = true;
 
-  const normalMap = new THREE.DataTexture(normalData, size, size, THREE.RGBAFormat);
-  normalMap.name = `microDetail:${surfaceClass}:normal`;
-  normalMap.wrapS = THREE.RepeatWrapping;
-  normalMap.wrapT = THREE.RepeatWrapping;
-  normalMap.repeat.set(repeat, repeat);
-  normalMap.colorSpace = THREE.NoColorSpace;
-  normalMap.generateMipmaps = true;
-  normalMap.minFilter = THREE.LinearMipmapLinearFilter;
-  normalMap.magFilter = THREE.LinearFilter;
-  normalMap.needsUpdate = true;
+  let normalMap: THREE.DataTexture;
+  if (surfaceClass === 'heritage-lime-plaster' && heritageLimeNormalMapCache) {
+    normalMap = heritageLimeNormalMapCache;
+  } else {
+    normalMap = new THREE.DataTexture(normalData, size, size, THREE.RGBAFormat);
+    normalMap.name = `microDetail:${surfaceClass}:normal`;
+    normalMap.wrapS = THREE.RepeatWrapping;
+    normalMap.wrapT = THREE.RepeatWrapping;
+    normalMap.repeat.set(repeat, repeat);
+    normalMap.colorSpace = THREE.NoColorSpace;
+    normalMap.generateMipmaps = true;
+    normalMap.minFilter = THREE.LinearMipmapLinearFilter;
+    normalMap.magFilter = THREE.LinearFilter;
+    if (surfaceClass === 'heritage-lime-plaster') {
+      normalMap.anisotropy = 4;
+      heritageLimeNormalMapCache = normalMap;
+    }
+    normalMap.needsUpdate = true;
+  }
 
   const pair: MicroSurfaceDetailMaps = {
     surfaceClass,
@@ -370,6 +470,10 @@ export function clearMicroSurfaceDetailCache(): void {
   for (const entry of detailMapCache.values()) {
     entry.roughnessMap.dispose();
     entry.normalMap.dispose();
+  }
+  if (heritageLimeNormalMapCache) {
+    heritageLimeNormalMapCache.dispose();
+    heritageLimeNormalMapCache = null;
   }
   detailMapCache.clear();
   fabricMaterialCache.clear();

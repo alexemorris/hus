@@ -1,5 +1,10 @@
 import * as THREE from 'three';
 import type { SceneInteractionManager } from '../interaction/interaction-manager.ts';
+import {
+  createHeritagePlasterWallGeometry,
+  type HeritageClampRect2D,
+  type HeritageWallImperfectionOptions,
+} from './heritage-masonry.ts';
 import { addCasedArchitravePortal, buildMitredWallSkirtingGeometry } from './swept-moulding.ts';
 import { createTimberBoxGeometry, hashTimberSeed, type TimberGrainAxis } from './timber-piece-uvs.ts';
 
@@ -114,6 +119,8 @@ export interface AngledWallSegmentConfig {
   /** Optional u-intervals `[u0, u1]` where back (`-normal`) skirting is suppressed (e.g. behind chimney breasts/wardrobes or at corners). */
   readonly backSkirtingExclusions?: readonly (readonly [number, number])[];
   readonly openings?: readonly WallPortalOpening[];
+  /** Optional boundary-clamped historic lime-plaster undulation (`<= 5 mm`, pinned `0.000 mm` at edges, skirtings & portals). */
+  readonly heritageImperfection?: HeritageWallImperfectionOptions;
 }
 
 /**
@@ -345,11 +352,11 @@ export function buildAngledWallSegment(
 
   const brickTileW = 1.35;
   const brickTileH = 1.2;
-  const applyLocalWallBrickUVs = (
-    geo: THREE.BoxGeometry,
+  const applyLocalWallBrickUVs = <T extends THREE.BufferGeometry>(
+    geo: T,
     uCenter: number,
     yCenter: number
-  ): THREE.BoxGeometry => {
+  ): T => {
     const posAttr = geo.attributes.position;
     const normAttr = geo.attributes.normal;
     const uvAttr = geo.attributes.uv;
@@ -496,6 +503,76 @@ export function buildAngledWallSegment(
     : 0;
   const frontInsetStartU = isNorthWestExteriorCorner ? 0.285 : 0;
 
+  const buildWallPierOrLintelGeo = (
+    segU0: number,
+    segU1: number,
+    segBotY: number,
+    segTopY: number,
+    segDepth: number,
+    targetFacesOverride?: 'front' | 'back' | 'both'
+  ): THREE.BufferGeometry => {
+    const segW = segU1 - segU0;
+    const segH = segTopY - segBotY;
+    const segMidU = (segU0 + segU1) * 0.5;
+    const segMidY = (segBotY + segTopY) * 0.5;
+    const imp = config.heritageImperfection;
+    if (!imp || (isNorthWestExteriorCorner && segU0 < 0.005)) {
+      return applyLocalWallBrickUVs(
+        new THREE.BoxGeometry(segW, segH, segDepth),
+        segMidU,
+        segMidY
+      );
+    }
+    const localClamps: HeritageClampRect2D[] = [];
+    if (imp.clampZones) {
+      for (const cz of imp.clampZones) {
+        const luMin = cz.uMin - segU0;
+        const luMax = cz.uMax - segU0;
+        const lvMin = cz.vMin - (segBotY - minFloorY);
+        const lvMax = cz.vMax - (segBotY - minFloorY);
+        if (luMax > -0.15 && luMin < segW + 0.15 && lvMax > -0.15 && lvMin < segH + 0.15) {
+          localClamps.push({
+            ...cz,
+            uMin: luMin,
+            uMax: luMax,
+            vMin: lvMin,
+            vMax: lvMax,
+          });
+        }
+      }
+    }
+    for (const op of sortedOpenings) {
+      const archPad = (op.includeArchitrave !== false ? (op.architraveWidth ?? 0.092) : 0.025) + 0.015;
+      const opU0 = op.uCenter - op.width * 0.5 - archPad - segU0;
+      const opU1 = op.uCenter + op.width * 0.5 + archPad - segU0;
+      const opTop = (op.upperFloorY ?? op.lowerFloorY) + op.doorHeight + archPad - segBotY;
+      const opBot = op.lowerFloorY - 0.02 - segBotY;
+      if (opU1 > -0.15 && opU0 < segW + 0.15 && opTop > -0.15 && opBot < segH + 0.15) {
+        localClamps.push({
+          uMin: opU0,
+          uMax: opU1,
+          vMin: opBot,
+          vMax: opTop,
+          clearPaddingM: 0.02,
+          featherM: 0.10,
+        });
+      }
+    }
+    const worldCenter = frame.toWorld(segMidU, segMidY, 0);
+    const localSkirtH = Math.max(0, (minFloorY + (imp.skirtingClampH ?? 0.16)) - segBotY);
+    const geo = createHeritagePlasterWallGeometry(segW, segH, segDepth, {
+      ...imp,
+      seed: [imp.seed, segU0, segBotY],
+      skirtingClampH: localSkirtH,
+      targetFaces: targetFacesOverride ?? imp.targetFaces ?? 'both',
+      clampZones: localClamps,
+      worldOffset: [worldCenter.x, worldCenter.y, worldCenter.z],
+    });
+    return imp.applyPlasterUVs === false
+      ? applyLocalWallBrickUVs(geo, segMidU, segMidY)
+      : geo;
+  };
+
   // Helper to add a solid wall pier from u0 to u1
   const addWallPier = (
     u0: number,
@@ -510,9 +587,10 @@ export function buildAngledWallSegment(
     const uMid = (u0 + u1) / 2;
 
     if (!config.skipWallBody) {
-      const pierGeo = new THREE.BoxGeometry(segW, fullWallH, config.thickness);
+      let pierGeo: THREE.BufferGeometry;
       if (isNorthWestExteriorCorner && u0 < 0.005) {
-        const posAttr = pierGeo.attributes.position;
+        const boxGeo = new THREE.BoxGeometry(segW, fullWallH, config.thickness);
+        const posAttr = boxGeo.attributes.position;
         if (posAttr) {
           for (let i = 0; i < posAttr.count; i++) {
             if (posAttr.getX(i) < 0) {
@@ -521,12 +599,26 @@ export function buildAngledWallSegment(
             }
           }
           posAttr.needsUpdate = true;
-          pierGeo.computeVertexNormals();
-          pierGeo.userData.isSheared = true;
+          boxGeo.computeVertexNormals();
+          boxGeo.userData.isSheared = true;
         }
+        pierGeo = applyLocalWallBrickUVs(boxGeo, uMid, fullWallMidY);
+      } else {
+        const coreFaces =
+          config.frontFaceMaterial && config.backFaceMaterial
+            ? undefined
+            : config.frontFaceMaterial
+              ? ('back' as const)
+              : config.backFaceMaterial
+                ? ('front' as const)
+                : undefined;
+        pierGeo =
+          config.frontFaceMaterial && config.backFaceMaterial
+            ? applyLocalWallBrickUVs(new THREE.BoxGeometry(segW, fullWallH, config.thickness), uMid, fullWallMidY)
+            : buildWallPierOrLintelGeo(u0, u1, minFloorY, config.topY, config.thickness, coreFaces);
       }
       const pier = new THREE.Mesh(
-        applyLocalWallBrickUVs(pierGeo, uMid, fullWallMidY),
+        pierGeo,
         resolveCoreWallMaterial(config.wallMaterial)
       );
       if (!pier.name) pier.name = 'architecture.primitive.pier';
@@ -539,11 +631,10 @@ export function buildAngledWallSegment(
     emitCapSegments(u0, u1);
 
     if (config.backFaceMaterial) {
-      const backBotY = config.backFloorY + 0.004;
-      const backH = Math.max(0.02, config.topY - backBotY);
+      const backBotY = Math.min(config.topY - 0.02, config.backFloorY + 0.004);
       const backMidY = (backBotY + config.topY) / 2;
       const backClad = new THREE.Mesh(
-        applyLocalWallBrickUVs(new THREE.BoxGeometry(segW, backH, 0.012), uMid, backMidY),
+        buildWallPierOrLintelGeo(u0, u1, backBotY, config.topY, 0.012, 'back'),
         withTopCapMaterial(config.backFaceMaterial)
       );
       if (!backClad.name) backClad.name = 'architecture.primitive.backClad';
@@ -561,11 +652,10 @@ export function buildAngledWallSegment(
       const cladW = u1 - cladU0;
       if (cladW > 0.005) {
         const cladMidU = (cladU0 + u1) / 2;
-        const frontBotY = config.frontFloorY + 0.004;
-        const frontH = Math.max(0.02, config.topY - frontBotY);
+        const frontBotY = Math.min(config.topY - 0.02, config.frontFloorY + 0.004);
         const frontMidY = (frontBotY + config.topY) / 2;
         const frontClad = new THREE.Mesh(
-          applyLocalWallBrickUVs(new THREE.BoxGeometry(cladW, frontH, 0.012), cladMidU, frontMidY),
+          buildWallPierOrLintelGeo(cladU0, u1, frontBotY, config.topY, 0.012, 'front'),
           withTopCapMaterial(config.frontFaceMaterial)
         );
         if (!frontClad.name) frontClad.name = 'architecture.primitive.frontClad';
@@ -637,11 +727,7 @@ export function buildAngledWallSegment(
     if (lintelH > 0.01 && !config.skipWallBody) {
       const lintelMidY = headBottomY + lintelH / 2;
       const lintel = new THREE.Mesh(
-        applyLocalWallBrickUVs(
-          new THREE.BoxGeometry(op.width, lintelH, config.thickness),
-          op.uCenter,
-          lintelMidY
-        ),
+buildWallPierOrLintelGeo(opLeft, opRight, headBottomY, config.topY, config.thickness),
         resolveCoreWallMaterial(config.wallMaterial)
       );
       if (!lintel.name) lintel.name = 'architecture.primitive.lintel';

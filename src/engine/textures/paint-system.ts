@@ -10,10 +10,13 @@
  */
 import * as THREE from 'three';
 import type { PaintSheen, RoomPaintSurfaceSpec } from '../../core/types/twin-ux.ts';
+import { getHeritageLimePlasterNormalMap } from './micro-surface-detail.ts';
 
+export { getHeritageLimePlasterNormalMap };
 export type { PaintSheen, RoomPaintSurfaceSpec };
 
 export type PaintMicroTextureKind = 'chalk' | 'limewash' | 'roller';
+export type PlasterReliefKind = 'none' | 'heritage-lime';
 
 export interface PaintSheenDescriptor {
   /** Canonical sheen identifier, e.g. `'estate-emulsion'`. */
@@ -261,6 +264,15 @@ export interface PaintMaterialOptions {
    */
   readonly microTexture?: boolean;
   /**
+   * Optional shared low-frequency hand-trowelled lime-plaster normal relief (`256x256` periodic
+   * `DataTexture`, `~0.33 MiB` total GPU cost). Defaults to `'none'` (`0` textures allocated).
+   */
+  readonly plasterRelief?: PlasterReliefKind;
+  /** Normal scale multiplier when `plasterRelief === 'heritage-lime'` (default `0.20`). */
+  readonly plasterReliefScale?: number;
+  /** Alias for `plasterReliefScale` when `plasterRelief === 'heritage-lime'` (default `0.20`). */
+  readonly plasterReliefStrength?: number;
+  /**
    * Allocates an isolated uncached `THREE.MeshPhysicalMaterial` instance when `true`.
    */
   readonly unique?: boolean;
@@ -278,6 +290,8 @@ export interface ResolvedPaintInfo {
   readonly sheenLabel: string;
   readonly glossPercent: number;
   readonly microTexture: boolean;
+  readonly plasterRelief: PlasterReliefKind;
+  readonly plasterReliefScale: number;
   readonly side: THREE.Side;
   readonly recommendedWhites: readonly string[];
   readonly productUrl?: string;
@@ -316,6 +330,9 @@ export interface RoomPaintSchemeOptions {
   readonly doorSheen?: PaintSheen;
   readonly radiatorSheen?: PaintSheen;
   readonly microTexture?: boolean;
+  readonly wallPlasterRelief?: PlasterReliefKind;
+  readonly ceilingPlasterRelief?: PlasterReliefKind;
+  readonly plasterReliefScale?: number;
   readonly side?: THREE.Side;
 }
 
@@ -902,16 +919,23 @@ function buildPaintCacheKey(
   resolvedHex: `#${string}`,
   sheen: PaintSheen,
   side: THREE.Side,
-  microTexture: boolean
+  microTexture: boolean,
+  plasterRelief: PlasterReliefKind,
+  plasterReliefScale: number
 ): string {
-  return `${resolvedHex}|${sheen}|${side}|${microTexture ? 1 : 0}`;
+  if (plasterRelief === 'none') {
+    return `${resolvedHex}|${sheen}|${side}|${microTexture ? 1 : 0}`;
+  }
+  return `${resolvedHex}|${sheen}|${side}|${microTexture ? 1 : 0}|${plasterRelief}|${plasterReliefScale.toFixed(3)}`;
 }
 
 function buildResolvedPaintInfo(
   resolved: ResolvedPaintColor,
   descriptor: PaintSheenDescriptor,
   side: THREE.Side,
-  microTexture: boolean
+  microTexture: boolean,
+  plasterRelief: PlasterReliefKind,
+  plasterReliefScale: number
 ): ResolvedPaintInfo {
   return Object.freeze({
     hex: resolved.hex,
@@ -925,6 +949,8 @@ function buildResolvedPaintInfo(
     sheenLabel: descriptor.label,
     glossPercent: descriptor.glossPercent,
     microTexture,
+    plasterRelief,
+    plasterReliefScale,
     side,
     recommendedWhites: resolved.recommendedWhites,
     ...(resolved.productUrl ? { productUrl: resolved.productUrl } : {}),
@@ -947,9 +973,22 @@ export function createPaintMaterial(options: PaintMaterialOptions): THREE.MeshPh
   const resolved = resolvePaintColor(options.color);
   const side = options.side ?? THREE.FrontSide;
   const microTexture = options.microTexture ?? descriptor.defaultMicroTexture;
+  const plasterRelief: PlasterReliefKind = options.plasterRelief ?? 'none';
+  const rawReliefScale = options.plasterReliefScale ?? options.plasterReliefStrength ?? 0.2;
+  const plasterReliefScale =
+    plasterRelief === 'heritage-lime'
+      ? THREE.MathUtils.clamp(Number.isFinite(rawReliefScale) ? rawReliefScale : 0.2, 0.02, 0.65)
+      : 0;
   const unique = options.unique === true;
 
-  const cacheKey = buildPaintCacheKey(resolved.hex, sheen, side, microTexture);
+  const cacheKey = buildPaintCacheKey(
+    resolved.hex,
+    sheen,
+    side,
+    microTexture,
+    plasterRelief,
+    plasterReliefScale
+  );
   if (!unique) {
     const cached = paintMaterialCache.get(cacheKey);
     if (cached) {
@@ -957,7 +996,14 @@ export function createPaintMaterial(options: PaintMaterialOptions): THREE.MeshPh
       if (existingInfo && !existingInfo.swatch && resolved.swatch) {
         paintInfoRegistry.set(
           cached,
-          buildResolvedPaintInfo(resolved, descriptor, side, microTexture)
+          buildResolvedPaintInfo(
+            resolved,
+            descriptor,
+            side,
+            microTexture,
+            plasterRelief,
+            plasterReliefScale
+          )
         );
       }
       return cached;
@@ -999,10 +1045,22 @@ export function createPaintMaterial(options: PaintMaterialOptions): THREE.MeshPh
     }
   }
 
+  if (plasterRelief === 'heritage-lime') {
+    params.normalMap = getHeritageLimePlasterNormalMap();
+    params.normalScale = new THREE.Vector2(plasterReliefScale, plasterReliefScale);
+  }
+
   const material = new THREE.MeshPhysicalMaterial(params);
   paintInfoRegistry.set(
     material,
-    buildResolvedPaintInfo(resolved, descriptor, side, microTexture)
+    buildResolvedPaintInfo(
+      resolved,
+      descriptor,
+      side,
+      microTexture,
+      plasterRelief,
+      plasterReliefScale
+    )
   );
 
   if (!unique) {
@@ -1038,6 +1096,9 @@ export function getCachedPaintMaterial(
     ('sheen' in colorOrOptions ||
       'side' in colorOrOptions ||
       'microTexture' in colorOrOptions ||
+      'plasterRelief' in colorOrOptions ||
+      'plasterReliefScale' in colorOrOptions ||
+      'plasterReliefStrength' in colorOrOptions ||
       !(
         'name' in colorOrOptions ||
         'brand' in colorOrOptions ||
@@ -1124,6 +1185,10 @@ export function createRoomPaintScheme(options: RoomPaintSchemeOptions): RoomPain
   const walls = createPaintMaterial({
     color: options.wallColor,
     sheen: wallSheen,
+    ...(options.wallPlasterRelief !== undefined ? { plasterRelief: options.wallPlasterRelief } : {}),
+    ...(options.plasterReliefScale !== undefined
+      ? { plasterReliefScale: options.plasterReliefScale }
+      : {}),
     ...sharedMatOpts,
   });
   const trim = createPaintMaterial({
@@ -1134,6 +1199,12 @@ export function createRoomPaintScheme(options: RoomPaintSchemeOptions): RoomPain
   const ceiling = createPaintMaterial({
     color: ceilingColorInput,
     sheen: ceilingSheen,
+    ...(options.ceilingPlasterRelief !== undefined
+      ? { plasterRelief: options.ceilingPlasterRelief }
+      : {}),
+    ...(options.plasterReliefScale !== undefined
+      ? { plasterReliefScale: options.plasterReliefScale }
+      : {}),
     ...sharedMatOpts,
   });
   const doors = createPaintMaterial({

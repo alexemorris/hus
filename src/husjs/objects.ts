@@ -56,6 +56,7 @@ export * from '../objects/cad/skirting-run.ts';
 export * from '../objects/cad/room-trim-and-panelling.ts';
 export * from '../objects/architectural/staircase-and-balustrade.ts';
 export * from '../objects/architectural/georgian-sash-window.ts';
+export * from '../objects/architectural/heritage-timber.ts';
 
 export * from '../core/assets/asset-metadata.ts';
 export * from '../engine/assets/smart-asset.ts';

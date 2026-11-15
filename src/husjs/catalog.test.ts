@@ -4,6 +4,8 @@ import * as appliances from 'husjs/catalog/appliances';
 import * as furniture from 'husjs/catalog/furniture';
 import * as lighting from 'husjs/catalog/lighting';
 import * as sanitaryware from 'husjs/catalog/sanitaryware';
+import * as materials from 'husjs/materials';
+import * as objects from 'husjs/objects';
 
 describe('husjs/catalog/* public barrel entrypoints', () => {
   it('re-exports architectural, appliances, furniture, lighting & sanitaryware builders', () => {
@@ -41,5 +43,23 @@ describe('husjs/catalog/* public barrel entrypoints', () => {
 
     expect(typeof sanitaryware.buildNeptuneChichesterVanity).toBe('function');
     expect(typeof sanitaryware.buildCrittallWalkInShowerAndTowelRail).toBe('function');
+
+    // Heritage aged timber & lime-plaster public exports
+    expect(typeof architectural.AGED_TIMBER_PROFILES).toBe('object');
+    expect(typeof architectural.createAgedTimberBeamGeometry).toBe('function');
+    expect(typeof architectural.createAgedTimberBoxBeamGeometry).toBe('function');
+    expect(typeof architectural.createPlasterBeamHaunchGeometry).toBe('function');
+    expect(typeof architectural.createAgedTimberBeam).toBe('function');
+    expect(typeof architectural.createAgedJoistBay).toBe('function');
+    expect(typeof architectural.createAgedRoofTruss).toBe('function');
+
+    expect(objects.AGED_TIMBER_PROFILES).toBe(architectural.AGED_TIMBER_PROFILES);
+    expect(objects.createAgedTimberBeam).toBe(architectural.createAgedTimberBeam);
+    expect(objects.createAgedJoistBay).toBe(architectural.createAgedJoistBay);
+    expect(objects.createAgedRoofTruss).toBe(architectural.createAgedRoofTruss);
+    expect(typeof objects.createHeritagePlasterWallGeometry).toBe('function');
+    expect(typeof objects.createHeritageSkeilingSlabGeometry).toBe('function');
+    expect(typeof objects.createSoftenedPlasterRevealLinings).toBe('function');
+    expect(typeof materials.getHeritageLimePlasterNormalMap).toBe('function');
   });
 });

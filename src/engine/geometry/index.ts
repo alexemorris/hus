@@ -1,4 +1,16 @@
 export {
+  AGED_TIMBER_PROFILES,
+  type AgedTimberBeamGeometryOptions,
+  type AgedTimberBoxBeamOptions,
+  type AgedTimberProfileId,
+  type AgedTimberProfileSpec,
+  createAgedTimberBeamGeometry,
+  createAgedTimberBoxBeamGeometry,
+  createPlasterBeamHaunchGeometry,
+  type PlasterBeamHaunchGeometryOptions,
+  type TimberFaceId,
+} from './aged-timber-beam.ts';
+export {
   applyFrame2DToObject3D,
   type ClippedProfile2D,
   clipPolygon2DToPlanes,
@@ -20,6 +32,20 @@ export {
   transformFrame2DPoint,
   type WorldBoxUvOptions,
 } from './cad-primitives.ts';
+export {
+  applyWorldSpacePlasterUVs,
+  createHeritagePlasterWallGeometry,
+  createHeritageSkeilingSlabGeometry,
+  createSoftenedPlasterRevealLinings,
+  evaluateHeritageBoundaryWeight,
+  type HeritageBoundaryWeightOptions,
+  type HeritageClampRect2D,
+  type HeritageSkeilingSlabOptions,
+  type HeritageWallImperfectionOptions,
+  sampleHeritagePlasterDisplacement,
+  type SoftenedPlasterRevealOptions,
+  type SoftenedPlasterRevealResult,
+} from './heritage-masonry.ts';
 export {
   type CollisionRole,
   type InteractionTarget,

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { getHeritageLimePlasterNormalMap, MICRO_SURFACE_MAP_SIZE } from '../micro-surface-detail.ts';
 import {
   PAINT_SHEENS,
   clearPaintMaterialCache,
@@ -347,5 +348,59 @@ describe('husjs physical architectural paint system', () => {
       hex: '#CACCC0',
       sheen: 'modern-emulsion',
     });
+  });
+
+  it('shares a single cached 256x256 periodic heritage-lime plaster normal DataTexture across colours and separates material cache keys', () => {
+    const flatCream = createPaintMaterial({
+      color: 'farrows-cream',
+      sheen: 'estate-emulsion',
+    });
+    const limeCreamA = createPaintMaterial({
+      color: 'farrows-cream',
+      sheen: 'estate-emulsion',
+      plasterRelief: 'heritage-lime',
+    });
+    const limeCreamB = createPaintMaterial({
+      color: '#E9D8B4',
+      sheen: 'estate-emulsion',
+      plasterRelief: 'heritage-lime',
+      plasterReliefScale: 0.2,
+    });
+    const limeCreamStrong = createPaintMaterial({
+      color: 'farrows-cream',
+      sheen: 'estate-emulsion',
+      plasterRelief: 'heritage-lime',
+      plasterReliefScale: 0.32,
+    });
+    const limeSettingPlaster = createPaintMaterial({
+      color: 'setting-plaster',
+      sheen: 'estate-emulsion',
+      plasterRelief: 'heritage-lime',
+    });
+
+    // Zero normalMap when plasterRelief is omitted or "none"
+    expect(flatCream.normalMap).toBeNull();
+
+    // Exact material instance hit for identical colour + sheen + plasterRelief + scale
+    expect(limeCreamA).toBe(limeCreamB);
+    expect(limeCreamA).not.toBe(flatCream);
+    expect(limeCreamA).not.toBe(limeCreamStrong);
+
+    // Single shared 256x256 DataTexture across distinct paint colours & relief scales (~0.33 MiB total)
+    const sharedNormal = getHeritageLimePlasterNormalMap();
+    expect(sharedNormal).toBeInstanceOf(THREE.DataTexture);
+    expect(sharedNormal.image.width).toBe(MICRO_SURFACE_MAP_SIZE);
+    expect(sharedNormal.image.height).toBe(MICRO_SURFACE_MAP_SIZE);
+    expect(sharedNormal.wrapS).toBe(THREE.RepeatWrapping);
+    expect(sharedNormal.wrapT).toBe(THREE.RepeatWrapping);
+    expect(limeCreamA.normalMap).toBe(sharedNormal);
+    expect(limeCreamStrong.normalMap).toBe(sharedNormal);
+    expect(limeSettingPlaster.normalMap).toBe(sharedNormal);
+    expect(limeCreamA.normalScale.x).toBeCloseTo(0.2, 5);
+    expect(limeCreamStrong.normalScale.x).toBeCloseTo(0.32, 5);
+
+    const info = getPaintMaterialInfo(limeCreamA);
+    expect(info?.plasterRelief).toBe('heritage-lime');
+    expect(info?.plasterReliefScale).toBeCloseTo(0.2, 5);
   });
 });

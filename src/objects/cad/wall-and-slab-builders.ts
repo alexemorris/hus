@@ -15,6 +15,13 @@ import {
   tagCollisionRole,
   tagCutaway,
 } from '../../engine/geometry/mesh-traits.ts';
+import {
+  applyWorldSpacePlasterUVs,
+  evaluateHeritageBoundaryWeight,
+  type HeritageClampRect2D,
+  type HeritageWallImperfectionOptions,
+  sampleHeritagePlasterDisplacement,
+} from '../../engine/geometry/heritage-masonry.ts';
 import type { Point2D } from '../../engine/geometry/period-house-primitives.ts';
 import type { SkirtingGap } from './skirting-run.ts';
 import {
@@ -67,6 +74,8 @@ export interface WallNetworkSegmentInput {
   readonly zone?: string;
   readonly splitAtPartitions?: boolean;
   readonly includeInFirstFloorCutaway?: boolean;
+  /** Optional boundary-clamped historic lime-plaster undulation (`<= 5 mm`, pinned `0.000 mm` at edges, skirtings & openings). */
+  readonly heritageImperfection?: HeritageWallImperfectionOptions;
 }
 
 export interface CreateWallNetworkOptions {
@@ -639,6 +648,46 @@ function buildOpeningTopArc2D(
   return pts;
 }
 
+
+function distPointToSegment2D(
+  px: number,
+  py: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number
+): number {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq <= 1e-12) return Math.hypot(px - ax, py - ay);
+  const t = THREE.MathUtils.clamp(((px - ax) * dx + (py - ay) * dy) / lenSq, 0, 1);
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
+function minDistanceToRings2D(
+  px: number,
+  py: number,
+  rings: readonly (readonly [number, number][])[]
+): number {
+  let minD = Infinity;
+  for (const ring of rings) {
+    for (let i = 0; i < ring.length; i++) {
+      const a = ring[i]!;
+      const b = ring[(i + 1) % ring.length]!;
+      const d = distPointToSegment2D(px, py, a[0], a[1], b[0], b[1]);
+      if (d < minD) minD = d;
+    }
+  }
+  return minD;
+}
+
+interface WallFaceImperfectionContext {
+  readonly options: HeritageWallImperfectionOptions;
+  readonly wallId: string;
+  readonly sideLabel: 'outer' | 'inner';
+}
+
 function emitWallFaceElevation(
   acc: GeometryAccumulator,
   uMin: number,
@@ -650,7 +699,8 @@ function emitWallFaceElevation(
   faceOrigin: THREE.Vector3,
   tangent3: THREE.Vector3,
   faceOutwardNormal: THREE.Vector3,
-  roofClipPlanes: readonly HalfPlane3D[]
+  roofClipPlanes: readonly HalfPlane3D[],
+  imperfectionCtx?: WallFaceImperfectionContext
 ): void {
   if (uMax - uMin <= 1e-5 || yMax - yMin <= 1e-5) return;
 
@@ -784,24 +834,102 @@ function emitWallFaceElevation(
     const tris = THREE.ShapeUtils.triangulateShape(contourV2, holesV2);
     if (tris.length === 0) continue;
 
-    const all2D: [number, number][] = [
+    let pts2D: [number, number][] = [
       ...contourV2.map((v): [number, number] => [v.x, v.y]),
       ...holesV2.flatMap((h) => h.map((v): [number, number] => [v.x, v.y])),
     ];
-    const all3D = all2D.map(([u, y]) => toWorld(u, y));
+    let curTris: [number, number, number][] = tris.map((t): [number, number, number] => [
+      t[0]!,
+      t[1]!,
+      t[2]!,
+    ]);
 
-    const baseIdx = acc.positions.length / 3;
-    for (const p of all3D) {
-      acc.positions.push(p.x, p.y, p.z);
-      acc.normals.push(faceOutwardNormal.x, faceOutwardNormal.y, faceOutwardNormal.z);
-      const [uu, vv] = uvProject(p);
-      acc.uvs.push(uu, vv);
+    const imp = imperfectionCtx?.options;
+    const amp = imp ? THREE.MathUtils.clamp(imp.amplitudeM ?? 0.003, 0, 0.005) : 0;
+    if (imp && amp > 1e-7) {
+      const gridStep = Math.max(0.12, imp.gridStepM ?? 0.35);
+      const maxSpan = Math.max(sub.uRange[1] - sub.uRange[0], yMax - yMin);
+      const passes = THREE.MathUtils.clamp(Math.round(Math.log2(Math.max(1, maxSpan / gridStep))), 1, 4);
+      for (let pass = 0; pass < passes; pass++) {
+        const midMap = new Map<string, number>();
+        const getMid = (ia: number, ib: number): number => {
+          const lo = ia < ib ? ia : ib;
+          const hi = ia < ib ? ib : ia;
+          const key = `${lo}:${hi}`;
+          const found = midMap.get(key);
+          if (found !== undefined) return found;
+          const pa = pts2D[ia]!;
+          const pb = pts2D[ib]!;
+          const idx = pts2D.length;
+          pts2D.push([(pa[0] + pb[0]) * 0.5, (pa[1] + pb[1]) * 0.5]);
+          midMap.set(key, idx);
+          return idx;
+        };
+        const nextTris: [number, number, number][] = [];
+        for (const [a, b, c] of curTris) {
+          const mab = getMid(a, b);
+          const mbc = getMid(b, c);
+          const mca = getMid(c, a);
+          nextTris.push([a, mab, mca], [mab, b, mbc], [mca, mbc, c], [mab, mbc, mca]);
+        }
+        curTris = nextTris;
+      }
     }
 
+    const boundaryRings: [number, number][][] = [
+      clipped.outer,
+      ...clipped.holes,
+    ];
+    const openingClamps: HeritageClampRect2D[] = [
+      ...(imp?.clampZones ?? []),
+      ...openings.map((op): HeritageClampRect2D => ({
+        uMin: op.centerOffset - op.width * 0.5 - 0.11 - uMin,
+        uMax: op.centerOffset + op.width * 0.5 + 0.11 - uMin,
+        vMin: Math.max(0, wallBaseY + op.sillY - 0.11 - yMin),
+        vMax: wallBaseY + op.sillY + op.height + (op.archRiseM ?? 0) + 0.11 - yMin,
+        clearPaddingM: 0.02,
+        featherM: 0.10,
+      })),
+    ];
+
+    const spanU = uMax - uMin;
+    const spanV = yMax - yMin;
+    const skirtClamp = Math.max(0, (wallBaseY + (imp?.skirtingClampH ?? 0.16)) - yMin);
+
+    const all3D = pts2D.map(([u, y]) => {
+      const basePt = toWorld(u, y);
+      if (!imp || amp <= 1e-7) return basePt;
+      const dRing = minDistanceToRings2D(u, y, boundaryRings);
+      if (dRing <= 0.03) return basePt;
+      const tRing = THREE.MathUtils.clamp((dRing - 0.03) / 0.11, 0, 1);
+      const wRing = tRing * tRing * (3 - 2 * tRing);
+      const wRect = evaluateHeritageBoundaryWeight(u - uMin, y - yMin, spanU, spanV, {
+        ...imp,
+        skirtingClampH: skirtClamp,
+        clampZones: openingClamps,
+      });
+      const weight = wRing * wRect;
+      if (weight <= 1e-7) return basePt;
+      const disp =
+        weight *
+        sampleHeritagePlasterDisplacement(
+          basePt.x,
+          basePt.y,
+          basePt.z,
+          [imp.seed, imperfectionCtx!.wallId, imperfectionCtx!.sideLabel],
+          amp
+        );
+      return basePt.addScaledVector(faceOutwardNormal, disp);
+    });
+
+    const vertNormals: THREE.Vector3[] = pts2D.map(
+      () => new THREE.Vector3(0, 0, 0)
+    );
+    const orientedTris: [number, number, number][] = [];
     const e1 = new THREE.Vector3();
     const e2 = new THREE.Vector3();
     const cross = new THREE.Vector3();
-    for (const [a, b, c] of tris) {
+    for (const [a, b, c] of curTris) {
       const p0 = all3D[a]!;
       const p1 = all3D[b]!;
       const p2 = all3D[c]!;
@@ -810,10 +938,33 @@ function emitWallFaceElevation(
       cross.crossVectors(e1, e2);
       if (cross.lengthSq() <= 1e-20) continue;
       if (cross.dot(faceOutwardNormal) >= 0) {
-        acc.indices.push(baseIdx + a, baseIdx + b, baseIdx + c);
+        orientedTris.push([a, b, c]);
+        vertNormals[a]!.add(cross);
+        vertNormals[b]!.add(cross);
+        vertNormals[c]!.add(cross);
       } else {
-        acc.indices.push(baseIdx + a, baseIdx + c, baseIdx + b);
+        orientedTris.push([a, c, b]);
+        vertNormals[a]!.sub(cross);
+        vertNormals[b]!.sub(cross);
+        vertNormals[c]!.sub(cross);
       }
+    }
+
+    const baseIdx = acc.positions.length / 3;
+    for (let i = 0; i < all3D.length; i++) {
+      const p = all3D[i]!;
+      acc.positions.push(p.x, p.y, p.z);
+      if (imp && amp > 1e-7 && vertNormals[i]!.lengthSq() > 1e-20) {
+        const vn = vertNormals[i]!.normalize();
+        acc.normals.push(vn.x, vn.y, vn.z);
+      } else {
+        acc.normals.push(faceOutwardNormal.x, faceOutwardNormal.y, faceOutwardNormal.z);
+      }
+      const [uu, vv] = uvProject(p);
+      acc.uvs.push(uu, vv);
+    }
+    for (const [a, b, c] of orientedTris) {
+      acc.indices.push(baseIdx + a, baseIdx + b, baseIdx + c);
     }
   }
 }
@@ -1353,6 +1504,14 @@ export function createWallNetwork(options: CreateWallNetworkOptions): BuiltWallN
       const revAcc = createAccumulator();
       const capAcc = createAccumulator();
 
+      const segImp = w.input.heritageImperfection;
+      const targetFaces = segImp?.targetFaces ?? (w.kind === 'exterior' ? 'interior' : 'both');
+      const displaceOuter =
+        Boolean(segImp) && (targetFaces === 'both' || targetFaces === 'front');
+      const displaceInner =
+        Boolean(segImp) &&
+        (targetFaces === 'both' || targetFaces === 'interior' || targetFaces === 'back');
+
       // Outer face (+normal)
       emitWallFaceElevation(
         extAcc,
@@ -1365,7 +1524,10 @@ export function createWallNetwork(options: CreateWallNetworkOptions): BuiltWallN
         outerFaceOrigin,
         tangent3,
         normal3,
-        roofPlanes
+        roofPlanes,
+        displaceOuter && segImp
+          ? { options: segImp, wallId: w.input.id, sideLabel: 'outer' }
+          : undefined
       );
 
       // Inner face (-normal)
@@ -1380,7 +1542,10 @@ export function createWallNetwork(options: CreateWallNetworkOptions): BuiltWallN
         innerFaceOrigin,
         tangent3,
         negNormal3,
-        roofPlanes
+        roofPlanes,
+        displaceInner && segImp
+          ? { options: segImp, wallId: w.input.id, sideLabel: 'inner' }
+          : undefined
       );
 
       // Opening reveals (jambs, sill, lintel/arch soffit)
@@ -1774,10 +1939,18 @@ export function createWallNetwork(options: CreateWallNetworkOptions): BuiltWallN
       const addAccMesh = (
         acc: GeometryAccumulator,
         mat: THREE.Material,
-        partLabel: string
+        partLabel: string,
+        isDisplacedPlaster = false
       ): void => {
         const geo = buildBufferGeometry(acc);
         if (!geo.getAttribute('position')) return;
+        if (isDisplacedPlaster && segImp) {
+          if (segImp.applyPlasterUVs) {
+            applyWorldSpacePlasterUVs(geo, 0, 0, 0, segImp.tileM ?? 2.4);
+          } else {
+            geo.userData.isSculpted = true;
+          }
+        }
         const mesh = new THREE.Mesh(geo, mat);
         mesh.name = `${bayGroup.name}.${partLabel}`;
         mesh.castShadow = true;
@@ -1789,8 +1962,8 @@ export function createWallNetwork(options: CreateWallNetworkOptions): BuiltWallN
         bayGroup.add(mesh);
       };
 
-      addAccMesh(extAcc, extMat, 'outer');
-      addAccMesh(intAcc, intMat, 'inner');
+      addAccMesh(extAcc, extMat, 'outer', displaceOuter);
+      addAccMesh(intAcc, intMat, 'inner', displaceInner);
       addAccMesh(revAcc, revMat, 'reveals');
       addAccMesh(capAcc, capMat, 'caps');
 
