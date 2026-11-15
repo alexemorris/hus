@@ -403,4 +403,101 @@ describe('husjs physical architectural paint system', () => {
     expect(info?.plasterRelief).toBe('heritage-lime');
     expect(info?.plasterReliefScale).toBeCloseTo(0.2, 5);
   });
+
+  it('generates fast, deterministic, seamless 256x256 large-scale limewash micro-textures shared across colours', () => {
+    // Warm up JIT once, then measure cold cache generation time
+    createPaintMaterial({ color: 'lime-white', sheen: 'limewash' });
+    clearPaintMaterialCache();
+
+    const t0 = performance.now();
+    const limeA = createPaintMaterial({ color: 'lime-white', sheen: 'limewash' });
+    const genMs = performance.now() - t0;
+    expect(genMs).toBeLessThan(15);
+
+    const limeB = createPaintMaterial({ color: 'setting-plaster', sheen: 'limewash' });
+    const limeC = createPaintMaterial({ color: 'farrows-cream', sheen: 'limewash' });
+    const limeCustom = createPaintMaterial({ color: '#D9C8B4', sheen: 'limewash' });
+
+    // Distinct materials per colour, single globally cached 256x256 texture pair
+    expect(limeB === limeA).toBe(false);
+    expect(limeC === limeA).toBe(false);
+    expect(limeCustom === limeA).toBe(false);
+    expect(limeA.map).toBeInstanceOf(THREE.DataTexture);
+    expect(limeA.roughnessMap).toBeInstanceOf(THREE.DataTexture);
+    expect(limeB.map === limeA.map).toBe(true);
+    expect(limeC.map === limeA.map).toBe(true);
+    expect(limeCustom.map === limeA.map).toBe(true);
+    expect(limeB.roughnessMap === limeA.roughnessMap).toBe(true);
+    expect(limeC.roughnessMap === limeA.roughnessMap).toBe(true);
+    expect(limeCustom.roughnessMap === limeA.roughnessMap).toBe(true);
+
+    const valueMap = limeA.map as THREE.DataTexture;
+    const roughMap = limeA.roughnessMap as THREE.DataTexture;
+    for (const tex of [valueMap, roughMap]) {
+      expect(tex.image.width).toBe(256);
+      expect(tex.image.height).toBe(256);
+      expect(tex.wrapS).toBe(THREE.RepeatWrapping);
+      expect(tex.wrapT).toBe(THREE.RepeatWrapping);
+      expect(tex.repeat.x).toBeGreaterThan(0);
+      expect(tex.repeat.x).toBeLessThanOrEqual(0.6);
+      expect(tex.repeat.y).toBeCloseTo(tex.repeat.x, 5);
+    }
+    expect(valueMap.colorSpace).toBe(THREE.SRGBColorSpace);
+    expect(roughMap.colorSpace).toBe(THREE.NoColorSpace);
+
+    // Chalk and roller profiles remain 64x64 unchanged
+    const chalkMat = createPaintMaterial({ color: 'wimborne-white', sheen: 'estate-emulsion' });
+    expect(chalkMat.roughnessMap?.image.width).toBe(64);
+    expect(chalkMat.roughnessMap?.image.height).toBe(64);
+
+    // Verify seamless toroidal wrap and calibrated chalky modulation ranges
+    const assertSeamlessAndInRange = (
+      tex: THREE.DataTexture,
+      minAllowed: number,
+      maxAllowed: number,
+      minSpread: number
+    ) => {
+      const size = tex.image.width;
+      const rgba = tex.image.data as Uint8Array;
+      let minVal = 255;
+      let maxVal = 0;
+      for (let i = 0; i < size * size; i++) {
+        const b = rgba[i << 2]!;
+        if (b < minVal) minVal = b;
+        if (b > maxVal) maxVal = b;
+      }
+      expect(minVal).toBeGreaterThanOrEqual(minAllowed);
+      expect(maxVal).toBeLessThanOrEqual(maxAllowed);
+      expect(maxVal - minVal).toBeGreaterThanOrEqual(minSpread);
+
+      let seamXSum = 0;
+      let seamXMax = 0;
+      let seamYSum = 0;
+      let seamYMax = 0;
+      for (let i = 0; i < size; i++) {
+        const dx = Math.abs(rgba[(i * size) << 2]! - rgba[(i * size + size - 1) << 2]!);
+        seamXSum += dx;
+        if (dx > seamXMax) seamXMax = dx;
+        const dy = Math.abs(rgba[i << 2]! - rgba[((size - 1) * size + i) << 2]!);
+        seamYSum += dy;
+        if (dy > seamYMax) seamYMax = dy;
+      }
+      expect(seamXSum / size).toBeLessThan(1.5);
+      expect(seamYSum / size).toBeLessThan(1.5);
+      expect(seamXMax).toBeLessThanOrEqual(4);
+      expect(seamYMax).toBeLessThanOrEqual(4);
+    };
+
+    assertSeamlessAndInRange(valueMap, 228, 255, 20);
+    assertSeamlessAndInRange(roughMap, 236, 253, 12);
+
+    // Byte-for-byte deterministic regeneration across cache clears
+    const snapValue = new Uint8Array(valueMap.image.data as Uint8Array);
+    const snapRough = new Uint8Array(roughMap.image.data as Uint8Array);
+    clearPaintMaterialCache();
+    const regen = createPaintMaterial({ color: 'lime-white', sheen: 'limewash' });
+    expect(regen.map === valueMap).toBe(false);
+    expect(Buffer.compare(Buffer.from(regen.map!.image.data as Uint8Array), Buffer.from(snapValue))).toBe(0);
+    expect(Buffer.compare(Buffer.from(regen.roughnessMap!.image.data as Uint8Array), Buffer.from(snapRough))).toBe(0);
+  });
 });

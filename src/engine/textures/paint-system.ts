@@ -803,6 +803,30 @@ function smoothPeriodicNoise(u: number, v: number, freq: number, seed: number): 
   return nx0 + (nx1 - nx0) * sy;
 }
 
+const LIMEWASH_MICRO_TEXTURE_SIZE = 256;
+const LIMEWASH_MICRO_TEXTURE_REPEAT = 0.45;
+
+function finalizePeriodicMicroDataTexture(
+  data: Uint8Array,
+  name: string,
+  size: number,
+  repeat: number,
+  colorSpace: THREE.ColorSpace
+): THREE.DataTexture {
+  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat, THREE.UnsignedByteType);
+  tex.name = name;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(repeat, repeat);
+  tex.colorSpace = colorSpace;
+  tex.generateMipmaps = true;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.anisotropy = 4;
+  tex.needsUpdate = true;
+  return tex;
+}
+
 function createPeriodicGrayscaleDataTexture(
   name: string,
   size: number,
@@ -821,18 +845,307 @@ function createPeriodicGrayscaleDataTexture(
       data[p4 + 3] = 255;
     }
   }
-  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat, THREE.UnsignedByteType);
-  tex.name = name;
-  tex.wrapS = THREE.RepeatWrapping;
-  tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(repeat, repeat);
-  tex.colorSpace = colorSpace;
-  tex.generateMipmaps = true;
-  tex.minFilter = THREE.LinearMipmapLinearFilter;
-  tex.magFilter = THREE.LinearFilter;
-  tex.anisotropy = 4;
-  tex.needsUpdate = true;
-  return tex;
+  return finalizePeriodicMicroDataTexture(data, name, size, repeat, colorSpace);
+}
+
+function buildCenteredPeriodicGrid(periodX: number, periodY: number, seed: number): Float32Array {
+  const grid = new Float32Array(periodX * periodY);
+  for (let iy = 0; iy < periodY; iy++) {
+    const rowSeed = (Math.imul(iy, 668265263) + Math.imul(seed, 1442695041)) | 0;
+    const row = iy * periodX;
+    for (let ix = 0; ix < periodX; ix++) {
+      let h = (Math.imul(ix, 374761393) + rowSeed) | 0;
+      h = Math.imul(h ^ (h >>> 13), 1274126177);
+      grid[row + ix] = ((h ^ (h >>> 16)) >>> 0) * 4.6566128730773926e-10 - 1;
+    }
+  }
+  return grid;
+}
+
+function sampleCenteredPeriodicGrid(
+  u: number,
+  v: number,
+  grid: Float32Array,
+  periodX: number,
+  maskX: number,
+  periodY: number,
+  maskY: number
+): number {
+  const x = (u + 16) * periodX;
+  const y = (v + 16) * periodY;
+  const ix = x | 0;
+  const iy = y | 0;
+  const fx = x - ix;
+  const fy = y - iy;
+  const sx = fx * fx * (3 - 2 * fx);
+  const sy = fy * fy * (3 - 2 * fy);
+  const x0 = ix & maskX;
+  const x1 = (x0 + 1) & maskX;
+  const r0 = (iy & maskY) * periodX;
+  const r1 = ((iy + 1) & maskY) * periodX;
+  const nx0 = grid[r0 + x0]! + (grid[r0 + x1]! - grid[r0 + x0]!) * sx;
+  const nx1 = grid[r1 + x0]! + (grid[r1 + x1]! - grid[r1 + x0]!) * sx;
+  return nx0 + (nx1 - nx0) * sy;
+}
+
+/**
+ * Generates a shared 256x256 seamless periodic limewash micro-texture pair (`repeat = 0.45`,
+ * ~2.22 m per cycle on metric wall UVs) using domain-warped periodic mineral clouds
+ * (`f = 1, 2, 4, 8` warped by low-frequency periodic flow `f = 1, 2`) blended with curved
+ * cross-fanning block-brush modulation to eliminate axis and diagonal grid periodicity.
+ */
+function createLimewashMicroTextures(): PaintMicroTextureSet {
+  const size = LIMEWASH_MICRO_TEXTURE_SIZE;
+  const repeat = LIMEWASH_MICRO_TEXTURE_REPEAT;
+  const count = size * size;
+  const tau = Math.PI * 2;
+
+  // Evaluate smooth low-frequency periodic warp flow (f = 1, 2) and macro/mid clouds (f = 1, 2, 4) on a 64x64 torus
+  const coarse = 64;
+  const coarseMask = coarse - 1;
+  const invCoarse = 1 / coarse;
+  const coarseCount = coarse * coarse;
+
+  const warpU2 = buildCenteredPeriodicGrid(2, 2, 107);
+  const warpV2 = buildCenteredPeriodicGrid(2, 2, 193);
+  const cloud2 = buildCenteredPeriodicGrid(2, 2, 311);
+  const cloud4 = buildCenteredPeriodicGrid(4, 4, 439);
+  const rough4 = buildCenteredPeriodicGrid(4, 4, 797);
+
+  const du64 = new Float32Array(coarseCount);
+  const dv64 = new Float32Array(coarseCount);
+  const fan64 = new Float32Array(coarseCount);
+  const lowCloud64 = new Float32Array(coarseCount);
+  const roughLow64 = new Float32Array(coarseCount);
+
+  for (let cy = 0; cy < coarse; cy++) {
+    const v = cy * invCoarse;
+    const aV = v * tau;
+    const row = cy * coarse;
+    for (let cx = 0; cx < coarse; cx++) {
+      const u = cx * invCoarse;
+      const aU = u * tau;
+
+      const f1u =
+        Math.sin(aU + 0.41) * 0.27 +
+        Math.sin(aV + 2.17) * 0.27 +
+        Math.sin(aU + aV + 4.03) * 0.24 +
+        Math.sin(aU - aV + 1.29) * 0.22;
+      const f1v =
+        Math.sin(aU + 3.14) * 0.27 +
+        Math.sin(aV + 0.88) * 0.27 +
+        Math.sin(aU + aV + 1.92) * 0.24 +
+        Math.sin(aU - aV + 5.07) * 0.22;
+      const f2u =
+        Math.sin(2 * aU + aV + 1.15) * 0.3 +
+        Math.sin(aU - 2 * aV + 3.72) * 0.3 +
+        sampleCenteredPeriodicGrid(u, v, warpU2, 2, 1, 2, 1) * 0.4;
+      const f2v =
+        Math.sin(2 * aU - aV + 4.31) * 0.3 +
+        Math.sin(aU + 2 * aV + 0.55) * 0.3 +
+        sampleCenteredPeriodicGrid(u, v, warpV2, 2, 1, 2, 1) * 0.4;
+
+      const du = f1u * 0.145 + f2u * 0.088;
+      const dv = f1v * 0.145 + f2v * 0.088;
+      const wu = u + du;
+      const wv = v + dv;
+      const wu2 = u - dv * 0.8 + du * 0.38;
+      const wv2 = v + du * 0.8 + dv * 0.38;
+
+      const wU = wu * tau;
+      const wV = wv * tau;
+      const c1 =
+        Math.sin(wU + 1.37) * 0.27 +
+        Math.sin(wV + 4.21) * 0.27 +
+        Math.sin(wU + wV + 2.68) * 0.25 +
+        Math.sin(wU - wV + 5.43) * 0.21;
+      const c2 = sampleCenteredPeriodicGrid(wu, wv, cloud2, 2, 1, 2, 1);
+      const c4 = sampleCenteredPeriodicGrid(wu, wv, cloud4, 4, 3, 4, 3);
+
+      const fm =
+        0.5 +
+        (Math.sin(aU + 2.55) * 0.32 +
+          Math.sin(aV + 5.12) * 0.32 +
+          Math.sin(aU + aV + 0.77) * 0.22 +
+          Math.sin(2 * aU - aV + 3.61) * 0.14) *
+          0.75;
+
+      const idx = row + cx;
+      du64[idx] = du;
+      dv64[idx] = dv;
+      fan64[idx] = fm < 0 ? 0 : fm > 1 ? 1 : fm;
+      lowCloud64[idx] = c1 * 0.22 + c2 * 0.31 + c4 * 0.28;
+      roughLow64[idx] = sampleCenteredPeriodicGrid(wu2, wv2, rough4, 4, 3, 4, 3);
+    }
+  }
+
+  // Evaluate fine f = 8 mineral clouds and curved cross-fanning block-brush passes at full 256x256
+  const cloud8 = buildCenteredPeriodicGrid(8, 8, 577);
+  const brushA = buildCenteredPeriodicGrid(2, 8, 1061);
+  const brushB = buildCenteredPeriodicGrid(2, 8, 1187);
+
+  const valField = new Float32Array(count);
+  const roughField = new Float32Array(count);
+  const invSize = 1 / size;
+  let valSum = 0;
+  let valSqSum = 0;
+  let roughSum = 0;
+  let roughSqSum = 0;
+
+  for (let cy = 0; cy < coarse; cy++) {
+    const cy1 = (cy + 1) & coarseMask;
+    const r0 = cy * coarse;
+    const r1 = cy1 * coarse;
+    for (let dy = 0; dy < 4; dy++) {
+      const y = (cy << 2) + dy;
+      const v = y * invSize;
+      const ty = dy * 0.25;
+      const rowOut = y * size;
+      for (let cx = 0; cx < coarse; cx++) {
+        const cx1 = (cx + 1) & coarseMask;
+        const c00 = r0 + cx;
+        const c10 = r0 + cx1;
+        const c01 = r1 + cx;
+        const c11 = r1 + cx1;
+
+        const duL = du64[c00]! + (du64[c01]! - du64[c00]!) * ty;
+        const duStep = (du64[c10]! + (du64[c11]! - du64[c10]!) * ty - duL) * 0.25;
+        const dvL = dv64[c00]! + (dv64[c01]! - dv64[c00]!) * ty;
+        const dvStep = (dv64[c10]! + (dv64[c11]! - dv64[c10]!) * ty - dvL) * 0.25;
+        const fbL = fan64[c00]! + (fan64[c01]! - fan64[c00]!) * ty;
+        const fbStep = (fan64[c10]! + (fan64[c11]! - fan64[c10]!) * ty - fbL) * 0.25;
+        const lcL = lowCloud64[c00]! + (lowCloud64[c01]! - lowCloud64[c00]!) * ty;
+        const lcStep = (lowCloud64[c10]! + (lowCloud64[c11]! - lowCloud64[c10]!) * ty - lcL) * 0.25;
+        const rlL = roughLow64[c00]! + (roughLow64[c01]! - roughLow64[c00]!) * ty;
+        const rlStep = (roughLow64[c10]! + (roughLow64[c11]! - roughLow64[c10]!) * ty - rlL) * 0.25;
+
+        const xBase = cx << 2;
+        for (let dx = 0; dx < 4; dx++) {
+          const x = xBase + dx;
+          const u = x * invSize;
+          const du = duL + duStep * dx;
+          const dv = dvL + dvStep * dx;
+          const wu = u + du;
+          const wv = v + dv;
+          const wu2 = u - dv * 0.8 + du * 0.38;
+          const wv2 = v + du * 0.8 + dv * 0.38;
+
+          const c8x = (wu + 16) * 8;
+          const c8y = (wv + 16) * 8;
+          const c8ix = c8x | 0;
+          const c8iy = c8y | 0;
+          const c8fx = c8x - c8ix;
+          const c8fy = c8y - c8iy;
+          const c8sx = c8fx * c8fx * (3 - 2 * c8fx);
+          const c8sy = c8fy * c8fy * (3 - 2 * c8fy);
+          const c8x0 = c8ix & 7;
+          const c8x1 = (c8x0 + 1) & 7;
+          const c8r0 = (c8iy & 7) << 3;
+          const c8r1 = ((c8iy + 1) & 7) << 3;
+          const c8n0 = cloud8[c8r0 + c8x0]! + (cloud8[c8r0 + c8x1]! - cloud8[c8r0 + c8x0]!) * c8sx;
+          const c8n1 = cloud8[c8r1 + c8x0]! + (cloud8[c8r1 + c8x1]! - cloud8[c8r1 + c8x0]!) * c8sx;
+          const mc = lcL + lcStep * dx + (c8n0 + (c8n1 - c8n0) * c8sy) * 0.19;
+
+          const ax = (wu + 2 * wv + 16) * 2;
+          const ay = (2 * wu - wv + 16) * 8;
+          const aix = ax | 0;
+          const aiy = ay | 0;
+          const afx = ax - aix;
+          const afy = ay - aiy;
+          const asx = afx * afx * (3 - 2 * afx);
+          const asy = afy * afy * (3 - 2 * afy);
+          const ax0 = aix & 1;
+          const ax1 = (ax0 + 1) & 1;
+          const ar0 = (aiy & 7) << 1;
+          const ar1 = ((aiy + 1) & 7) << 1;
+          const an0 = brushA[ar0 + ax0]! + (brushA[ar0 + ax1]! - brushA[ar0 + ax0]!) * asx;
+          const an1 = brushA[ar1 + ax0]! + (brushA[ar1 + ax1]! - brushA[ar1 + ax0]!) * asx;
+          const strokeA = an0 + (an1 - an0) * asy;
+
+          const bx = (2 * wu2 - wv2 + 16) * 2;
+          const by = (wu2 + 2 * wv2 + 16) * 8;
+          const bix = bx | 0;
+          const biy = by | 0;
+          const bfx = bx - bix;
+          const bfy = by - biy;
+          const bsx = bfx * bfx * (3 - 2 * bfx);
+          const bsy = bfy * bfy * (3 - 2 * bfy);
+          const bx0 = bix & 1;
+          const bx1 = (bx0 + 1) & 1;
+          const br0 = (biy & 7) << 1;
+          const br1 = ((biy + 1) & 7) << 1;
+          const bn0 = brushB[br0 + bx0]! + (brushB[br0 + bx1]! - brushB[br0 + bx0]!) * bsx;
+          const bn1 = brushB[br1 + bx0]! + (brushB[br1 + bx1]! - brushB[br1 + bx0]!) * bsx;
+          const strokeB = bn0 + (bn1 - bn0) * bsy;
+
+          const fanningBrush = strokeA + (strokeB - strokeA) * (fbL + fbStep * dx);
+          const val = mc * 0.78 + fanningBrush * 0.22;
+          const rough = mc * 0.46 + (rlL + rlStep * dx) * 0.38 + fanningBrush * 0.16;
+
+          const idx = rowOut + x;
+          valField[idx] = val;
+          roughField[idx] = rough;
+          valSum += val;
+          valSqSum += val * val;
+          roughSum += rough;
+          roughSqSum += rough * rough;
+        }
+      }
+    }
+  }
+
+  const valMean = valSum / count;
+  const valStd = Math.sqrt(Math.max(1e-8, valSqSum / count - valMean * valMean));
+  const invValRange = 1 / (valStd * 2.5);
+
+  const roughMean = roughSum / count;
+  const roughStd = Math.sqrt(Math.max(1e-8, roughSqSum / count - roughMean * roughMean));
+  const invRoughRange = 1 / (roughStd * 2.5);
+
+  const valData = new Uint8Array(count * 4);
+  const roughData = new Uint8Array(count * 4);
+
+  for (let i = 0; i < count; i++) {
+    const p4 = i << 2;
+
+    const zv = (valField[i]! - valMean) * invValRange;
+    const sv = zv / (1 + 0.35 * (zv < 0 ? -zv : zv));
+    let vn = 0.52 + sv * 0.65;
+    if (vn < 0) vn = 0;
+    else if (vn > 1) vn = 1;
+    const vb = (228 + vn * 27 + 0.5) | 0;
+    valData[p4] = vb;
+    valData[p4 + 1] = vb;
+    valData[p4 + 2] = vb;
+    valData[p4 + 3] = 255;
+
+    const zr = (roughField[i]! - roughMean) * invRoughRange;
+    const sr = zr / (1 + 0.35 * (zr < 0 ? -zr : zr));
+    let rn = 0.5 + sr * 0.66;
+    if (rn < 0) rn = 0;
+    else if (rn > 1) rn = 1;
+    const rb = (236 + rn * 17 + 0.5) | 0;
+    roughData[p4] = rb;
+    roughData[p4 + 1] = rb;
+    roughData[p4 + 2] = rb;
+    roughData[p4 + 3] = 255;
+  }
+
+  const roughnessMap = finalizePeriodicMicroDataTexture(
+    roughData,
+    'paint:micro:limewash:roughness',
+    size,
+    repeat,
+    THREE.NoColorSpace
+  );
+  const valueModMap = finalizePeriodicMicroDataTexture(
+    valData,
+    'paint:micro:limewash:value',
+    size,
+    repeat,
+    THREE.SRGBColorSpace
+  );
+  return { roughnessMap, valueModMap };
 }
 
 function getPaintMicroTextures(kind: PaintMicroTextureKind): PaintMicroTextureSet {
@@ -843,37 +1156,7 @@ function getPaintMicroTextures(kind: PaintMicroTextureKind): PaintMicroTextureSe
   let created: PaintMicroTextureSet;
 
   if (kind === 'limewash') {
-    const roughnessMap = createPeriodicGrayscaleDataTexture(
-      'paint:micro:limewash:roughness',
-      size,
-      3,
-      THREE.NoColorSpace,
-      (x, y) => {
-        const u = x / size;
-        const v = y / size;
-        const cloud =
-          smoothPeriodicNoise(u, v, 4, 101) * 0.55 +
-          smoothPeriodicNoise(u, v, 8, 211) * 0.3 +
-          smoothPeriodicNoise(u, v, 16, 307) * 0.15;
-        return 240 + cloud * 15;
-      }
-    );
-    const valueModMap = createPeriodicGrayscaleDataTexture(
-      'paint:micro:limewash:value',
-      size,
-      3,
-      THREE.SRGBColorSpace,
-      (x, y) => {
-        const u = x / size;
-        const v = y / size;
-        const brush =
-          smoothPeriodicNoise(u, v, 4, 401) * 0.6 +
-          smoothPeriodicNoise(u, v, 10, 509) * 0.28 +
-          hashPeriodic2D(x, y, size, 613) * 0.12;
-        return 244 + brush * 11;
-      }
-    );
-    created = { roughnessMap, valueModMap };
+    created = createLimewashMicroTextures();
   } else if (kind === 'chalk') {
     const roughnessMap = createPeriodicGrayscaleDataTexture(
       'paint:micro:chalk:roughness',
@@ -1124,6 +1407,11 @@ export function getCachedPaintMaterial(
  */
 export function clearPaintMaterialCache(): void {
   paintMaterialCache.clear();
+  for (const entry of microTextureCache.values()) {
+    entry.roughnessMap.dispose();
+    entry.valueModMap?.dispose();
+  }
+  microTextureCache.clear();
 }
 
 /**
