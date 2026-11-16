@@ -306,6 +306,16 @@ export const SHARED_SUN_SHADOW_PENUMBRA: THREE.Vector2 = makeNonCloningVec(
 );
 export const uSunShadowPenumbraNode = uniform(SHARED_SUN_SHADOW_PENUMBRA).setGroup(renderGroup);
 
+/**
+ * Shared uniform toggled to `1.0` inside `MirrorReflectorController` virtual camera passes so
+ * mirror reflections evaluate a single hardware-bilinear `depthCompare` tap instead of multi-tap PCF.
+ */
+export const uInMirrorPassNode = uniform(0.0).setGroup(renderGroup);
+
+export function setInMirrorPass(inMirrorPass: boolean): void {
+  uInMirrorPassNode.value = inMirrorPass ? 1.0 : 0.0;
+}
+
 export function setSunShadowPenumbraUniforms(radiusTexels: number, mapSize: number): void {
   const safeRadius = Math.max(0.5, radiusTexels);
   const invMap = 1.0 / Math.max(256, mapSize);
@@ -319,23 +329,72 @@ interface VogelDiskTap {
   readonly weight: number;
 }
 
-const VOGEL_BILINEAR_COUNT = 12;
-const RAW_VOGEL_TAPS = Array.from({ length: VOGEL_BILINEAR_COUNT }, (_, i) => {
-  const r = Math.sqrt((i + 0.5) / VOGEL_BILINEAR_COUNT);
+export const OVERCAST_VOGEL_SPIRAL_COUNT = 7;
+export const OVERCAST_VOGEL_TOTAL_TAPS = 1 + OVERCAST_VOGEL_SPIRAL_COUNT;
+const RAW_VOGEL_TAPS = Array.from({ length: OVERCAST_VOGEL_SPIRAL_COUNT }, (_, i) => {
+  const r = Math.sqrt((i + 0.5) / OVERCAST_VOGEL_SPIRAL_COUNT);
   const theta = i * 2.399963229728653;
-  const rawWeight = 1.0 - 0.62 * r;
+  const rawWeight = 1.0 - 0.58 * r;
   return { x: Math.cos(theta) * r, y: Math.sin(theta) * r, r, rawWeight };
 });
-const CORE_TAP_RAW_WEIGHT = 1.15;
+const CORE_TAP_RAW_WEIGHT = 1.18;
 const VOGEL_TOTAL_WEIGHT =
   CORE_TAP_RAW_WEIGHT + RAW_VOGEL_TAPS.reduce((sum, t) => sum + t.rawWeight, 0);
 const CORE_TAP_NORM_WEIGHT = CORE_TAP_RAW_WEIGHT / VOGEL_TOTAL_WEIGHT;
-const VOGEL_DISK_12: readonly VogelDiskTap[] = RAW_VOGEL_TAPS.map((t) => ({
+const VOGEL_DISK_7: readonly VogelDiskTap[] = RAW_VOGEL_TAPS.map((t) => ({
   x: t.x,
   y: t.y,
   r: t.r,
   weight: t.rawWeight / VOGEL_TOTAL_WEIGHT,
 }));
+
+export interface CastanoFourTapTentWeights1DCpu {
+  readonly baseCenterCoord: number;
+  readonly s: number;
+  readonly uw0: number;
+  readonly uw1: number;
+  readonly u0: number;
+  readonly u1: number;
+  /** Exact effective weights on the 4 underlying texels `[k - 1, k, k + 1, k + 2]` after hardware bilinear interpolation & `/ 4` normalization (1D), summing to `1.0`. */
+  readonly effectiveTexelWeights: readonly [number, number, number, number];
+}
+
+/**
+ * Pure CPU reference for Ignacio Castaño / *The Witness* 4-tap hardware-bilinear 4x4 tent PCF filter.
+ * Proves algebraically that 2 hardware-bilinear taps per axis (`4` 2D `depthCompare` calls total)
+ * reconstruct the exact continuous 4-texel tent kernel `[(1 - s), (2 - s), (1 + s), s] / 4` (and `/ 16` in 2D).
+ */
+export function computeCastanoFourTapTent1DCpu(
+  uvCoord: number,
+  mapSize: number
+): CastanoFourTapTentWeights1DCpu {
+  const scaled = uvCoord * mapSize + 0.5;
+  const k = Math.floor(scaled);
+  const s = scaled - k;
+  const baseCenterCoord = k - 0.5;
+  const uw0 = 3.0 - 2.0 * s;
+  const uw1 = 1.0 + 2.0 * s;
+  const u0 = (2.0 - s) / uw0 - 1.0;
+  const u1 = s / uw1 + 1.0;
+
+  // u0 lies in [-1, 0] (interpolating texels k-1 and k); u1 lies in [1, 2] (interpolating texels k+1 and k+2)
+  const frac0 = u0 + 1.0; // in [0, 1]: weight on texel k is frac0, on k-1 is (1 - frac0)
+  const frac1 = u1 - 1.0; // in [0, 1]: weight on texel k+2 is frac1, on k+1 is (1 - frac1)
+  const wMinus1 = (uw0 * (1.0 - frac0)) / 4.0;
+  const wZero = (uw0 * frac0) / 4.0;
+  const wPlus1 = (uw1 * (1.0 - frac1)) / 4.0;
+  const wPlus2 = (uw1 * frac1) / 4.0;
+
+  return {
+    baseCenterCoord,
+    s,
+    uw0,
+    uw1,
+    u0,
+    u1,
+    effectiveTexelWeights: [wMinus1, wZero, wPlus1, wPlus2],
+  };
+}
 
 type ShadowDepthCompareFn = (
   uv: ShaderNodeObject<Node>,
@@ -343,25 +402,17 @@ type ShadowDepthCompareFn = (
 ) => ShaderNodeObject<Node>;
 
 /**
- * Evaluates a continuous sub-texel bilinearly interpolated shadow comparison (4 hardware
- * `textureSampleCompare` fetches blended by `fract(uv * mapSize + 0.5)`), turning binary 0/1
- * point comparisons into smooth sub-texel gradients with zero stair-stepping.
+ * Samples hardware-bilinear 2x2 PCF directly (1 `textureSampleCompare` fetch when `LinearFilter`
+ * is enabled on the shadow `DepthTexture`). Kept exported for backwards compatibility.
  */
 export function sampleSubTexelBilinearShadow(
   depthCompare: ShadowDepthCompareFn,
   sampleUv: ShaderNodeObject<Node>,
   compareZ: ShaderNodeObject<Node>,
-  texelSize: ShaderNodeObject<Node>,
-  mapSize: ShaderNodeObject<Node>
+  _texelSize?: ShaderNodeObject<Node>,
+  _mapSize?: ShaderNodeObject<Node>
 ): ShaderNodeObject<Node> {
-  const scaledUv = sampleUv.mul(mapSize).add(0.5).toVar();
-  const f = fract(scaledUv).toVar();
-  const baseUv = floor(scaledUv).sub(0.5).mul(texelSize).toVar();
-  const s00 = depthCompare(baseUv, compareZ);
-  const s10 = depthCompare(baseUv.add(vec2(texelSize, 0.0)), compareZ);
-  const s01 = depthCompare(baseUv.add(vec2(0.0, texelSize)), compareZ);
-  const s11 = depthCompare(baseUv.add(vec2(texelSize, texelSize)), compareZ);
-  return mix(mix(s00, s10, f.x), mix(s01, s11, f.x), f.y);
+  return depthCompare(sampleUv, compareZ);
 }
 
 type ShadowFilterInputs = {
@@ -373,16 +424,24 @@ type ShadowFilterInputs = {
 
 /**
  * Zero-recompile TSL directional shadow filter (`sunLight.shadow.filterNode`):
- * - Crisp / clear skies (`radius < 1.6` texels): Jimenez / Witness 4x4 smooth sub-texel tent PCF
- *   (16 hardware `textureSampleCompare` taps with continuous `fract(uv * mapSize + 0.5)` weights)
- *   for razor-clean angled shadow edges with zero 9-band stair-stepping and zero IGN noise.
- * - Soft / overcast skies (`radius >= 1.6` texels): deterministic sub-texel bilinear core +
- *   12-tap radial-tent-weighted sub-texel bilinear Vogel spiral (52 hardware `textureSampleCompare`
- *   fetches total) with gentle low-discrepancy R2 sector phase so soft penumbras diffuse smoothly
- *   with zero 1/16 salt-and-pepper IGN stipple grain.
+ * - Enables hardware 2x2 bilinear PCF (`THREE.LinearFilter`) on `depthTexture` at setup time.
+ * - Planar mirror passes (`uInMirrorPassNode > 0.5`): 1 single hardware-bilinear `depthCompare` tap.
+ * - Crisp / clear skies (`radius < 1.6` texels): Castaño / *The Witness* 4-tap hardware-bilinear
+ *   4x4 tent PCF (exact continuous `[1 - s, 2 - s, 1 + s, s]` weights in **4** `depthCompare` calls instead of 16).
+ * - Soft / overcast skies (`radius >= 1.6` texels): 8 hardware-bilinear `depthCompare` taps
+ *   (1 center + 7 radial-tent-weighted Vogel spiral taps — **6.5x fewer texture fetches** than 52).
  */
 export const husCloudPenumbraShadowFilter = Fn((inputs: ShadowFilterInputs) => {
   const { depthTexture, shadowCoord, depthLayer } = inputs;
+  if (
+    depthTexture &&
+    (depthTexture.minFilter !== THREE.LinearFilter || depthTexture.magFilter !== THREE.LinearFilter)
+  ) {
+    depthTexture.minFilter = THREE.LinearFilter;
+    depthTexture.magFilter = THREE.LinearFilter;
+    depthTexture.needsUpdate = true;
+  }
+
   const depthCompare: ShadowDepthCompareFn = (
     uv: ShaderNodeObject<Node>,
     compareZ: ShaderNodeObject<Node>
@@ -403,56 +462,33 @@ export const husCloudPenumbraShadowFilter = Fn((inputs: ShadowFilterInputs) => {
   const mapSize = float(1.0).div(max(1e-6, texel)).toVar('husShadowMapSize');
   const result = float(1.0).toVar('husSunShadowVis');
 
-  If(radius.lessThan(1.6), () => {
-    const effStep = texel.mul(clamp(radius, 0.85, 1.5)).toVar();
-    const effMapSize = float(1.0).div(max(1e-6, effStep));
-    const f = fract(shadowCoord.xy.mul(effMapSize).add(0.5)).toVar();
-    const baseUv = shadowCoord.xy.sub(f.mul(effStep)).toVar();
-    const dx = effStep;
-    const dy = effStep;
-    const cz = shadowCoord.z;
+  If(uInMirrorPassNode.greaterThan(0.5), () => {
+    result.assign(depthCompare(shadowCoord.xy, shadowCoord.z));
+  }).ElseIf(radius.lessThan(1.6), () => {
+    const scaledUv = shadowCoord.xy.mul(mapSize).add(0.5).toVar();
+    const s = fract(scaledUv).toVar();
+    const baseUv = floor(scaledUv).sub(0.5).mul(texel).toVar();
+    const sx = s.x;
+    const sy = s.y;
 
-    result.assign(
-      add(
-        depthCompare(baseUv, cz),
-        depthCompare(baseUv.add(vec2(dx, 0.0)), cz),
-        depthCompare(baseUv.add(vec2(0.0, dy)), cz),
-        depthCompare(baseUv.add(vec2(dx, dy)), cz),
-        mix(
-          depthCompare(baseUv.add(vec2(dx.negate(), 0.0)), cz),
-          depthCompare(baseUv.add(vec2(dx.mul(2.0), 0.0)), cz),
-          f.x
-        ),
-        mix(
-          depthCompare(baseUv.add(vec2(dx.negate(), dy)), cz),
-          depthCompare(baseUv.add(vec2(dx.mul(2.0), dy)), cz),
-          f.x
-        ),
-        mix(
-          depthCompare(baseUv.add(vec2(0.0, dy.negate())), cz),
-          depthCompare(baseUv.add(vec2(0.0, dy.mul(2.0))), cz),
-          f.y
-        ),
-        mix(
-          depthCompare(baseUv.add(vec2(dx, dy.negate())), cz),
-          depthCompare(baseUv.add(vec2(dx, dy.mul(2.0))), cz),
-          f.y
-        ),
-        mix(
-          mix(
-            depthCompare(baseUv.add(vec2(dx.negate(), dy.negate())), cz),
-            depthCompare(baseUv.add(vec2(dx.mul(2.0), dy.negate())), cz),
-            f.x
-          ),
-          mix(
-            depthCompare(baseUv.add(vec2(dx.negate(), dy.mul(2.0))), cz),
-            depthCompare(baseUv.add(vec2(dx.mul(2.0), dy.mul(2.0))), cz),
-            f.x
-          ),
-          f.y
-        )
-      ).mul(1.0 / 9.0)
+    const uw0 = float(3.0).sub(sx.mul(2.0)).toVar();
+    const uw1 = float(1.0).add(sx.mul(2.0)).toVar();
+    const vw0 = float(3.0).sub(sy.mul(2.0)).toVar();
+    const vw1 = float(1.0).add(sy.mul(2.0)).toVar();
+
+    const u0 = float(2.0).sub(sx).div(uw0).sub(1.0).mul(texel);
+    const u1 = sx.div(uw1).add(1.0).mul(texel);
+    const v0 = float(2.0).sub(sy).div(vw0).sub(1.0).mul(texel);
+    const v1 = sy.div(vw1).add(1.0).mul(texel);
+
+    const cz = shadowCoord.z;
+    const sum = add(
+      uw0.mul(vw0).mul(depthCompare(baseUv.add(vec2(u0, v0)), cz)),
+      uw1.mul(vw0).mul(depthCompare(baseUv.add(vec2(u1, v0)), cz)),
+      uw0.mul(vw1).mul(depthCompare(baseUv.add(vec2(u0, v1)), cz)),
+      uw1.mul(vw1).mul(depthCompare(baseUv.add(vec2(u1, v1)), cz))
     );
+    result.assign(sum.mul(1.0 / 16.0));
   }).Else(() => {
     const r2Phase = fract(
       float(0.5).add(dot(screenCoordinate.xy, vec2(0.7548776662, 0.569840291)))
@@ -462,28 +498,17 @@ export const husCloudPenumbraShadowFilter = Fn((inputs: ShadowFilterInputs) => {
     const sinA = sin(angle).toVar('husVogelSin');
     const spreadUv = texel.mul(radius).toVar('husVogelSpreadUv');
 
-    let acc: ShaderNodeObject<Node> = sampleSubTexelBilinearShadow(
-      depthCompare,
-      shadowCoord.xy,
-      shadowCoord.z,
-      texel,
-      mapSize
-    ).mul(CORE_TAP_NORM_WEIGHT);
+    let acc: ShaderNodeObject<Node> = depthCompare(shadowCoord.xy, shadowCoord.z).mul(
+      CORE_TAP_NORM_WEIGHT
+    );
 
-    for (let i = 0; i < VOGEL_DISK_12.length; i++) {
-      const tap = VOGEL_DISK_12[i]!;
+    for (let i = 0; i < VOGEL_DISK_7.length; i++) {
+      const tap = VOGEL_DISK_7[i]!;
       const rotX = cosA.mul(tap.x).sub(sinA.mul(tap.y));
       const rotY = sinA.mul(tap.x).add(cosA.mul(tap.y));
       const tapUv = shadowCoord.xy.add(vec2(rotX, rotY).mul(spreadUv));
       const tapBias = max(float(0.0), radius.mul(tap.r).sub(1.1)).mul(0.000082);
-      const sampleVis = sampleSubTexelBilinearShadow(
-        depthCompare,
-        tapUv,
-        shadowCoord.z.sub(tapBias),
-        texel,
-        mapSize
-      );
-      acc = acc.add(sampleVis.mul(tap.weight));
+      acc = acc.add(depthCompare(tapUv, shadowCoord.z.sub(tapBias)).mul(tap.weight));
     }
     result.assign(acc);
   });

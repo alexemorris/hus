@@ -82,6 +82,7 @@ interface TierFeatureRow {
   readonly bloom: boolean;
   readonly sharpen: boolean;
   readonly shadowMapSize: 1024 | 2048 | 4096;
+  readonly msaaSamples: 1 | 4;
   readonly lodDistanceScale: number;
   readonly highDetailMaxDistance: number;
   readonly pointLightBudget: number;
@@ -95,6 +96,7 @@ const TIER_TABLE: Readonly<Record<GraphicsTier, TierFeatureRow>> = {
     bloom: false,
     sharpen: false,
     shadowMapSize: 1024,
+    msaaSamples: 1,
     lodDistanceScale: 0.6,
     highDetailMaxDistance: 6,
     pointLightBudget: 0,
@@ -105,6 +107,7 @@ const TIER_TABLE: Readonly<Record<GraphicsTier, TierFeatureRow>> = {
     bloom: false,
     sharpen: true,
     shadowMapSize: 2048,
+    msaaSamples: 1,
     lodDistanceScale: 0.85,
     highDetailMaxDistance: 10,
     pointLightBudget: 12,
@@ -115,6 +118,7 @@ const TIER_TABLE: Readonly<Record<GraphicsTier, TierFeatureRow>> = {
     bloom: true,
     sharpen: true,
     shadowMapSize: 4096,
+    msaaSamples: 1,
     lodDistanceScale: 1.0,
     highDetailMaxDistance: 12,
     pointLightBudget: 16,
@@ -125,6 +129,7 @@ const TIER_TABLE: Readonly<Record<GraphicsTier, TierFeatureRow>> = {
     bloom: true,
     sharpen: true,
     shadowMapSize: 4096,
+    msaaSamples: 4,
     lodDistanceScale: 1.3,
     highDetailMaxDistance: 18,
     pointLightBudget: 20,
@@ -162,6 +167,7 @@ export function getTierSettings(
     bloom: row.bloom,
     sharpen: row.sharpen,
     shadowMapSize: row.shadowMapSize,
+    msaaSamples: row.msaaSamples,
     lodDistanceScale: row.lodDistanceScale,
     highDetailMaxDistance: row.highDetailMaxDistance,
   };

@@ -5,12 +5,40 @@ import type { PropertySceneLayers } from '../viewer/scene-content.ts';
 
 const bevelGeometryCache = new Map<string, RoundedBoxGeometry>();
 
-/** Minimum cross-section thickness (12 mm) — catches 12–18 mm door panels, plinths, shelves, window boards, frame members, and fascia. */
-export const BEVEL_MIN_THICKNESS_M = 0.012;
+/** Minimum cross-section thickness (22 mm) — skips tiny sub-parts too thin on screen to resolve a 1.2 mm fillet. */
+export const BEVEL_MIN_THICKNESS_M = 0.022;
 /** Minimum secondary dimension (32 mm) — catches 35–48 mm stiles, rails, frames, trim, and mullions. */
 export const BEVEL_MIN_MIDDLE_DIM_M = 0.032;
-/** Minimum primary length (110 mm) — catches plinth blocks, corbels, hob cheeks, and short returns. */
-export const BEVEL_MIN_LENGTH_M = 0.11;
+/** Minimum primary length (80 mm) — skips sub-8 cm hardware/blocks while catching plinths, corbels, and short returns. */
+export const BEVEL_MIN_LENGTH_M = 0.08;
+
+/** Hero architectural joinery / masonry / worktop thresholds eligible for 2-segment fillets on desktop. */
+export const BEVEL_HERO_MIN_MAX_DIM_M = 0.65;
+export const BEVEL_HERO_MIN_MID_DIM_M = 0.25;
+export const BEVEL_HERO_MIN_THICKNESS_M = 0.038;
+
+export function resolveAdaptiveBevelSegments(params: {
+  readonly minDim: number;
+  readonly midDim: number;
+  readonly maxDim: number;
+  readonly isConstrainedMobile: boolean;
+  readonly overrideSegments?: 1 | 2;
+}): 1 | 2 {
+  if (params.overrideSegments !== undefined) {
+    return params.overrideSegments;
+  }
+  if (params.isConstrainedMobile) {
+    return 1;
+  }
+  if (
+    params.maxDim >= BEVEL_HERO_MIN_MAX_DIM_M &&
+    params.midDim >= BEVEL_HERO_MIN_MID_DIM_M &&
+    params.minDim >= BEVEL_HERO_MIN_THICKNESS_M
+  ) {
+    return 2;
+  }
+  return 1;
+}
 
 export interface SelectiveBevelOptions {
   readonly segments?: 1 | 2;
@@ -208,8 +236,7 @@ export function applySelectiveBevelModifier(
   options?: SelectiveBevelOptions
 ): void {
   const { scene, cutawayWallGroups } = layers;
-  const segments: 1 | 2 =
-    options?.segments ?? ((options?.isConstrainedMobile ?? isRealBrowserMobile()) ? 1 : 2);
+  const isConstrainedMobile = options?.isConstrainedMobile ?? isRealBrowserMobile();
 
   const cutawayRoots = new Set<THREE.Object3D>([
     cutawayWallGroups.southWest,
@@ -373,6 +400,13 @@ export function applySelectiveBevelModifier(
       }
     }
 
+    const segments = resolveAdaptiveBevelSegments({
+      minDim,
+      midDim,
+      maxDim,
+      isConstrainedMobile,
+      overrideSegments: options?.segments,
+    });
     const radius = THREE.MathUtils.clamp(minDim * 0.085, 0.0012, 0.0035);
     const baseRounded = getCachedChamferBoxGeometry(w, h, d, segments, radius);
 

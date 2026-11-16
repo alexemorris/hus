@@ -14,6 +14,7 @@ import {
 import { MeshPhysicalNodeMaterial } from 'three/webgpu';
 import type { GraphicsTier } from '../../core/types/twin-ux.ts';
 import { syncBakedLightCameraMatrix } from '../lighting/baked-light-volume.ts';
+import { setInMirrorPass } from '../lighting/shader-light-culling.ts';
 import { detectIOS, detectMobile } from '../perf/device-tier.ts';
 
 export interface MirrorSurfaceOptions {
@@ -29,9 +30,21 @@ export interface MirrorReflectorControllerOptions {
   readonly maxActiveMirrors?: number;
   readonly maxDistanceM?: number;
   readonly resolutionScale?: number;
+  readonly minProjectedScreenFraction?: number;
+  readonly idleRefreshIntervalFrames?: number;
   readonly graphicsTier?: GraphicsTier;
   readonly isConstrainedMobile?: boolean;
+  readonly isFirstPerson?: () => boolean;
   readonly resolveZoneAtPoint?: (worldPoint: THREE.Vector3) => string | null;
+}
+
+export interface MirrorProjectedScreenFractionParams {
+  readonly mirrorWidth: number;
+  readonly mirrorHeight: number;
+  readonly cosFacing: number;
+  readonly distSq: number;
+  readonly tanHalfFovY: number;
+  readonly aspect: number;
 }
 
 const MIRROR_EXCLUDE_PART_RE =
@@ -44,9 +57,13 @@ const MIN_PLANAR_MAX_DIM_M = 0.18;
 const MIN_PLANAR_MID_DIM_M = 0.14;
 const MAX_PLANAR_THICKNESS_M = 0.06;
 
-const DEFAULT_MAX_ACTIVE_MIRRORS = 2;
-const DEFAULT_MAX_DISTANCE_M = 14.0;
-const DEFAULT_RESOLUTION_SCALE = 0.5;
+export const DEFAULT_MAX_ACTIVE_MIRRORS = 1;
+export const ULTRA_1PV_CLOSE_MAX_ACTIVE_MIRRORS = 2;
+export const ULTRA_1PV_DUAL_MIRROR_MAX_DIST_M = 5.5;
+export const DEFAULT_MAX_DISTANCE_M = 7.0;
+export const DEFAULT_RESOLUTION_SCALE = 0.4;
+export const DEFAULT_MIN_PROJECTED_SCREEN_FRACTION = 0.012;
+export const DEFAULT_IDLE_REFRESH_INTERVAL_FRAMES = 12;
 
 const _projScreenMatrix = new THREE.Matrix4();
 const _frustum = new THREE.Frustum();
@@ -64,6 +81,27 @@ const _altUpRef = new THREE.Vector3(0, 0, 1);
 const _invMeshWorld = new THREE.Matrix4();
 const _sibBox = new THREE.Box3();
 const _sibCenter = new THREE.Vector3();
+
+/**
+ * Pure helper computing the approximate projected screen-area fraction of a planar mirror
+ * for perspective cameras (`approxScreenFraction < 0.012` skips planar reflection passes in
+ * dollhouse/orbit overviews and distant hallways).
+ */
+export function computeMirrorProjectedScreenFraction({
+  mirrorWidth,
+  mirrorHeight,
+  cosFacing,
+  distSq,
+  tanHalfFovY,
+  aspect,
+}: MirrorProjectedScreenFractionParams): number {
+  const projectedArea = mirrorWidth * mirrorHeight * Math.max(0.15, cosFacing);
+  const frustumCrossSection = Math.max(
+    0.05,
+    4.0 * distSq * tanHalfFovY * tanHalfFovY * Math.max(0.1, aspect)
+  );
+  return projectedArea / frustumCrossSection;
+}
 
 function getPrimaryMaterial(
   mat: THREE.Material | THREE.Material[] | null | undefined
@@ -212,8 +250,8 @@ export function markMirrorSurface<T extends THREE.Object3D>(
 
 /**
  * Creates a physical silvered-glass fallback/base `MeshPhysicalMaterial` used when a mirror
- * is outside the active room budget, outside the view frustum, beyond `maxDistanceM`, or
- * running on mobile / low graphics tiers.
+ * is outside the active room budget, outside the view frustum, beyond `maxDistanceM`, below
+ * `minProjectedScreenFraction`, or running on mobile / low graphics tiers.
  */
 export function createMirrorMaterial(options?: {
   readonly tint?: THREE.ColorRepresentation;
@@ -242,6 +280,8 @@ interface MirrorCandidate {
   readonly localCenter: THREE.Vector3;
   readonly localRadius: number;
   readonly halfThickness: number;
+  readonly widthM: number;
+  readonly heightM: number;
   readonly areaM2: number;
   readonly ambiguousNormalSign: boolean;
   zoneId: string | null;
@@ -260,11 +300,17 @@ interface ReflectorSlot {
   readonly baseReflector: ReflectorInternal;
   readonly material: MeshPhysicalNodeMaterial;
   boundCandidate: MirrorCandidate | null;
+  lastRenderedCandidate: MirrorCandidate | null;
+  readonly lastCameraMatrixElements: Float64Array;
+  hasRenderedOnce: boolean;
+  lastDirtyEpoch: number;
+  idleFramesSinceRender: number;
 }
 
 interface ScoredCandidate {
   readonly candidate: MirrorCandidate;
   readonly score: number;
+  readonly dist: number;
   readonly worldCoplanarPoint: THREE.Vector3;
   readonly worldNormal: THREE.Vector3;
 }
@@ -283,10 +329,13 @@ function setAxisUnit(out: THREE.Vector3, axis: 0 | 1 | 2, sign: 1 | -1): THREE.V
 
 export class MirrorReflectorController {
   private readonly scene: THREE.Object3D;
-  private readonly maxActiveMirrors: number;
+  private readonly explicitMaxActiveMirrors: number | undefined;
   private readonly maxDistanceM: number;
   private readonly resolutionScale: number;
+  private readonly minProjectedScreenFraction: number;
+  private readonly idleRefreshIntervalFrames: number;
   private readonly isConstrainedMobile: boolean;
+  private readonly isFirstPersonFn?: () => boolean;
   private readonly resolveZoneAtPoint?: (worldPoint: THREE.Vector3) => string | null;
 
   private graphicsTier: GraphicsTier;
@@ -294,32 +343,67 @@ export class MirrorReflectorController {
   private readonly candidateSet = new Set<THREE.Mesh>();
   private readonly slots: ReflectorSlot[] = [];
   private activeCandidates: MirrorCandidate[] = [];
+  private reflectionDirtyEpoch = 1;
+  private reflectionPassCount = 0;
   private disposed = false;
 
   constructor(scene: THREE.Object3D, options: MirrorReflectorControllerOptions = {}) {
     this.scene = scene;
-    this.maxActiveMirrors = Math.max(0, options.maxActiveMirrors ?? DEFAULT_MAX_ACTIVE_MIRRORS);
+    this.explicitMaxActiveMirrors =
+      options.maxActiveMirrors !== undefined
+        ? Math.max(0, options.maxActiveMirrors)
+        : undefined;
     this.maxDistanceM = options.maxDistanceM ?? DEFAULT_MAX_DISTANCE_M;
     this.resolutionScale = options.resolutionScale ?? DEFAULT_RESOLUTION_SCALE;
+    this.minProjectedScreenFraction =
+      options.minProjectedScreenFraction ?? DEFAULT_MIN_PROJECTED_SCREEN_FRACTION;
+    this.idleRefreshIntervalFrames = Math.max(
+      1,
+      options.idleRefreshIntervalFrames ?? DEFAULT_IDLE_REFRESH_INTERVAL_FRAMES
+    );
     this.graphicsTier = options.graphicsTier ?? 'high';
-    this.isConstrainedMobile =
-      options.isConstrainedMobile ?? (detectMobile() || detectIOS());
+    this.isConstrainedMobile = options.isConstrainedMobile ?? (detectMobile() || detectIOS());
+    this.isFirstPersonFn = options.isFirstPerson;
     this.resolveZoneAtPoint = options.resolveZoneAtPoint;
   }
 
-  public getEffectiveMaxMirrors(): number {
+  /**
+   * Marks cached planar reflection render targets dirty (e.g. when doors, lights, cutaways,
+   * or time-of-day change) so the next rendered frame refreshes the reflection immediately.
+   */
+  public invalidateReflections(): void {
+    this.reflectionDirtyEpoch++;
+  }
+
+  public getReflectionPassCount(): number {
+    return this.reflectionPassCount;
+  }
+
+  public resetReflectionPassCount(): void {
+    this.reflectionPassCount = 0;
+  }
+
+  public getEffectiveMaxMirrors(inMirrorRoom1PvClose = false): number {
     if (this.disposed || this.isConstrainedMobile || this.graphicsTier === 'low') {
       return 0;
     }
-    if (this.graphicsTier === 'medium') {
-      return Math.min(1, this.maxActiveMirrors);
+    const cap =
+      this.explicitMaxActiveMirrors ??
+      (this.graphicsTier === 'ultra' && inMirrorRoom1PvClose
+        ? ULTRA_1PV_CLOSE_MAX_ACTIVE_MIRRORS
+        : DEFAULT_MAX_ACTIVE_MIRRORS);
+    if (this.graphicsTier === 'medium' || this.graphicsTier === 'high') {
+      return Math.min(1, cap);
     }
-    return this.maxActiveMirrors;
+    return inMirrorRoom1PvClose ? Math.min(2, cap) : Math.min(1, cap);
   }
 
   public setGraphicsTier(tier: GraphicsTier): void {
-    this.graphicsTier = tier;
-    if (this.getEffectiveMaxMirrors() === 0) {
+    if (this.graphicsTier !== tier) {
+      this.graphicsTier = tier;
+      this.invalidateReflections();
+    }
+    if (this.getEffectiveMaxMirrors(true) === 0) {
       this.deactivateAllMirrors();
     }
   }
@@ -355,6 +439,7 @@ export class MirrorReflectorController {
     this.deactivateAllMirrors();
     this.candidates.length = 0;
     this.candidateSet.clear();
+    this.invalidateReflections();
 
     root.updateMatrixWorld(true);
 
@@ -373,11 +458,16 @@ export class MirrorReflectorController {
     return this.candidates.length;
   }
 
-  public update(camera: THREE.Camera, activeZoneId?: string | null): void {
+  public update(
+    camera: THREE.Camera,
+    activeZoneId?: string | null,
+    isFirstPersonOverride?: boolean
+  ): void {
     if (this.disposed) return;
 
-    const budget = this.getEffectiveMaxMirrors();
-    if (budget <= 0 || this.candidates.length === 0) {
+    const isFirstPerson = isFirstPersonOverride ?? this.isFirstPersonFn?.() ?? false;
+    const maxPossibleBudget = this.getEffectiveMaxMirrors(isFirstPerson);
+    if (maxPossibleBudget <= 0 || this.candidates.length === 0) {
       this.deactivateAllMirrors();
       return;
     }
@@ -386,6 +476,17 @@ export class MirrorReflectorController {
     _projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     _frustum.setFromProjectionMatrix(_projScreenMatrix);
     _camPos.setFromMatrixPosition(camera.matrixWorld);
+
+    const perspCam = (camera as THREE.PerspectiveCamera).isPerspectiveCamera
+      ? (camera as THREE.PerspectiveCamera)
+      : null;
+    const orthoCam = (camera as THREE.OrthographicCamera).isOrthographicCamera
+      ? (camera as THREE.OrthographicCamera)
+      : null;
+    const tanHalfFovY = perspCam
+      ? Math.tan(THREE.MathUtils.degToRad(perspCam.fov * 0.5)) / Math.max(0.01, perspCam.zoom)
+      : Math.tan(THREE.MathUtils.degToRad(21));
+    const aspect = perspCam && perspCam.aspect > 0 ? perspCam.aspect : 16 / 9;
 
     const scored: ScoredCandidate[] = [];
 
@@ -417,6 +518,29 @@ export class MirrorReflectorController {
 
       if (facing <= 0.01) continue;
 
+      const mirrorWidth = candidate.widthM * maxScale;
+      const mirrorHeight = candidate.heightM * maxScale;
+      let approxScreenFraction: number;
+      if (orthoCam) {
+        const zoom = Math.max(0.01, orthoCam.zoom);
+        const worldFrustumArea =
+          (Math.abs(orthoCam.right - orthoCam.left) * Math.abs(orthoCam.top - orthoCam.bottom)) /
+          (zoom * zoom);
+        approxScreenFraction =
+          (mirrorWidth * mirrorHeight * Math.max(0.15, facing)) /
+          Math.max(0.05, worldFrustumArea);
+      } else {
+        approxScreenFraction = computeMirrorProjectedScreenFraction({
+          mirrorWidth,
+          mirrorHeight,
+          cosFacing: facing,
+          distSq: dist * dist,
+          tanHalfFovY,
+          aspect,
+        });
+      }
+      if (approxScreenFraction < this.minProjectedScreenFraction) continue;
+
       if (!candidate.zoneId && this.resolveZoneAtPoint) {
         candidate.zoneId = this.resolveZoneAtPoint(_worldCenter);
       }
@@ -430,8 +554,7 @@ export class MirrorReflectorController {
         _worldPoint.copy(candidate.localCoplanarPoint).applyMatrix4(candidate.mesh.matrixWorld);
       }
 
-      const inActiveZoneBonus =
-        activeZoneId && candidate.zoneId === activeZoneId ? 1000 : 0;
+      const inActiveZoneBonus = activeZoneId && candidate.zoneId === activeZoneId ? 1000 : 0;
       const solidAngleScore =
         (candidate.areaM2 * maxScale * maxScale * facing) / Math.max(0.25, dist * dist);
       const score = inActiveZoneBonus + solidAngleScore * 100 - dist * 0.5;
@@ -439,6 +562,7 @@ export class MirrorReflectorController {
       scored.push({
         candidate,
         score,
+        dist,
         worldCoplanarPoint: _worldPoint.clone(),
         worldNormal: _worldNormal.clone(),
       });
@@ -450,7 +574,22 @@ export class MirrorReflectorController {
     }
 
     scored.sort((a, b) => b.score - a.score);
-    const winners = scored.slice(0, budget);
+
+    const winners: ScoredCandidate[] = [scored[0]!];
+    if (
+      maxPossibleBudget >= 2 &&
+      scored.length >= 2 &&
+      this.graphicsTier === 'ultra' &&
+      isFirstPerson &&
+      Boolean(activeZoneId) &&
+      scored[0]!.candidate.zoneId === activeZoneId &&
+      scored[0]!.dist <= ULTRA_1PV_DUAL_MIRROR_MAX_DIST_M &&
+      scored[1]!.candidate.zoneId === activeZoneId &&
+      scored[1]!.dist <= ULTRA_1PV_DUAL_MIRROR_MAX_DIST_M
+    ) {
+      winners.push(scored[1]!);
+    }
+
     const winnerSet = new Set<MirrorCandidate>(winners.map((w) => w.candidate));
 
     // Restore original material on any candidate not in the winning set
@@ -471,6 +610,8 @@ export class MirrorReflectorController {
       const slot = this.slots[s]!;
       if (slot.boundCandidate && !winnerSet.has(slot.boundCandidate)) {
         slot.boundCandidate = null;
+        slot.lastRenderedCandidate = null;
+        slot.hasRenderedOnce = false;
       }
     }
 
@@ -495,6 +636,7 @@ export class MirrorReflectorController {
         const slot = this.slots[s]!;
         if (!usedSlots.has(slot)) {
           slot.boundCandidate = w.candidate;
+          slot.hasRenderedOnce = false;
           assignedSlotByCandidate.set(w.candidate, slot);
           usedSlots.add(slot);
           break;
@@ -504,7 +646,10 @@ export class MirrorReflectorController {
 
     // Unbind any surplus slots above winners.length
     for (let s = winners.length; s < this.slots.length; s++) {
-      this.slots[s]!.boundCandidate = null;
+      const slot = this.slots[s]!;
+      slot.boundCandidate = null;
+      slot.lastRenderedCandidate = null;
+      slot.hasRenderedOnce = false;
     }
 
     // Sync each active slot's target matrixWorld & material
@@ -534,6 +679,7 @@ export class MirrorReflectorController {
       slot.reflectorNode.dispose();
       slot.material.dispose();
       slot.boundCandidate = null;
+      slot.lastRenderedCandidate = null;
     }
 
     this.slots.length = 0;
@@ -549,7 +695,10 @@ export class MirrorReflectorController {
       }
     }
     for (let s = 0; s < this.slots.length; s++) {
-      this.slots[s]!.boundCandidate = null;
+      const slot = this.slots[s]!;
+      slot.boundCandidate = null;
+      slot.lastRenderedCandidate = null;
+      slot.hasRenderedOnce = false;
     }
     this.activeCandidates = [];
   }
@@ -558,8 +707,7 @@ export class MirrorReflectorController {
     const bbox = measureLocalGeometryBounds(mesh.geometry);
     if (!bbox) return null;
 
-    const explicitlyMarked =
-      mesh.userData?.isMirror === true || mesh.userData?.mirror === true;
+    const explicitlyMarked = mesh.userData?.isMirror === true || mesh.userData?.mirror === true;
     if (!explicitlyMarked && !hasPlanarMirrorDimensions(bbox)) {
       return null;
     }
@@ -606,13 +754,13 @@ export class MirrorReflectorController {
     if (explicitPoint) {
       localCoplanarPoint.set(explicitPoint[0], explicitPoint[1], explicitPoint[2]);
     } else {
-      localCoplanarPoint
-        .copy(localCenter)
-        .addScaledVector(localOutwardNormal, halfThickness);
+      localCoplanarPoint.copy(localCenter).addScaledVector(localOutwardNormal, halfThickness);
     }
 
     const dims = [dx, dy, dz].sort((a, b) => a - b);
-    const areaM2 = Math.max(0.01, dims[1]! * dims[2]!);
+    const widthM = Math.max(0.05, dims[1]!);
+    const heightM = Math.max(0.05, dims[2]!);
+    const areaM2 = Math.max(0.01, widthM * heightM);
     const localRadius = Math.max(0.05, Math.hypot(dx, dy, dz) * 0.5);
 
     const zoneId = this.resolveCandidateZoneId(mesh, config, localCenter);
@@ -625,6 +773,8 @@ export class MirrorReflectorController {
       localCenter,
       localRadius,
       halfThickness,
+      widthM,
+      heightM,
       areaM2,
       ambiguousNormalSign,
       zoneId,
@@ -651,7 +801,6 @@ export class MirrorReflectorController {
       return { sign: 1, ambiguous: false };
     }
 
-    // Disambiguate wall/framed mirrors by comparing against backing/frame sibling centroid in parent
     const parent = mesh.parent;
     if (parent && parent !== this.scene) {
       _invMeshWorld.copy(mesh.matrixWorld).invert();
@@ -758,6 +907,18 @@ export class MirrorReflectorController {
     target.matrixWorldNeedsUpdate = false;
   }
 
+  private hasCameraPoseMoved(
+    camElements: readonly number[],
+    cachedElements: Float64Array
+  ): boolean {
+    for (let i = 0; i < 16; i++) {
+      if (Math.abs((camElements[i] ?? 0) - cachedElements[i]!) >= 1e-5) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private createReflectorSlot(index: number): ReflectorSlot {
     const target = new THREE.Object3D();
     target.name = `husMirrorReflectorTarget_${index}`;
@@ -799,10 +960,43 @@ export class MirrorReflectorController {
       baseReflector,
       material,
       boundCandidate: null,
+      lastRenderedCandidate: null,
+      lastCameraMatrixElements: new Float64Array(16),
+      hasRenderedOnce: false,
+      lastDirtyEpoch: 0,
+      idleFramesSinceRender: 0,
     };
 
     baseReflector.updateBefore = (frame: unknown) => {
-      const selfMesh = slot.boundCandidate?.mesh ?? null;
+      const frameObj = frame as { camera?: THREE.Camera } | null | undefined;
+      const mainCamera = frameObj?.camera ?? null;
+      const currentCandidate = slot.boundCandidate;
+
+      if (
+        slot.hasRenderedOnce &&
+        currentCandidate !== null &&
+        slot.lastRenderedCandidate === currentCandidate &&
+        slot.lastDirtyEpoch === this.reflectionDirtyEpoch &&
+        mainCamera !== null &&
+        !this.hasCameraPoseMoved(mainCamera.matrixWorld.elements, slot.lastCameraMatrixElements) &&
+        slot.idleFramesSinceRender + 1 < this.idleRefreshIntervalFrames
+      ) {
+        slot.idleFramesSinceRender++;
+        return;
+      }
+
+      slot.idleFramesSinceRender = 0;
+      slot.hasRenderedOnce = true;
+      slot.lastRenderedCandidate = currentCandidate;
+      slot.lastDirtyEpoch = this.reflectionDirtyEpoch;
+      if (mainCamera) {
+        for (let i = 0; i < 16; i++) {
+          slot.lastCameraMatrixElements[i] = mainCamera.matrixWorld.elements[i] ?? 0;
+        }
+      }
+      this.reflectionPassCount++;
+
+      const selfMesh = currentCandidate?.mesh ?? null;
       const wasSelfVisible = selfMesh ? selfMesh.visible : false;
       const swappedOthers: Array<{ mesh: THREE.Mesh; mat: THREE.Material | THREE.Material[] }> = [];
 
@@ -810,7 +1004,6 @@ export class MirrorReflectorController {
         selfMesh.visible = false;
       }
 
-      // Swap any other active mirror to its fallback material during this virtual reflection pass
       for (const other of this.slots) {
         if (other !== slot && other.boundCandidate) {
           const otherMesh = other.boundCandidate.mesh;
@@ -821,8 +1014,6 @@ export class MirrorReflectorController {
         }
       }
 
-      const frameObj = frame as { camera?: THREE.Camera } | null | undefined;
-      const mainCamera = frameObj?.camera ?? null;
       const getVirtualCam = (
         baseReflector as unknown as { getVirtualCamera?: (cam: THREE.Camera) => THREE.Camera }
       ).getVirtualCamera;
@@ -830,9 +1021,12 @@ export class MirrorReflectorController {
         const vCam = getVirtualCam.call(baseReflector, mainCamera);
         if (vCam) syncBakedLightCameraMatrix(vCam);
       }
+
+      setInMirrorPass(true);
       try {
         return origUpdateBefore(frame);
       } finally {
+        setInMirrorPass(false);
         if (mainCamera) {
           syncBakedLightCameraMatrix(mainCamera);
         }

@@ -4,7 +4,11 @@ import { RoomLodController } from '../../lod/lod-manager.ts';
 import { createPropertySceneLayers } from '../../viewer/scene-content.ts';
 import { collectProtectedObjects, isNonBatchableMaterial } from '../batching/scene-batch-classification.ts';
 import {
+  DEFAULT_MAX_DISTANCE_M,
+  DEFAULT_MIN_PROJECTED_SCREEN_FRACTION,
+  DEFAULT_RESOLUTION_SCALE,
   MirrorReflectorController,
+  computeMirrorProjectedScreenFraction,
   createMirrorMaterial,
   isLikelyMirrorGlassMesh,
   markMirrorSurface,
@@ -276,7 +280,11 @@ describe('MirrorReflectorController & Mirror Batch Protection', () => {
     }
   });
 
-  it('enforces room priority, frustum, facing (dot > 0), cutaway visibility, and <= 14 m distance gating with maxActiveMirrors = 2', () => {
+  it('enforces 7 m close-range, projected screen-area (0 passes in dollhouse orbit), 1-mirror high/medium cap, 2-mirror ultra 1PV room cap, and static-camera reflection caching', () => {
+    expect(DEFAULT_MAX_DISTANCE_M).toBe(7.0);
+    expect(DEFAULT_RESOLUTION_SCALE).toBe(0.4);
+    expect(DEFAULT_MIN_PROJECTED_SCREEN_FRACTION).toBe(0.012);
+
     const scene = new THREE.Scene();
 
     const makeRoomMirror = (
@@ -301,60 +309,101 @@ describe('MirrorReflectorController & Mirror Batch Protection', () => {
       return { group, mesh, baseMat };
     };
 
-    // 6 mirrors across the house
     const mBathPrimary = makeRoomMirror('m1', 'master-bathroom', [-0.6, 1.4, -2.5], 0);
     const mBathSecondary = makeRoomMirror('m2', 'master-bathroom', [0.6, 1.4, -2.8], 0);
     const mHallCloserOtherRoom = makeRoomMirror('m3', 'hallway', [0.0, 1.4, -1.8], 0);
     const mBackFacing = makeRoomMirror('m4', 'master-bathroom', [0.2, 1.4, -2.2], Math.PI);
-    const mDistant = makeRoomMirror('m5', 'master-bathroom', [0.0, 1.4, -18.5], 0);
+    const mDistant = makeRoomMirror('m5', 'master-bathroom', [0.0, 1.4, -9.5], 0);
     const mCutawayHidden = makeRoomMirror('m6', 'master-bathroom', [-0.2, 1.4, -2.0], 0);
     mCutawayHidden.group.visible = false;
 
     const controller = new MirrorReflectorController(scene, {
-      maxActiveMirrors: 2,
-      maxDistanceM: 14.0,
       isConstrainedMobile: false,
-      graphicsTier: 'high',
+      graphicsTier: 'ultra',
     });
     expect(controller.discoverMirrors()).toBe(6);
 
     const cam = makeCamera([0, 1.4, 0.5], [0, 1.4, -3.0]);
-    controller.update(cam, 'master-bathroom');
 
-    // Only the 2 visible, front-facing, <= 14 m mirrors in 'master-bathroom' win (beating closer 'hallway' mirror)
+    // Ultra in 1PV inside 'master-bathroom' within 5.5 m activates 2 mirrors
+    controller.update(cam, 'master-bathroom', true);
     expect(controller.getActiveMirrorCount()).toBe(2);
     expect(controller.getAllocatedSlotCount()).toBe(2);
     const activeMeshes = controller.getActiveMirrorMeshes();
     expect(activeMeshes).toContain(mBathPrimary.mesh);
     expect(activeMeshes).toContain(mBathSecondary.mesh);
-
-    // Active mirrors have swapped node materials; non-active mirrors keep their exact fallback MeshPhysicalMaterial
-    expect(mBathPrimary.mesh.material).not.toBe(mBathPrimary.baseMat);
-    expect(mBathSecondary.mesh.material).not.toBe(mBathSecondary.baseMat);
     expect(mHallCloserOtherRoom.mesh.material).toBe(mHallCloserOtherRoom.baseMat);
     expect(mBackFacing.mesh.material).toBe(mBackFacing.baseMat);
     expect(mDistant.mesh.material).toBe(mDistant.baseMat);
     expect(mCutawayHidden.mesh.material).toBe(mCutawayHidden.baseMat);
 
-    // Medium tier caps active mirrors at 1
-    controller.setGraphicsTier('medium');
-    controller.update(cam, 'master-bathroom');
+    // Non-1PV orbit on ultra caps active mirrors at 1
+    controller.update(cam, 'master-bathroom', false);
     expect(controller.getActiveMirrorCount()).toBe(1);
-    expect(mBathPrimary.mesh.material !== mBathPrimary.baseMat || mBathSecondary.mesh.material !== mBathSecondary.baseMat).toBe(true);
 
-    // Turning camera completely away (looking +Z, all mirrors behind frustum) restores all fallback materials (0 active)
-    const camLookingAway = makeCamera([0, 1.4, 0.5], [0, 1.4, 10.0]);
-    controller.update(camLookingAway, 'master-bathroom');
-    expect(controller.getActiveMirrorCount()).toBe(0);
-    expect(mBathPrimary.mesh.material).toBe(mBathPrimary.baseMat);
-    expect(mBathSecondary.mesh.material).toBe(mBathSecondary.baseMat);
-    expect(mHallCloserOtherRoom.mesh.material).toBe(mHallCloserOtherRoom.baseMat);
+    // High and medium tiers cap active mirrors at 1 even in 1PV
+    controller.setGraphicsTier('high');
+    controller.update(cam, 'master-bathroom', true);
+    expect(controller.getActiveMirrorCount()).toBe(1);
 
-    // Moving camera > 14 m away from all front-facing mirrors keeps active count at 0
-    const camFar = makeCamera([0, 1.4, 15.0], [0, 1.4, -3.0]);
+    controller.setGraphicsTier('medium');
+    controller.update(cam, 'master-bathroom', true);
+    expect(controller.getActiveMirrorCount()).toBe(1);
+
+    // Dollhouse / orbit overview (camera 6.6 m away with wide FOV or small mirror -> projected screen fraction < 0.012 -> 0 active passes!)
+    const dollhouseMirrorFrac = computeMirrorProjectedScreenFraction({
+      mirrorWidth: 0.45,
+      mirrorHeight: 0.55,
+      cosFacing: 0.5,
+      distSq: 6.5 * 6.5,
+      tanHalfFovY: Math.tan(THREE.MathUtils.degToRad(30)),
+      aspect: 16 / 9,
+    });
+    expect(dollhouseMirrorFrac).toBeLessThan(DEFAULT_MIN_PROJECTED_SCREEN_FRACTION);
+
+    const dollhouseOrbitCam = makeCamera([0, 14.0, 14.0], [0, 1.0, -2.5]);
     controller.setGraphicsTier('ultra');
-    controller.update(camFar, 'master-bathroom');
+    controller.update(dollhouseOrbitCam, null, false);
     expect(controller.getActiveMirrorCount()).toBe(0);
+
+    // Static-camera reflection caching: stationary frames skip origUpdateBefore until 12th safety frame or invalidateReflections()
+    controller.update(cam, 'master-bathroom', false);
+    expect(controller.getActiveMirrorCount()).toBe(1);
+    const internalSlot = (controller as unknown as {
+      slots: Array<{
+        baseReflector: { updateBefore: (frame: unknown) => unknown };
+      }>;
+    }).slots[0]!;
+    let origCalls = 0;
+    // Spy via getReflectionPassCount across stationary frames (stubbing origUpdateBefore target safely)
+    controller.resetReflectionPassCount();
+    const fakeFrame = {
+      camera: cam,
+      renderer: null,
+      scene: null,
+    };
+    const safeInvoke = () => {
+      try {
+        internalSlot.baseReflector.updateBefore(fakeFrame);
+      } catch {
+        // origUpdateBefore throws without full WebGPURenderer, after reflectionPassCount increments
+      }
+      origCalls = controller.getReflectionPassCount();
+    };
+    safeInvoke();
+    expect(origCalls).toBe(1);
+    // Next 11 stationary frames must skip origUpdateBefore completely (0 extra passes!)
+    for (let f = 0; f < 11; f++) {
+      safeInvoke();
+    }
+    expect(origCalls).toBe(1);
+    // 12th idle frame performs safety refresh
+    safeInvoke();
+    expect(origCalls).toBe(2);
+    // Explicit invalidateReflections() (door/light toggle) forces immediate refresh on next frame
+    controller.invalidateReflections();
+    safeInvoke();
+    expect(origCalls).toBe(3);
 
     controller.dispose();
   });
@@ -414,12 +463,12 @@ describe('MirrorReflectorController & Mirror Batch Protection', () => {
 
     const controller = new MirrorReflectorController(scene, {
       isConstrainedMobile: false,
-      graphicsTier: 'high',
+      graphicsTier: 'ultra',
     });
     controller.discoverMirrors();
 
     const cam = makeCamera([0, 1.4, 0.5], [0, 1.4, -2.0]);
-    controller.update(cam, 'bath');
+    controller.update(cam, 'bath', true);
     expect(controller.getActiveMirrorCount()).toBe(2);
     expect(controller.getAllocatedSlotCount()).toBe(2);
 

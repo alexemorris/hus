@@ -20,6 +20,8 @@ export interface GraphicsTierSettings {
   readonly bloom: boolean;
   readonly sharpen: boolean;
   readonly shadowMapSize: 1024 | 2048 | 4096;
+  /** Requested hardware MSAA samples before DPR clamping (`1` on low/medium/high, `4` on ultra). */
+  readonly msaaSamples?: 1 | 4;
   /** Multiplier applied to LOD detail distances. */
   readonly lodDistanceScale: number;
   /** Max distance (m) for `userData.lodTier === 'high'` props. */

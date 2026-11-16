@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { Fn, float, rtt, texture, uniform, vec2, vec3, vec4 } from 'three/tsl';
 import type { TextureNode } from 'three/webgpu';
 import {
+  BILATERAL_KERNEL_RADIUS,
   CLOSE_UP_MICRO_RELIEF_MAX_DIST_M,
   CONTACT_SHADOW_MIN_NDOTL,
   CONTACT_SHADOW_STEPS,
@@ -18,13 +19,14 @@ import {
   denoiseBilateralAoAndContactPass,
   encodeOctNormalCpu,
   evaluateBilateralAoDenoise1DCpu,
-  evaluateDeterministicMicroContactShadow,
   evaluateHalfResAoAndContactRaw,
   evaluateHalfResGtao,
   evaluateNormalizedGtaoVisibilityCpu,
   evaluateScreenSpaceContactShadow,
   evaluateSeparableBilateralAoDenoise2DCpu,
   isScreenUvInsideSafeViewport,
+  reconstructLinearViewZ,
+  reconstructLinearViewZCpu,
   reconstructMinDeltaViewNormal,
   resolvePrimaryDirectionalSunSample,
   spatialInterleavedGradientNoise,
@@ -33,7 +35,13 @@ import {
   type GtaoAndContactShadowUniforms,
 } from '../contact-shadows-and-gtao.ts';
 import {
-  SHARPEN_INTENSITY,
+  OVERCAST_VOGEL_TOTAL_TAPS,
+  computeCastanoFourTapTent1DCpu,
+  setInMirrorPass,
+  uInMirrorPassNode,
+} from '../../lighting/shader-light-culling.ts';
+import {
+  resolveEffectiveMsaaSamples,
   resolveScenePassMsaaSamples,
 } from '../post-processing-pipeline.ts';
 import {
@@ -110,10 +118,11 @@ describe('contact-shadows-and-gtao', () => {
     expect(resolvePrimaryDirectionalSunSample(scene, camera, sunViewDir, sunWorldDir)).toBe(0);
   });
 
-  it('builds purely spatial IGN, raw AO+contact, separable bilateral blur, upsample, and deterministic micro-contact TSL nodes', () => {
-    expect(GTAO_SLICE_COUNT).toBe(4);
-    expect(GTAO_STEPS_PER_SIDE).toBe(4);
-    expect(CONTACT_SHADOW_STEPS).toBe(12);
+  it('builds fast 12-tap half-res GTAO, unified 8-step contact shadows, 7-tap scalar-linear-Z bilateral blur, and 4-tap upsampler TSL nodes', () => {
+    expect(GTAO_SLICE_COUNT).toBe(2);
+    expect(GTAO_STEPS_PER_SIDE).toBe(3);
+    expect(CONTACT_SHADOW_STEPS).toBe(8);
+    expect(BILATERAL_KERNEL_RADIUS).toBe(3);
 
     const node = spatialInterleavedGradientNoise(vec2(142.0, 289.0));
     expect(node).toBeDefined();
@@ -138,22 +147,16 @@ describe('contact-shadows-and-gtao', () => {
         uniforms
       )
     );
-    const upsampleAndMicroShader = Fn(() => {
+    const upsampleShader = Fn(() => {
+      const z = reconstructLinearViewZ(float(0.5), uniforms.uProjMatrix, uniforms.uIsOrtho);
       const n = reconstructMinDeltaViewNormal(
         depthNode,
         vec2(0.5, 0.5),
-        vec3(0.2, 0.0, -0.55),
+        vec3(0.2, 0.0, z),
         uniforms.uHalfTexelSize,
         uniforms.uProjMatrixInverse
       );
       const rawContact = evaluateScreenSpaceContactShadow(
-        depthNode,
-        vec3(0.2, 0.0, -0.55),
-        n,
-        float(0.55),
-        uniforms
-      );
-      const micro = evaluateDeterministicMicroContactShadow(
         depthNode,
         vec3(0.2, 0.0, -0.55),
         n,
@@ -168,14 +171,68 @@ describe('contact-shadows-and-gtao', () => {
         n,
         uniforms
       );
-      return vec4(up.x, up.y, rawContact, micro);
+      return vec4(up.x, up.y, rawContact, z);
     });
 
     expect(gtaoShader).toBeDefined();
     expect(rawAoContactShader).toBeDefined();
     expect(blurShader).toBeDefined();
-    expect(upsampleAndMicroShader).toBeDefined();
+    expect(upsampleShader).toBeDefined();
     dummyRtt.renderTarget?.dispose();
+  });
+
+  it('reconstructs exact scalar linear view-Z in 3 scalar ops for both WebGPU and WebGL perspective & orthographic cameras', () => {
+    for (const sys of [THREE.WebGPUCoordinateSystem, THREE.WebGLCoordinateSystem]) {
+      const isWebGPU = sys === THREE.WebGPUCoordinateSystem;
+      const persp = new THREE.PerspectiveCamera(42, 16 / 9, 0.1, 150);
+      persp.coordinateSystem = sys;
+      persp.updateProjectionMatrix();
+
+      const ortho = new THREE.OrthographicCamera(-12, 12, 8, -8, 0.1, 150);
+      ortho.coordinateSystem = sys;
+      ortho.updateProjectionMatrix();
+
+      for (const viewZ of [-0.22, -1.65, -4.8, -22.5]) {
+        const clipP = new THREE.Vector4(0.4, -0.3, viewZ, 1.0).applyMatrix4(persp.projectionMatrix);
+        const ndcZp = clipP.z / clipP.w;
+        const rawDp = isWebGPU ? ndcZp : ndcZp * 0.5 + 0.5;
+        expect(reconstructLinearViewZCpu(rawDp, persp.projectionMatrix, false, isWebGPU)).toBeCloseTo(
+          viewZ,
+          5
+        );
+
+        const clipO = new THREE.Vector4(0.4, -0.3, viewZ, 1.0).applyMatrix4(ortho.projectionMatrix);
+        const rawDo = isWebGPU ? clipO.z : clipO.z * 0.5 + 0.5;
+        expect(reconstructLinearViewZCpu(rawDo, ortho.projectionMatrix, true, isWebGPU)).toBeCloseTo(
+          viewZ,
+          5
+        );
+      }
+    }
+  });
+
+  it('verifies Castaño 4-tap hardware-bilinear 4x4 tent PCF weights and 8-tap overcast Vogel budget', () => {
+    expect(OVERCAST_VOGEL_TOTAL_TAPS).toBe(8);
+    setInMirrorPass(true);
+    expect(uInMirrorPassNode.value).toBe(1.0);
+    setInMirrorPass(false);
+    expect(uInMirrorPassNode.value).toBe(0.0);
+
+    for (const uvSample of [0.1234, 0.25, 0.375, 0.5001, 0.618, 0.875, 0.999]) {
+      const res = computeCastanoFourTapTent1DCpu(uvSample, 4096);
+      const { s, u0, u1, uw0, uw1, effectiveTexelWeights } = res;
+      expect(uw0 + uw1).toBeCloseTo(4.0, 6);
+      expect(u0).toBeGreaterThanOrEqual(-1.0 - 1e-9);
+      expect(u0).toBeLessThanOrEqual(0.0 + 1e-9);
+      expect(u1).toBeGreaterThanOrEqual(1.0 - 1e-9);
+      expect(u1).toBeLessThanOrEqual(2.0 + 1e-9);
+
+      // Exact continuous [1 - s, 2 - s, 1 + s, s] / 4 kernel across 4 texels (1/16 in 2D)
+      expect(effectiveTexelWeights[0]).toBeCloseTo((1.0 - s) / 4.0, 6);
+      expect(effectiveTexelWeights[1]).toBeCloseTo((2.0 - s) / 4.0, 6);
+      expect(effectiveTexelWeights[2]).toBeCloseTo((1.0 + s) / 4.0, 6);
+      expect(effectiveTexelWeights[3]).toBeCloseTo(s / 4.0, 6);
+    }
   });
 
   it('rejects out-of-frustum screen UVs so oblique close walls never sample clamped border depth', () => {
@@ -266,7 +323,6 @@ describe('contact-shadows-and-gtao', () => {
       expect(decoded.distanceTo(dir)).toBeLessThan(1e-5);
     }
 
-    // (a) High-frequency IGN stipple variance drops by > 85% in both 1D and separable 2D passes
     const flatNormal = new THREE.Vector3(0, 0, 1);
     const len1D = 32;
     const rawLine: BilateralDenoiseSampleCpu[] = [];
@@ -319,7 +375,7 @@ describe('contact-shadows-and-gtao', () => {
       1 - computeVariance(denoisedInterior2D) / computeVariance(rawInterior2D);
     expect(varianceReduction2D).toBeGreaterThan(0.92);
 
-    // (b1) Depth silhouette discontinuity: foreground object at 0.5 m (ao = 0.35) vs background wall at 3.0 m (ao = 1.0)
+    // Depth silhouette discontinuity: foreground object at 0.5 m (ao = 0.35) vs background wall at 3.0 m (ao = 1.0)
     const silhouetteLine: BilateralDenoiseSampleCpu[] = [];
     for (let i = 0; i < 18; i++) {
       const isForeground = i < 9;
@@ -336,7 +392,7 @@ describe('contact-shadows-and-gtao', () => {
     expect(denoisedSilhouette[8]!.contact).toBeCloseTo(0.25, 5);
     expect(denoisedSilhouette[9]!.contact).toBeCloseTo(1.0, 5);
 
-    // (b2) 90-degree normal corner discontinuity: left wall normal (+1, 0, 0) vs back wall normal (0, 0, +1)
+    // 90-degree normal corner discontinuity: left wall normal (+1, 0, 0) vs back wall normal (0, 0, +1)
     const leftWallNormal = new THREE.Vector3(1, 0, 0);
     const backWallNormal = new THREE.Vector3(0, 0, 1);
     const cornerLine: BilateralDenoiseSampleCpu[] = [];
@@ -355,7 +411,7 @@ describe('contact-shadows-and-gtao', () => {
     expect(denoisedCorner[8]!.ao).toBeCloseTo(0.42, 5);
     expect(denoisedCorner[9]!.ao).toBeCloseTo(0.96, 5);
 
-    // (c) Flat unoccluded oblique wall preserves exact constant 1.0 within 1e-6
+    // Flat unoccluded oblique wall preserves exact constant 1.0 within 1e-6
     const obliqueNormal = new THREE.Vector3(-Math.sin(1.15), 0.05, Math.cos(1.15)).normalize();
     const obliqueTangent = new THREE.Vector3(obliqueNormal.z, 0, -obliqueNormal.x).normalize();
     const obliqueOrigin = new THREE.Vector3(0.3, 0.1, -1.75);
@@ -397,17 +453,32 @@ describe('contact-shadows-and-gtao', () => {
     paintMat.dispose();
   });
 
-  it('selects 4x MSAA on desktop high/ultra tiers and 1x on low/medium or constrained mobile devices', () => {
-    expect(resolveScenePassMsaaSamples('ultra', false)).toBe(4);
-    expect(resolveScenePassMsaaSamples('high', false)).toBe(4);
-    expect(resolveScenePassMsaaSamples('medium', false)).toBe(1);
-    expect(resolveScenePassMsaaSamples('low', false)).toBe(1);
+  it('clamps WebGPU MSAA to 1x on Retina/HiDPI (pixelRatio >= 1.5), high/medium/low tiers, and mobile, allowing 4x only on ultra at pixelRatio < 1.5', () => {
+    // Retina / HiDPI (dpr = 2 -> 1x, zero msaaDepthResolveRtt pass!)
+    expect(
+      resolveEffectiveMsaaSamples({ requestedSamples: 4, pixelRatio: 2.0, isConstrainedMobile: false })
+    ).toBe(1);
+    expect(
+      resolveEffectiveMsaaSamples({ requestedSamples: 4, pixelRatio: 1.5, isConstrainedMobile: false })
+    ).toBe(1);
+    // Non-Retina 1x desktop on ultra -> 4x WebGPU-valid MSAA
+    expect(
+      resolveEffectiveMsaaSamples({ requestedSamples: 4, pixelRatio: 1.0, isConstrainedMobile: false })
+    ).toBe(4);
+    expect(
+      resolveEffectiveMsaaSamples({ requestedSamples: 4, pixelRatio: 1.25, isConstrainedMobile: false })
+    ).toBe(4);
 
-    expect(resolveScenePassMsaaSamples('ultra', true)).toBe(1);
-    expect(resolveScenePassMsaaSamples('high', true)).toBe(1);
-    expect(resolveScenePassMsaaSamples('medium', true)).toBe(1);
-    expect(resolveScenePassMsaaSamples('low', true)).toBe(1);
+    // High, medium, low default to 1x at all pixel ratios
+    expect(resolveScenePassMsaaSamples('high', false, 1.0)).toBe(1);
+    expect(resolveScenePassMsaaSamples('high', false, 2.0)).toBe(1);
+    expect(resolveScenePassMsaaSamples('medium', false, 1.0)).toBe(1);
+    expect(resolveScenePassMsaaSamples('low', false, 1.0)).toBe(1);
+    expect(resolveScenePassMsaaSamples('ultra', false, 1.0)).toBe(4);
+    expect(resolveScenePassMsaaSamples('ultra', false, 2.0)).toBe(1);
 
-    expect(SHARPEN_INTENSITY).toBeCloseTo(0.18, 5);
+    // Constrained mobile always 1x
+    expect(resolveScenePassMsaaSamples('ultra', true, 1.0)).toBe(1);
+    expect(resolveScenePassMsaaSamples('high', true, 1.0)).toBe(1);
   });
 });

@@ -40,8 +40,10 @@ describe('tier-settings', () => {
     expect(low).toMatchObject({ tier: 'low', pixelRatio: 1, postProcessing: false, shadowMapSize: 1024 });
     const lowFoldable = getTierSettings('low', 2.5);
     expect(lowFoldable).toMatchObject({ tier: 'low', pixelRatio: 0.85, postProcessing: false });
+    const high = getTierSettings('high', 2);
+    expect(high).toMatchObject({ tier: 'high', msaaSamples: 1, shadowMapSize: 4096 });
     const ultra = getTierSettings('ultra', 2);
-    expect(ultra).toMatchObject({ tier: 'ultra', pixelRatio: 2, bloom: true, shadowMapSize: 4096 });
+    expect(ultra).toMatchObject({ tier: 'ultra', pixelRatio: 2, msaaSamples: 4, bloom: true, shadowMapSize: 4096 });
   });
 
   it('clamps pixel ratios into the tier range', () => {

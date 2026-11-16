@@ -46,7 +46,6 @@ import { BloomPass } from './bloom-pass.ts';
 import {
   applyPhotorealismShading,
   denoiseBilateralAoAndContactPass,
-  evaluateDeterministicMicroContactShadow,
   evaluateHalfResAoAndContactRaw,
   reconstructMinDeltaViewNormal,
   resolvePrimaryDirectionalSunSample,
@@ -85,16 +84,45 @@ function tierToPreset(tier: GraphicsTier): GraphicsQualityPreset {
   return 'balanced';
 }
 
+export interface ResolveEffectiveMsaaOptions {
+  readonly requestedSamples: number;
+  readonly pixelRatio: number;
+  readonly isConstrainedMobile: boolean;
+}
+
 /**
- * Pure helper selecting hardware MSAA sample count for `scenePass`:
- * `4` (`4x MSAA`) on desktop `high` and `ultra` tiers; `1` on `low`/`medium` or constrained mobile/iOS.
+ * Pure DPR-smart WebGPU MSAA resolver:
+ * - WebGPU `GPUTextureDescriptor.sampleCount` only supports `1` or `4`.
+ * - Returns `1` on constrained mobile, when `requestedSamples <= 1` (`low`/`medium`/`high`),
+ *   or whenever `pixelRatio >= 1.5` (HiDPI/Retina displays, eliminating `16x` subpixel shading
+ *   and skipping the full-res `msaaDepthResolveRtt` pass completely).
+ * - Returns `4` strictly on `ultra` when `pixelRatio < 1.5` on non-Retina desktop monitors.
+ */
+export function resolveEffectiveMsaaSamples({
+  requestedSamples,
+  pixelRatio,
+  isConstrainedMobile,
+}: ResolveEffectiveMsaaOptions): 1 | 4 {
+  if (isConstrainedMobile) return 1;
+  if (!Number.isFinite(requestedSamples) || requestedSamples <= 1) return 1;
+  if (Number.isFinite(pixelRatio) && pixelRatio >= 1.5) return 1;
+  return 4;
+}
+
+/**
+ * Pure helper selecting hardware MSAA sample count for `scenePass` by tier and effective pixel ratio.
  */
 export function resolveScenePassMsaaSamples(
   tier: GraphicsTier,
-  isConstrainedMobile: boolean
+  isConstrainedMobile: boolean,
+  pixelRatio = 1.0
 ): 1 | 4 {
-  if (isConstrainedMobile) return 1;
-  return tier === 'high' || tier === 'ultra' ? 4 : 1;
+  const requestedSamples = tier === 'ultra' ? 4 : 1;
+  return resolveEffectiveMsaaSamples({
+    requestedSamples,
+    pixelRatio,
+    isConstrainedMobile,
+  });
 }
 
 /** Vertical projection scale (`P[1][1]`) of the rig's 42-degree perspective camera; used until one is seen. */
@@ -172,6 +200,7 @@ export class PostProcessingPipeline {
   private hasPrevMatrix = false;
 
   private tier: GraphicsTier = 'low';
+  private requestedMsaaSamples: 1 | 4 = 1;
   private currentMsaaSamples: 1 | 4 = 1;
   private motionBlurEnabled = false;
   private motionBlurUserOverride: boolean | null = null;
@@ -208,11 +237,16 @@ export class PostProcessingPipeline {
   }
 
   private targetMsaaSamples(): 1 | 4 {
-    return resolveScenePassMsaaSamples(this.tier, detectMobile() || detectIOS());
+    return resolveEffectiveMsaaSamples({
+      requestedSamples: this.requestedMsaaSamples,
+      pixelRatio: this.currentPixelRatio,
+      isConstrainedMobile: detectMobile() || detectIOS(),
+    });
   }
 
   private assignTierSettings(settings: GraphicsTierSettings): void {
     this.tier = settings.tier;
+    this.requestedMsaaSamples = settings.msaaSamples ?? (settings.tier === 'ultra' ? 4 : 1);
     this.targetPixelRatio = Math.max(0.5, settings.pixelRatio);
     this.postEnabled = settings.postProcessing;
     this.ambientOcclusionEnabled = settings.postProcessing && settings.ambientOcclusion;
@@ -762,17 +796,9 @@ export class PostProcessingPipeline {
             centerViewNormal,
             gtaoUniforms
           ).toVar();
-          const microContact = evaluateDeterministicMicroContactShadow(
-            resolvedDepthNode,
-            centerViewPos,
-            centerViewNormal,
-            scaleDist,
-            gtaoUniforms
-          );
-          const combinedContact = min(upsampledAoContact.y, microContact);
           const effectFade = motionFade.mul(this.uHalfResFxWeight);
           gtaoVis.assign(mix(float(1.0), upsampledAoContact.x, effectFade));
-          contactVis.assign(mix(float(1.0), combinedContact, effectFade));
+          contactVis.assign(mix(float(1.0), upsampledAoContact.y, effectFade));
         });
 
         const neighborE = sampleHdr(vUv.add(vec2(this.uTexelSize.x, 0.0)));

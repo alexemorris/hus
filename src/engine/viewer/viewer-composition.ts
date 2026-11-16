@@ -317,6 +317,7 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
     }
     this.devices.changed.add(() => {
       this.cutaways.invalidateLodCache();
+      this.mirrors?.invalidateReflections();
       this.refreshView(false);
     });
     this.syncDaylightVolumeGi();
@@ -376,6 +377,7 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
     this.syncSceneTimeOfDayIfChanged(this.environment.getTimeOfDay());
     batches.optimize();
     this.mirrors = new MirrorReflectorController(scene, {
+      isFirstPerson: () => this.walkthrough.isActive(),
       resolveZoneAtPoint: (worldPoint) => {
         let bestId: string | null = null;
         let bestVol = Number.POSITIVE_INFINITY;
@@ -738,7 +740,11 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
       cameraMoved,
       () => {
         this.annotations.controller.prepareForRender();
-        this.mirrors.update(rig.getActiveCamera(), this.rooms.getCurrent());
+        this.mirrors.update(
+          rig.getActiveCamera(),
+          this.rooms.getCurrent(),
+          this.walkthrough.isActive()
+        );
       }
     );
     if (rendered) {
@@ -781,7 +787,10 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
       this.environment && activeTier !== 'low' && !deferPanShadowBake
         ? this.environment.updateShadowFrustumForCamera(shadowTarget, shadowDistM, isWalkthrough)
         : false;
-    if (result.shadowsDirty || shadowFrustumMoved) this.renderer.invalidateShadows();
+    if (result.shadowsDirty || shadowFrustumMoved) {
+      this.renderer.invalidateShadows();
+      this.mirrors?.invalidateReflections();
+    }
     if (result.needsRender || shadowFrustumMoved) this.renderer.requestRender();
     this.rooms.updateFromView(isWalkthrough, isWalkthrough ? camPos : rig.controls.target);
     this.camera.notifyView(forceNotifyView);
@@ -976,6 +985,7 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
     this.settleInteractiveScrubMode();
     this.environment.setTimeOfDay(mode);
     this.syncSceneTimeOfDayIfChanged(mode);
+    this.mirrors?.invalidateReflections();
     this.renderer.invalidateShadows();
     this.renderer.requestRender();
   }
