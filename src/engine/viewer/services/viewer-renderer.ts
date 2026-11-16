@@ -110,6 +110,7 @@ export class ViewerRenderer implements RenderInvalidator {
   public readonly post: PostProcessingPipeline;
   public onRequestRender: (() => void) | null = null;
   private readonly requestRenderListeners = new Set<() => void>();
+  private disposed = false;
   private initialized = false;
   private initPromise: Promise<void> | null = null;
   private needsRender = true;
@@ -145,12 +146,16 @@ export class ViewerRenderer implements RenderInvalidator {
   }
 
   public init(): Promise<void> {
-    if (this.initialized) return Promise.resolve();
+    if (this.disposed || this.initialized) return Promise.resolve();
     if (!this.initPromise) {
       const isMobile = detectMobile();
       this.initPromise = configureAdapterRequiredLimits(this.renderer, isMobile)
-        .then(() => this.renderer.init())
+        .then(() => {
+          if (this.disposed) return;
+          return this.renderer.init();
+        })
         .catch((err) => {
+          if (this.disposed) return;
           const backend = (
             this.renderer as unknown as {
               backend?: { parameters?: { requiredLimits?: Record<string, number> } };
@@ -163,6 +168,10 @@ export class ViewerRenderer implements RenderInvalidator {
           throw err;
         })
         .then(() => {
+          if (this.disposed) {
+            this.disposeInitializedBackend();
+            return;
+          }
           this.initialized = true;
           this.needsRender = true;
           this.shadowsDirty = true;
@@ -207,6 +216,7 @@ export class ViewerRenderer implements RenderInvalidator {
   }
 
   public requestRender(): void {
+    if (this.disposed) return;
     this.needsRender = true;
     this.notifyRequestRender();
   }
@@ -229,6 +239,7 @@ export class ViewerRenderer implements RenderInvalidator {
   }
 
   public resize(width: number, height: number): void {
+    if (this.disposed) return;
     this.post.resize(width, height);
     this.needsRender = true;
     this.notifyRequestRender();
@@ -245,7 +256,7 @@ export class ViewerRenderer implements RenderInvalidator {
     cameraMoved: boolean,
     beforeRender: () => void
   ): boolean {
-    if (!this.initialized) {
+    if (this.disposed || !this.initialized) {
       return false;
     }
     if (cameraMoved && this.post.isMotionBlurEnabled()) {
@@ -278,5 +289,39 @@ export class ViewerRenderer implements RenderInvalidator {
     }
     this.needsRender = false;
     return true;
+  }
+
+  public isDisposed(): boolean {
+    return this.disposed;
+  }
+
+  private disposeInitializedBackend(): void {
+    const internal = this.renderer as unknown as { _initialized?: boolean };
+    if (internal._initialized === false) {
+      this.renderer.setRenderTarget(null);
+      return;
+    }
+    try {
+      this.renderer.dispose();
+    } catch {
+      // Ignore teardown errors if backend initialization partially aborted
+    }
+  }
+
+  public dispose(): void {
+    if (this.disposed) return;
+    const wasInitialized = this.initialized;
+    this.disposed = true;
+    this.initialized = false;
+    this.needsRender = false;
+    this.postBlurSettleFrames = 0;
+    this.onRequestRender = null;
+    this.requestRenderListeners.clear();
+    this.post.dispose();
+    if (wasInitialized || (this.renderer as unknown as { _initialized?: boolean })._initialized !== false) {
+      this.disposeInitializedBackend();
+    } else {
+      this.renderer.setRenderTarget(null);
+    }
   }
 }

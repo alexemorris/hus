@@ -23,8 +23,8 @@ function isTypingTarget(el: Element | null): boolean {
  * F recenter · 1..N floors (N+1 = all; none for single-storey homes) · W walk · M measure · N note · ? help · Esc close/back.
  * Walk-mode movement keys are left to the walkthrough controller.
  */
-export function bindShellKeyboard(ctl: ShellController): void {
-  window.addEventListener('keydown', (e: KeyboardEvent) => {
+export function bindShellKeyboard(ctl: ShellController): () => void {
+  const onKeyDown = (e: KeyboardEvent): void => {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (isTypingTarget(document.activeElement)) {
       if (e.key === 'Escape' && document.activeElement instanceof HTMLElement) {
@@ -131,5 +131,9 @@ export function bindShellKeyboard(ctl: ShellController): void {
       default:
         break;
     }
-  });
+  };
+  window.addEventListener('keydown', onKeyDown);
+  return () => {
+    window.removeEventListener('keydown', onKeyDown);
+  };
 }

@@ -22,6 +22,12 @@ export type HouseEnvironmentPresetId =
   | 'english-countryside'
   | 'hollywood-hills';
 
+export function isHouseEnvironmentPresetId(
+  value: string | undefined
+): value is HouseEnvironmentPresetId {
+  return value === 'english-countryside' || value === 'hollywood-hills';
+}
+
 /** Broad climate classification governing seasonal foliage shifts and winter snow availability. */
 export type HouseClimateZone = 'temperate' | 'warm';
 

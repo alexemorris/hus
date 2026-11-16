@@ -128,6 +128,7 @@ export class HdrEnvironmentManager {
   private hasBakedProceduralEnvironments = false;
   private hdrUpgradeEnabled = true;
   private readonly activeHdrWorkers = new Set<Worker>();
+  private readonly activePreloadCancels = new Set<() => void>();
   private bakedProceduralSkyCount = 0;
   private requestedHdrCount = 0;
 
@@ -432,11 +433,34 @@ export class HdrEnvironmentManager {
     this.ensureCellLoading(resolved.cellId, resolved.cell, resolved.mode, activeRenderer);
     const pending = this.cellLoadPromises.get(resolved.cellId);
     if (pending) {
-      await Promise.race([
-        pending,
-        new Promise<void>((resolve) => setTimeout(resolve, 4000)),
-      ]);
+      let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+      let cancelWait: (() => void) | null = null;
+      const timeoutPromise = new Promise<void>((resolve) => {
+        cancelWait = () => {
+          if (fallbackTimer !== null) {
+            clearTimeout(fallbackTimer);
+            fallbackTimer = null;
+          }
+          resolve();
+        };
+        this.activePreloadCancels.add(cancelWait);
+        fallbackTimer = setTimeout(() => {
+          fallbackTimer = null;
+          if (cancelWait) this.activePreloadCancels.delete(cancelWait);
+          resolve();
+        }, 4000);
+      });
+      await Promise.race([pending, timeoutPromise]).finally(() => {
+        if (fallbackTimer !== null) {
+          clearTimeout(fallbackTimer);
+          fallbackTimer = null;
+        }
+        if (cancelWait) {
+          this.activePreloadCancels.delete(cancelWait);
+        }
+      });
     }
+    if (this.disposed) return;
     this.flushPendingHdrBakes(
       activeHdrBucket,
       sunDirection,
@@ -468,16 +492,19 @@ export class HdrEnvironmentManager {
     compileStep: (mode: TimeOfDay) => Promise<void>,
     activeQuery?: EnvironmentHdrQuery
   ): Promise<void> {
+    if (this.disposed) return;
     const savedUpgrade = this.hdrUpgradeEnabled;
     const savedContinuous = this.lastContinuousBlend;
     const savedBearing = this.lastPlusXTrueBearingDeg;
     this.hdrUpgradeEnabled = false;
     try {
       for (const mode of TIMES_OF_DAY) {
+        if (this.disposed) return;
         const renderer = this.pool.pmremRenderer ?? this.renderer;
         if (renderer) {
           this.ensureProceduralBucketOnly(mode, renderer);
         }
+        if (this.disposed) return;
         if (!this.proceduralEnvMaps[mode] && !this.proceduralBgMaps[mode]) continue;
         this.applyEnvironmentTextures(mode, sunDirection, fallbackFogColor, {
           query: mode === activeHdrBucket ? activeQuery : DEFAULT_QUERY_BY_MODE[mode],
@@ -485,16 +512,19 @@ export class HdrEnvironmentManager {
           animate: false,
         });
         await compileStep(mode);
+        if (this.disposed) return;
       }
     } finally {
-      this.hdrUpgradeEnabled = savedUpgrade;
-      this.applyEnvironmentTextures(activeHdrBucket, sunDirection, fallbackFogColor, {
-        query: activeQuery,
-        continuousBlend: savedContinuous,
-        plusXTrueBearingDeg: savedBearing,
-        animate: false,
-      });
-      onRestoreState();
+      if (!this.disposed) {
+        this.hdrUpgradeEnabled = savedUpgrade;
+        this.applyEnvironmentTextures(activeHdrBucket, sunDirection, fallbackFogColor, {
+          query: activeQuery,
+          continuousBlend: savedContinuous,
+          plusXTrueBearingDeg: savedBearing,
+          animate: false,
+        });
+        onRestoreState();
+      }
     }
   }
 
@@ -716,6 +746,7 @@ export class HdrEnvironmentManager {
     fallbackFogColor: THREE.Color,
     queryOrOptions?: EnvironmentHdrQuery | ApplyEnvironmentTexturesOptions
   ): void {
+    if (this.disposed) return;
     const isQuery =
       queryOrOptions !== undefined &&
       'season' in queryOrOptions &&
@@ -852,6 +883,10 @@ export class HdrEnvironmentManager {
   public dispose(): void {
     this.disposed = true;
     this.hdrTransitionActive = false;
+    for (const cancel of [...this.activePreloadCancels]) {
+      cancel();
+    }
+    this.activePreloadCancels.clear();
     for (const worker of this.activeHdrWorkers) {
       worker.terminate();
     }

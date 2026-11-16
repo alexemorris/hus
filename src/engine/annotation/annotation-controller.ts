@@ -92,9 +92,11 @@ export class SceneAnnotationController {
   private readonly transformPivot = new THREE.Object3D();
   private readonly gizmoRootGroup = new THREE.Group();
   private transformControls: TransformControls | null = null;
-  private transformControlsPromise: Promise<TransformControls> | null = null;
+  private transformControlsPromise: Promise<TransformControls | null> | null = null;
   private readonly transformSelectionBox: THREE.BoxHelper;
   private wasDraggingGizmo = false;
+  private dragEndTimer: ReturnType<typeof setTimeout> | null = null;
+  private disposed = false;
 
   private annotationMode = false;
   private annotationToolMode: AnnotationToolMode = 'pin';
@@ -133,13 +135,21 @@ export class SceneAnnotationController {
     this.liveMeasurePreviewGroup.userData.isAnnotationGroup = true;
   }
 
-  private ensureTransformControls(): Promise<TransformControls> {
+  private ensureTransformControls(): Promise<TransformControls | null> {
+    if (this.disposed) return Promise.resolve(null);
     if (this.transformControls) return Promise.resolve(this.transformControls);
     if (!this.transformControlsPromise) {
       this.transformControlsPromise = import(
         'three/examples/jsm/controls/TransformControls.js'
       ).then(({ TransformControls: TransformControlsCtor }) => {
+        if (this.disposed) {
+          return null;
+        }
         const tc = new TransformControlsCtor(this.host.getActiveCamera(), this.host.canvas);
+        if (this.disposed) {
+          tc.dispose();
+          return null;
+        }
         tc.setSize(0.85);
         tc.setSpace('world');
         tc.setMode(this.gizmoTransformMode);
@@ -151,22 +161,35 @@ export class SceneAnnotationController {
         });
         this.gizmoRootGroup.add(tcHelper);
         tc.addEventListener('change', () => {
+          if (this.disposed) return;
           this.host.requestRender();
         });
         tc.addEventListener('dragging-changed', (event) => {
+          if (this.disposed) return;
           const isDragging = Boolean(event.value);
           this.host.orbitControls.enabled = !isDragging;
           if (isDragging) {
+            if (this.dragEndTimer !== null) {
+              clearTimeout(this.dragEndTimer);
+              this.dragEndTimer = null;
+            }
             this.wasDraggingGizmo = true;
           } else {
             this.syncSelectedPivotToTargetObject(true);
-            setTimeout(() => {
-              this.wasDraggingGizmo = false;
+            if (this.dragEndTimer !== null) {
+              clearTimeout(this.dragEndTimer);
+            }
+            this.dragEndTimer = setTimeout(() => {
+              this.dragEndTimer = null;
+              if (!this.disposed) {
+                this.wasDraggingGizmo = false;
+              }
             }, 40);
           }
           this.host.requestRender();
         });
         tc.addEventListener('objectChange', () => {
+          if (this.disposed) return;
           this.syncSelectedPivotToTargetObject(true);
         });
         this.transformControls = tc;
@@ -373,6 +396,37 @@ export class SceneAnnotationController {
     }
     this.host.invalidateShadows();
     this.host.requestRender();
+  }
+
+  public dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.annotationMode = false;
+    this.activeMovedUuid = null;
+    this.measureStartHit = null;
+    this.wasDraggingGizmo = false;
+    if (this.dragEndTimer !== null) {
+      clearTimeout(this.dragEndTimer);
+      this.dragEndTimer = null;
+    }
+    if (this.transformControls) {
+      const helper = this.transformControls.getHelper();
+      this.transformControls.detach();
+      this.transformControls.enabled = false;
+      this.gizmoRootGroup.remove(helper);
+      this.transformControls.dispose();
+      this.transformControls = null;
+    }
+    this.transformControlsPromise = null;
+    clearGroupChildren(this.annotationMarkersGroup);
+    clearGroupChildren(this.liveMeasurePreviewGroup);
+    this.transformSelectionBox.visible = false;
+    this.transformSelectionBox.dispose();
+    this.onAnnotationPick = null;
+    this.onAnnotationMarkerSelect = null;
+    this.onObjectTransformChange = null;
+    this.onMeasurePreviewChange = null;
+    this.onMeasureComplete = null;
   }
 
   public detachMoveGizmo(): void {
@@ -886,8 +940,8 @@ export class SceneAnnotationController {
     this.transformPivot.updateMatrix();
     this.transformPivot.updateMatrixWorld(true);
 
-    const attachControls = (tc: TransformControls): void => {
-      if (this.activeMovedUuid !== baseline.obj.uuid) return;
+    const attachControls = (tc: TransformControls | null): void => {
+      if (!tc || this.disposed || this.activeMovedUuid !== baseline.obj.uuid) return;
       tc.camera = this.host.getActiveCamera();
       tc.setMode(this.gizmoTransformMode);
       tc.enabled = true;

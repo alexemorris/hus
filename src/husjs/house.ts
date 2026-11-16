@@ -468,44 +468,48 @@ export function computeAnimationStepSeconds(
   return Math.min(maxStepSec, Math.max(0, (nowMs - lastFrameTimeMs) / 1000));
 }
 
-function installMobileViewportZoomGuard(canvasId: string): void {
+function installMobileViewportZoomGuard(canvasId: string): () => void {
   const preventEvent = (e: Event): void => {
     e.preventDefault();
   };
+  const onTouchMove = (e: TouchEvent): void => {
+    const scaledEvent = e as TouchEvent & { readonly scale?: number };
+    if (scaledEvent.scale !== undefined && scaledEvent.scale !== 1) {
+      e.preventDefault();
+      return;
+    }
+    if (e.touches.length > 1) {
+      const target = e.target as HTMLElement | null;
+      if (!target || target.id !== canvasId) {
+        e.preventDefault();
+      }
+    }
+  };
+  const onWheel = (e: WheelEvent): void => {
+    if (e.ctrlKey) {
+      const target = e.target as HTMLElement | null;
+      if (!target || target.id !== canvasId) {
+        e.preventDefault();
+      }
+    }
+  };
+
   document.addEventListener('gesturestart', preventEvent, { passive: false });
   document.addEventListener('gesturechange', preventEvent, { passive: false });
   document.addEventListener('gestureend', preventEvent, { passive: false });
+  document.addEventListener('touchmove', onTouchMove, { passive: false });
+  window.addEventListener('wheel', onWheel, { passive: false });
 
-  document.addEventListener(
-    'touchmove',
-    (e: TouchEvent) => {
-      const scaledEvent = e as TouchEvent & { readonly scale?: number };
-      if (scaledEvent.scale !== undefined && scaledEvent.scale !== 1) {
-        e.preventDefault();
-        return;
-      }
-      if (e.touches.length > 1) {
-        const target = e.target as HTMLElement | null;
-        if (!target || target.id !== canvasId) {
-          e.preventDefault();
-        }
-      }
-    },
-    { passive: false }
-  );
-
-  window.addEventListener(
-    'wheel',
-    (e: WheelEvent) => {
-      if (e.ctrlKey) {
-        const target = e.target as HTMLElement | null;
-        if (!target || target.id !== canvasId) {
-          e.preventDefault();
-        }
-      }
-    },
-    { passive: false }
-  );
+  let disposed = false;
+  return () => {
+    if (disposed) return;
+    disposed = true;
+    document.removeEventListener('gesturestart', preventEvent);
+    document.removeEventListener('gesturechange', preventEvent);
+    document.removeEventListener('gestureend', preventEvent);
+    document.removeEventListener('touchmove', onTouchMove);
+    window.removeEventListener('wheel', onWheel);
+  };
 }
 
 function createEmptyKnxProject(
@@ -668,7 +672,7 @@ export async function mountHouse<TSecurity extends SecurityOverlay3D = SecurityO
   options: MountHouseOptions<TSecurity> = {}
 ): Promise<MountedHouse<TSecurity>> {
   const { hostEl, canvasEl, shellRoot } = resolveContainerElements(container, options);
-  installMobileViewportZoomGuard(canvasEl.id || 'three-canvas');
+  const disposeZoomGuard = installMobileViewportZoomGuard(canvasEl.id || 'three-canvas');
   const loading = getLoadingScreen(hostEl, house.name);
   if (typeof document !== 'undefined' && typeof document.title === 'string') {
     document.title = `${house.name} — Digital Twin`;
@@ -765,8 +769,8 @@ export async function mountHouse<TSecurity extends SecurityOverlay3D = SecurityO
     }
   };
 
-  if (isConventionalElectrical) {
-    knx.subscribe((ev) => {
+  const convKnxUnsub = isConventionalElectrical
+    ? knx.subscribe((ev) => {
       if (syncingConventionalBus || ev.type !== 'stateChange') return;
       syncingConventionalBus = true;
       try {
@@ -785,8 +789,8 @@ export async function mountHouse<TSecurity extends SecurityOverlay3D = SecurityO
       } finally {
         syncingConventionalBus = false;
       }
-    });
-  }
+    })
+    : null;
 
   const onObjectInteraction = (
     userData: InteractiveUserData,
@@ -956,9 +960,8 @@ export async function mountHouse<TSecurity extends SecurityOverlay3D = SecurityO
 
   await loading.setProgress('Preparing controls…', 0.52);
 
-  if (options.mountDev !== false) {
-    mountDevTools({ scene, knx, hub, api });
-  }
+  const disposeDevTools =
+    options.mountDev !== false ? mountDevTools({ scene, knx, hub, api }) : null;
   const shell = mountAppShell(
     { api, ...(options.mountDev !== false ? { devDrawer: DevDrawer } : {}) },
     shellRoot
@@ -982,8 +985,13 @@ export async function mountHouse<TSecurity extends SecurityOverlay3D = SecurityO
     console.error('[husjs/mountHouse] warmUpForStartup error (continuing boot):', err);
   }
   loading.finish();
+  let disposed = false;
+  let helpRafId = 0;
   if (!hasSeenHelp()) {
-    window.requestAnimationFrame(() => openHelp(0));
+    helpRafId = window.requestAnimationFrame(() => {
+      helpRafId = 0;
+      if (!disposed) openHelp(0);
+    });
   }
 
   const IDLE_TICKS_BEFORE_SLEEP = 3;
@@ -993,7 +1001,6 @@ export async function mountHouse<TSecurity extends SecurityOverlay3D = SecurityO
   let paceTimerId = 0;
   let consecutiveIdleTicks = 0;
   let inAnimateTick = false;
-  let disposed = false;
 
   const scheduleNextFrame = (): void => {
     if (!disposed && rafId === 0 && !document.hidden) {
@@ -1050,7 +1057,7 @@ export async function mountHouse<TSecurity extends SecurityOverlay3D = SecurityO
     }
   };
 
-  scene.renderer.addRequestRenderListener(wakeLoop);
+  const removeRenderListener = scene.renderer.addRequestRenderListener(wakeLoop);
   const knxUnsub = knx.subscribe(() => wakeLoop());
   const elecUnsub = electrical.subscribe(() => wakeLoop());
 
@@ -1085,16 +1092,32 @@ export async function mountHouse<TSecurity extends SecurityOverlay3D = SecurityO
     useSimulation: () => knx.useSimulationTransport(),
     injectTelegram: (frameOrHex: string | InboundKNXFrame) => knx.ingestExternalFrame(frameOrHex),
     dispose: () => {
+      if (disposed) return;
       disposed = true;
-      if (paceTimerId !== 0) clearTimeout(paceTimerId);
-      if (rafId !== 0) cancelAnimationFrame(rafId);
+      if (paceTimerId !== 0) {
+        clearTimeout(paceTimerId);
+        paceTimerId = 0;
+      }
+      if (rafId !== 0) {
+        cancelAnimationFrame(rafId);
+        rafId = 0;
+      }
+      if (helpRafId !== 0) {
+        cancelAnimationFrame(helpRafId);
+        helpRafId = 0;
+      }
+      disposeZoomGuard();
+      removeRenderListener();
       document.removeEventListener('visibilitychange', onVisibilityChange);
       hubUnsub();
       knxUnsub();
       elecUnsub();
+      convKnxUnsub?.();
       knxAdapter?.dispose();
-      void shell;
+      disposeDevTools?.();
+      shell.dispose();
       runtime.dispose();
+      scene.dispose();
       if (typeof window !== 'undefined') {
         const win = window as unknown as Record<string, unknown>;
         if (win['__HUSJS_MOUNTED__'] === mountedHandle) {

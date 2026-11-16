@@ -108,6 +108,12 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
   private readonly audioEmitters: readonly AudioEmitterHandle[];
   private readonly isInteriorAcousticPoint: (x: number, y: number, z: number) => boolean;
   private readonly exteriorPortalsScratch: AcousticPortalState[] = [];
+  private readonly disposeAbortController = new AbortController();
+  private readonly resizeObserver: ResizeObserver | null = null;
+  private readonly onWindowResize = (): void => {
+    if (!this.disposed) this.handleResize();
+  };
+  private disposed = false;
 
   public constructor(
     canvas: HTMLCanvasElement,
@@ -456,12 +462,14 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
       toggleUfhZone: (zoneId) => this.devices.toggleUfhZone(zoneId),
       onObjectInteraction,
     });
-    window.addEventListener('resize', () => this.handleResize());
-    window.addEventListener('orientationchange', () => this.handleResize());
-    window.visualViewport?.addEventListener('resize', () => this.handleResize());
+    const { signal } = this.disposeAbortController;
+    window.addEventListener('resize', this.onWindowResize, { signal });
+    window.addEventListener('orientationchange', this.onWindowResize, { signal });
+    window.visualViewport?.addEventListener('resize', this.onWindowResize, { signal });
     if (typeof ResizeObserver !== 'undefined') {
-      const ro = new ResizeObserver(() => this.handleResize());
+      const ro = new ResizeObserver(this.onWindowResize);
       ro.observe(canvas);
+      this.resizeObserver = ro;
     }
 
     // Navigation: anchor pans / orbits / zooms on the visible surface under the cursor.
@@ -490,6 +498,7 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
   }
 
   public handleResize(): void {
+    if (this.disposed) return;
     const w = this.canvas.clientWidth;
     const h = Math.max(1, this.canvas.clientHeight);
     this.camera.rig.resize(w, h);
@@ -1043,7 +1052,9 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
   public async warmUpForStartup(
     onProgress?: (label: string, fraction: number) => Promise<void> | void
   ): Promise<void> {
+    if (this.disposed) return;
     await this.renderer.init();
+    if (this.disposed) return;
     this.graphics.refreshDeviceProfile();
     this.staticScene.batchOptimizer.stepFades(0);
     this.walkthrough.warmSpatialIndices();
@@ -1055,18 +1066,23 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
     // Load & PMREM-bake the 512x256 HDRI upfront during #loading-screen
     //    so zero post-boot HDR fetch/decode/PMREM stalls ever occur after loading.finish().
     await onProgress?.('Loading countryside HDRI…', 0.72);
+    if (this.disposed) return;
     await this.environment.preloadActiveHdr(glRenderer);
+    if (this.disposed) return;
 
     // Upload unique scene textures (DataTextures, HDR PMREM, async images, canvases)
     //    to GPU VRAM upfront while #loading-screen is visible so zero post-boot texture uploads occur.
     await onProgress?.('Uploading PBR surface maps…', 0.80);
+    if (this.disposed) return;
     const uploadedTextures = await this.uploadAllSceneTexturesUpfront();
+    if (this.disposed) return;
 
     // Synchronize starting exterior view & matrices, then compile unique scene
     //    GPURenderPipelines (including hidden LOD0/LOD1/LOD2 rooms, cutaway walls, doors,
     //    transparent glass, DoubleSide, mirrored negative-scale, and cutaway-toggled light variants)
     //    asynchronously in parallel against the exact MSAA rgba16float PassNode target.
     await onProgress?.('Compiling GPU pipelines…', 0.88);
+    if (this.disposed) return;
     const rendererCoordSys = (
       glRenderer as unknown as { coordinateSystem?: THREE.CoordinateSystem }
     ).coordinateSystem;
@@ -1094,25 +1110,29 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
     this.scene.add(warmupGroup);
     warmupGroup.updateMatrixWorld(true);
 
-    this.renderer.invalidateShadows();
-    for (const child of this.scene.children) {
-      if (child instanceof THREE.Light && child.castShadow && child.shadow) {
-        child.shadow.autoUpdate = false;
-        child.shadow.needsUpdate = true;
-      }
-    }
-
-    await this.compileSceneAcrossTimeOfDayBuckets(perspCam);
-
-    // Render Frame 0 (including the 4096x4096 directional shadow pass while zero-area warmup
-    //    dummies are attached so all shadow-caster depth pipelines also compile upfront).
-    await onProgress?.('Rendering first frame…', 0.96);
-    this.renderer.invalidateShadows();
-    this.renderer.requestRender();
     try {
-      this.update(0.016);
-    } catch (err) {
-      console.warn('[warmUpForStartup] initial frame warning:', err);
+      this.renderer.invalidateShadows();
+      for (const child of this.scene.children) {
+        if (child instanceof THREE.Light && child.castShadow && child.shadow) {
+          child.shadow.autoUpdate = false;
+          child.shadow.needsUpdate = true;
+        }
+      }
+
+      await this.compileSceneAcrossTimeOfDayBuckets(perspCam);
+      if (this.disposed) return;
+
+      // Render Frame 0 (including the 4096x4096 directional shadow pass while zero-area warmup
+      //    dummies are attached so all shadow-caster depth pipelines also compile upfront).
+      await onProgress?.('Rendering first frame…', 0.96);
+      if (this.disposed) return;
+      this.renderer.invalidateShadows();
+      this.renderer.requestRender();
+      try {
+        this.update(0.016);
+      } catch (err) {
+        console.warn('[warmUpForStartup] initial frame warning:', err);
+      }
     } finally {
       for (const m of temporarilyShownMaterials) {
         m.visible = false;
@@ -1125,6 +1145,7 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
       this.retainedWarmupDisposables.length = 0;
     }
 
+    if (this.disposed) return;
     this.releaseUploadedStaticSceneCanvases(uploadedTextures);
 
     try {
@@ -1137,6 +1158,7 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
   private async compileSceneAcrossTimeOfDayBuckets(
     perspCam: THREE.PerspectiveCamera
   ): Promise<void> {
+    if (this.disposed) return;
     const glRenderer = this.renderer.renderer;
     // Three.js WebGPU RenderObject hashes InstancedMesh.uuid into its material cache key, so
     // temporarily expose 1 parked zero-scale slot on dormant InstancedMeshes (e.g. volumetric clouds)
@@ -1171,6 +1193,7 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
         perspCam,
         () =>
           this.environment.withEachEnvironmentBucketForCompile(async () => {
+            if (this.disposed) return;
             const zeroOpacityMats: THREE.Material[] = [];
             for (const inst of parkedInstanced) {
               inst.count = 1;
@@ -1268,6 +1291,7 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
     }
     if (pendingImageLoads.length > 0) {
       await Promise.all(pendingImageLoads);
+      if (this.disposed) return uniqueTextures;
     }
 
     for (const tex of uniqueTextures) {
@@ -1594,6 +1618,13 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
   }
 
   public dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.disposeAbortController.abort();
+    window.removeEventListener('resize', this.onWindowResize);
+    window.removeEventListener('orientationchange', this.onWindowResize);
+    window.visualViewport?.removeEventListener('resize', this.onWindowResize);
+    this.resizeObserver?.disconnect();
     if (this.trailingShadowTimer !== null) {
       clearTimeout(this.trailingShadowTimer);
       this.trailingShadowTimer = null;
@@ -1609,8 +1640,16 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
     for (let i = 0; i < smartEmitters.length; i++) {
       smartEmitters[i]!.dispose();
     }
+    for (const d of this.retainedWarmupDisposables.splice(0)) {
+      d.dispose();
+    }
+    this.walkthrough.dispose();
+    this.input.dispose();
+    this.annotations.dispose();
+    this.camera.rig.dispose();
     this.assetInspector.dispose();
     this.terrainSculpt.dispose();
     this.environment.dispose();
+    this.renderer.dispose();
   }
 }

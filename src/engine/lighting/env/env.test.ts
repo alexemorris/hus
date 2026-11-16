@@ -1262,3 +1262,124 @@ describe('HDRI solarization & top-to-bottom row orientation regressions', () => 
     expect(zenithG).toBeGreaterThan(nadirG * 3);
   });
 });
+
+import { HdrEnvironmentManager } from './hdr-environment-manager.ts';
+
+describe('HdrEnvironmentManager async cancellation & timer cleanup', () => {
+  it('clears the 4s preload fallback timer as soon as pending settles or dispose() runs mid-await', async () => {
+    vi.useFakeTimers();
+    try {
+      const scene = new THREE.Scene();
+      const fakeRenderer = { isWebGPURenderer: true } as unknown as WebGPURenderer;
+      let applyCalls = 0;
+      const mgr = new HdrEnvironmentManager({
+        scene,
+        renderer: fakeRenderer,
+        bakeEquirectPmrem: () => new THREE.RenderTarget(2, 2),
+        onApplyIntensities: () => {
+          applyCalls++;
+        },
+      });
+
+      let resolveLoad!: () => void;
+      const internal = mgr as unknown as {
+        hdrLoader: { load: (url: string, onLoad: (tex: THREE.DataTexture) => void) => void };
+      };
+      internal.hdrLoader = {
+        load: (_url, onLoad) => {
+          resolveLoad = () => {
+            const raw = new THREE.DataTexture(
+              new Float32Array(4 * 2 * 4).fill(0.5),
+              4,
+              2,
+              THREE.RGBAFormat,
+              THREE.FloatType
+            );
+            onLoad(raw);
+          };
+        },
+      };
+
+      const sunDir = new THREE.Vector3(0.4, 0.7, 0.5).normalize();
+      const fogColor = new THREE.Color(0xbfd4e8);
+      const preloadPromise = mgr.preloadActiveHdr(fakeRenderer, 'day', sunDir, fogColor, false);
+
+      // 4s fallback timer is armed while HDR load is in flight
+      expect(vi.getTimerCount()).toBe(1);
+
+      resolveLoad();
+      await preloadPromise;
+
+      // Settling pending must clear the 4s fallback timer immediately
+      expect(vi.getTimerCount()).toBe(0);
+
+      // Second scenario: disposing mid-preload cancels the 4s timer and skips post-await mutation
+      const mgr2 = new HdrEnvironmentManager({
+        scene: new THREE.Scene(),
+        renderer: fakeRenderer,
+        bakeEquirectPmrem: () => new THREE.RenderTarget(2, 2),
+        onApplyIntensities: () => {
+          applyCalls++;
+        },
+      });
+      (mgr2 as unknown as typeof internal).hdrLoader = {
+        load: () => {
+          // Never resolves
+        },
+      };
+      const callsBefore = applyCalls;
+      const preload2 = mgr2.preloadActiveHdr(fakeRenderer, 'dusk', sunDir, fogColor, false);
+      expect(vi.getTimerCount()).toBe(1);
+
+      mgr2.dispose();
+      expect(vi.getTimerCount()).toBe(0);
+      await preload2;
+      expect(applyCalls).toBe(callsBefore);
+
+      mgr.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('aborts withEachEnvironmentBucketForCompile mid-await and skips finally restore when disposed', async () => {
+    const scene = new THREE.Scene();
+    const fakeRenderer = { isWebGPURenderer: true } as unknown as WebGPURenderer;
+    let applyCount = 0;
+    const mgr = new HdrEnvironmentManager({
+      scene,
+      renderer: fakeRenderer,
+      bakeEquirectPmrem: () => new THREE.RenderTarget(2, 2),
+      onApplyIntensities: () => {
+        applyCount++;
+      },
+    });
+
+    const sunDir = new THREE.Vector3(0.4, 0.7, 0.5).normalize();
+    const fogColor = new THREE.Color(0xbfd4e8);
+    mgr.bakeProceduralEnvironments(fakeRenderer, 'day', sunDir, fogColor, { deferHdr: true });
+
+    const visitedModes: string[] = [];
+    let restoreCalled = false;
+
+    await mgr.withEachEnvironmentBucketForCompile(
+      'day',
+      sunDir,
+      fogColor,
+      () => {
+        restoreCalled = true;
+      },
+      async (mode) => {
+        visitedModes.push(mode);
+        mgr.dispose();
+        await Promise.resolve();
+      }
+    );
+
+    expect(visitedModes).toEqual(['day']);
+    expect(restoreCalled).toBe(false);
+    const countAfterCompile = applyCount;
+    mgr.applyEnvironmentTextures('dusk', sunDir, fogColor);
+    expect(applyCount).toBe(countAfterCompile);
+  });
+});

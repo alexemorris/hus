@@ -84,6 +84,10 @@ export class AnnotationService {
     return this.controller.isAnnotationMode();
   }
 
+  public dispose(): void {
+    this.controller.dispose();
+  }
+
   /**
    * Unbatches only the picked subtree/zone when Move/Rotate selects an object,
    * keeping all other rooms batched for fast raycasting and low draw calls.

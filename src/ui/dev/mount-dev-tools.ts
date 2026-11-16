@@ -26,7 +26,7 @@ let stopActiveMount: (() => void) | null = null;
  * (devStore sync + dev-only keyboard shortcuts) via dynamic `import()` the first
  * time Developer Mode is enabled. Calling it again replaces the previous mount.
  */
-export function mountDevTools(deps: DevToolsDeps): void {
+export function mountDevTools(deps: DevToolsDeps): () => void {
   stopActiveMount?.();
   devToolsMounted.value = false;
   devToolsDeps.value = deps;
@@ -45,10 +45,18 @@ export function mountDevTools(deps: DevToolsDeps): void {
     });
   });
 
-  stopActiveMount = () => {
+  const dispose = (): void => {
+    if (stopped) return;
     stopped = true;
     stopModeEffect();
     disposeRuntime?.();
     disposeRuntime = null;
+    if (stopActiveMount === dispose) {
+      stopActiveMount = null;
+      devToolsMounted.value = false;
+      devToolsDeps.value = null;
+    }
   };
+  stopActiveMount = dispose;
+  return dispose;
 }

@@ -75,10 +75,13 @@ export function mountAppShell(options: MountShellOptions, root: HTMLElement): Sh
   if (share) guestMode.value = share.guest;
 
   bindBodyClasses();
-  if (options.bindKeyboard !== false) {
-    bindShellKeyboard(ctl);
-  }
+  const unbindKeyboard = options.bindKeyboard !== false ? bindShellKeyboard(ctl) : null;
   render(<HusShell ctl={ctl} annotator={annotator} devDrawer={options.devDrawer} />, root);
+  ctl.addDisposer(() => {
+    unbindKeyboard?.();
+    render(null, root);
+    annotator.dispose();
+  });
 
   if (share) ctl.applyShareState(share);
   return ctl;

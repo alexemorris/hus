@@ -56,19 +56,41 @@ export class PointerInput {
   private lastTouchTapMs = 0;
   private lastTouchTapPos = { x: 0, y: 0 };
   private readonly scratchWorldPos = new THREE.Vector3();
+  private readonly abortController = new AbortController();
+  private disposed = false;
+  private readonly handlePointerDown: (e: PointerEvent) => void;
+  private readonly handlePointerMove = (e: PointerEvent): void => this.onPointerMove(e);
+  private readonly handlePointerUp = (e: PointerEvent): void => this.onPointerUp(e);
+  private readonly handleDoubleClick = (e: MouseEvent): void => this.onDoubleClick(e);
+  private readonly handleContextMenu = (e: MouseEvent): void => this.onContextMenu(e);
 
   public constructor(host: PointerInputHost) {
     this.host = host;
     const { canvas } = host;
-    canvas.addEventListener('pointerdown', (e) => {
+    const { signal } = this.abortController;
+    this.handlePointerDown = (e: PointerEvent): void => {
+      if (this.disposed) return;
       this.pointerDownPos = { x: e.clientX, y: e.clientY };
       this.pointerDownMs = performance.now();
       this.pointerDownWasLocked = document.pointerLockElement === canvas;
-    });
-    canvas.addEventListener('pointermove', (e) => this.onPointerMove(e));
-    canvas.addEventListener('pointerup', (e) => this.onPointerUp(e));
-    canvas.addEventListener('dblclick', (e) => this.onDoubleClick(e));
-    canvas.addEventListener('contextmenu', (e) => this.onContextMenu(e));
+    };
+    canvas.addEventListener('pointerdown', this.handlePointerDown, { signal });
+    canvas.addEventListener('pointermove', this.handlePointerMove, { signal });
+    canvas.addEventListener('pointerup', this.handlePointerUp, { signal });
+    canvas.addEventListener('dblclick', this.handleDoubleClick, { signal });
+    canvas.addEventListener('contextmenu', this.handleContextMenu, { signal });
+  }
+
+  public dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.abortController.abort();
+    const { canvas } = this.host;
+    canvas.removeEventListener('pointerdown', this.handlePointerDown);
+    canvas.removeEventListener('pointermove', this.handlePointerMove);
+    canvas.removeEventListener('pointerup', this.handlePointerUp);
+    canvas.removeEventListener('dblclick', this.handleDoubleClick);
+    canvas.removeEventListener('contextmenu', this.handleContextMenu);
   }
 
   /** Activates a device mesh (click or walkthrough "E" interaction). */

@@ -201,3 +201,58 @@ describe('SceneAnnotationStore.formatForAgent', () => {
     expect(parsed.map((r: { kind: string }) => r.kind)).toEqual(['pin', 'move', 'measure']);
   });
 });
+
+describe('SceneAnnotationController lifecycle & async TransformControls cancellation', () => {
+  it('clears pending 40ms dragEnd timer, ignores stale dynamic TransformControls import after dispose(), and is idempotent', async () => {
+    vi.useFakeTimers();
+    try {
+      const { scene, raycaster, controller } = makeControllerHarness();
+      const mat = new THREE.MeshStandardMaterial({ color: 0x996633 });
+      const stoolGroup = new THREE.Group();
+      stoolGroup.name = 'kitchen.stool';
+      const seatMesh = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), mat);
+      seatMesh.name = 'kitchen.stool.seat';
+      seatMesh.position.set(0, 1.5, 0);
+      stoolGroup.add(seatMesh);
+      scene.add(stoolGroup);
+      scene.updateMatrixWorld(true);
+
+      controller.setAnnotationToolMode('move');
+      raycaster.set(new THREE.Vector3(0, 1.5, 5), new THREE.Vector3(0, 0, -1));
+      controller.handleClick(raycaster, {
+        clientX: 400,
+        clientY: 300,
+        shiftKey: false,
+      } as PointerEvent);
+
+      // Simulate a pending 40ms drag-end timer before dispose()
+      const internal = controller as unknown as {
+        wasDraggingGizmo: boolean;
+        dragEndTimer: ReturnType<typeof setTimeout> | null;
+        gizmoRootGroup: THREE.Group;
+        transformControls: unknown;
+      };
+      internal.wasDraggingGizmo = true;
+      internal.dragEndTimer = setTimeout(() => {
+        internal.wasDraggingGizmo = false;
+      }, 40);
+
+      // Dispose mid-flight before dynamic import('.../TransformControls.js') settles
+      controller.dispose();
+      controller.dispose(); // idempotent
+
+      expect(internal.dragEndTimer).toBeNull();
+      expect(vi.getTimerCount()).toBe(0);
+
+      // Allow dynamic import microtasks to settle; disposed controller must not attach or retain gizmo
+      await vi.runAllTimersAsync();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(internal.transformControls).toBeNull();
+      expect(internal.gizmoRootGroup.children).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

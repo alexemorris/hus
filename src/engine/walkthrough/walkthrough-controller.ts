@@ -191,6 +191,9 @@ export class WalkthroughController {
   private readonly centerNdc = new THREE.Vector2(0, 0);
   private readonly moveVec = new THREE.Vector3();
   private readonly listeners = new Set<(active: boolean) => void>();
+  private readonly abortController = new AbortController();
+  private readonly listenerCleanups: Array<() => void> = [];
+  private disposed = false;
 
   public constructor(options: {
     readonly canvas: HTMLCanvasElement;
@@ -469,12 +472,12 @@ export class WalkthroughController {
   }
 
   public requestMouseLock(): void {
-    if (!this.active) return;
+    if (!this.active || this.disposed) return;
     if (document.pointerLockElement === this.canvas) {
       document.exitPointerLock?.();
     } else {
       try {
-        this.canvas.requestPointerLock?.();
+        void Promise.resolve(this.canvas.requestPointerLock?.()).catch(() => undefined);
       } catch {
         // Ignore if browser blocks pointer lock outside direct gesture
       }
@@ -1443,13 +1446,20 @@ export class WalkthroughController {
   }
 
   private bindInputEvents(): void {
-    document.addEventListener('pointerlockchange', () => {
+    const { signal } = this.abortController;
+
+    const onPointerLockChange = (): void => {
+      if (this.disposed) return;
       this.pointerLocked = document.pointerLockElement === this.canvas;
       this.emit();
-    });
+    };
+    document.addEventListener('pointerlockchange', onPointerLockChange, { signal });
+    this.listenerCleanups.push(() =>
+      document.removeEventListener('pointerlockchange', onPointerLockChange)
+    );
 
-    this.canvas.addEventListener('pointerdown', (e: PointerEvent) => {
-      if (!this.active || e.button !== 0) return;
+    const onCanvasPointerDown = (e: PointerEvent): void => {
+      if (this.disposed || !this.active || e.button !== 0) return;
       this.blurActiveControlIfNeeded();
       if (this.pointerLocked) {
         this.triggerTargetedInteraction();
@@ -1466,7 +1476,7 @@ export class WalkthroughController {
         }
       } else {
         try {
-          this.canvas.requestPointerLock?.();
+          void Promise.resolve(this.canvas.requestPointerLock?.()).catch(() => undefined);
         } catch {
           // Fallback to drag look
         }
@@ -1478,57 +1488,62 @@ export class WalkthroughController {
       this.dragLookStartX = e.clientX;
       this.dragLookStartY = e.clientY;
       this.dragLookStartTimeMs = performance.now();
-    });
+    };
+    this.canvas.addEventListener('pointerdown', onCanvasPointerDown, { signal });
+    this.listenerCleanups.push(() =>
+      this.canvas.removeEventListener('pointerdown', onCanvasPointerDown)
+    );
 
-    window.addEventListener(
-      'pointermove',
-      (e: PointerEvent) => {
-        if (!this.active) return;
-        if (this.pointerLocked) {
-          this.targetYawRad -= e.movementX * MOUSE_SENSITIVITY;
+    const onWindowPointerMove = (e: PointerEvent): void => {
+      if (this.disposed || !this.active) return;
+      if (this.pointerLocked) {
+        this.targetYawRad -= e.movementX * MOUSE_SENSITIVITY;
+        this.targetPitchRad = THREE.MathUtils.clamp(
+          this.targetPitchRad - e.movementY * MOUSE_SENSITIVITY,
+          -MAX_PITCH_RAD,
+          MAX_PITCH_RAD
+        );
+        this.lookDirty = true;
+        return;
+      }
+      if (
+        this.isDraggingLook &&
+        e.pointerId === this.dragLookPointerId &&
+        (e.pointerType === 'touch' || (e.buttons & 1) !== 0)
+      ) {
+        const dx = e.clientX - this.lastDragClientX;
+        const dy = e.clientY - this.lastDragClientY;
+        this.lastDragClientX = e.clientX;
+        this.lastDragClientY = e.clientY;
+        if (e.pointerType === 'touch') {
+          const speedPx = Math.hypot(dx, dy);
+          const accel = 1 + Math.min(0.65, speedPx * 0.018);
+          const yawSens = 0.0088 * accel;
+          const pitchSens = 0.0072 * accel;
+          this.targetYawRad -= dx * yawSens;
           this.targetPitchRad = THREE.MathUtils.clamp(
-            this.targetPitchRad - e.movementY * MOUSE_SENSITIVITY,
+            this.targetPitchRad - dy * pitchSens,
             -MAX_PITCH_RAD,
             MAX_PITCH_RAD
           );
-          this.lookDirty = true;
-          return;
+        } else {
+          this.targetYawRad -= dx * DRAG_SENSITIVITY;
+          this.targetPitchRad = THREE.MathUtils.clamp(
+            this.targetPitchRad - dy * DRAG_SENSITIVITY,
+            -MAX_PITCH_RAD,
+            MAX_PITCH_RAD
+          );
         }
-        if (
-          this.isDraggingLook &&
-          e.pointerId === this.dragLookPointerId &&
-          (e.pointerType === 'touch' || (e.buttons & 1) !== 0)
-        ) {
-          const dx = e.clientX - this.lastDragClientX;
-          const dy = e.clientY - this.lastDragClientY;
-          this.lastDragClientX = e.clientX;
-          this.lastDragClientY = e.clientY;
-          if (e.pointerType === 'touch') {
-            const speedPx = Math.hypot(dx, dy);
-            const accel = 1 + Math.min(0.65, speedPx * 0.018);
-            const yawSens = 0.0088 * accel;
-            const pitchSens = 0.0072 * accel;
-            this.targetYawRad -= dx * yawSens;
-            this.targetPitchRad = THREE.MathUtils.clamp(
-              this.targetPitchRad - dy * pitchSens,
-              -MAX_PITCH_RAD,
-              MAX_PITCH_RAD
-            );
-          } else {
-            this.targetYawRad -= dx * DRAG_SENSITIVITY;
-            this.targetPitchRad = THREE.MathUtils.clamp(
-              this.targetPitchRad - dy * DRAG_SENSITIVITY,
-              -MAX_PITCH_RAD,
-              MAX_PITCH_RAD
-            );
-          }
-          this.lookDirty = true;
-        }
-      },
-      { passive: true }
+        this.lookDirty = true;
+      }
+    };
+    window.addEventListener('pointermove', onWindowPointerMove, { passive: true, signal });
+    this.listenerCleanups.push(() =>
+      window.removeEventListener('pointermove', onWindowPointerMove)
     );
 
     const endDragLook = (e: PointerEvent): void => {
+      if (this.disposed) return;
       if (this.dragLookPointerId !== null && e.pointerId === this.dragLookPointerId) {
         const wasTap =
           e.type === 'pointerup' &&
@@ -1549,10 +1564,15 @@ export class WalkthroughController {
         }
       }
     };
-    window.addEventListener('pointerup', endDragLook);
-    window.addEventListener('pointercancel', endDragLook);
+    window.addEventListener('pointerup', endDragLook, { signal });
+    window.addEventListener('pointercancel', endDragLook, { signal });
+    this.listenerCleanups.push(
+      () => window.removeEventListener('pointerup', endDragLook),
+      () => window.removeEventListener('pointercancel', endDragLook)
+    );
 
-    window.addEventListener('keydown', (e: KeyboardEvent) => {
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (this.disposed) return;
       const activeEl = document.activeElement;
       const tag = activeEl?.tagName ?? '';
       if (tag === 'INPUT' || tag === 'TEXTAREA' || e.metaKey || e.altKey || !this.active) return;
@@ -1577,13 +1597,17 @@ export class WalkthroughController {
         e.preventDefault();
         this.keysDown.add(e.code);
       }
-    });
+    };
+    window.addEventListener('keydown', onKeyDown, { signal });
+    this.listenerCleanups.push(() => window.removeEventListener('keydown', onKeyDown));
 
-    window.addEventListener('keyup', (e: KeyboardEvent) => {
+    const onKeyUp = (e: KeyboardEvent): void => {
       this.keysDown.delete(e.code);
-    });
+    };
+    window.addEventListener('keyup', onKeyUp, { signal });
+    this.listenerCleanups.push(() => window.removeEventListener('keyup', onKeyUp));
 
-    window.addEventListener('blur', () => {
+    const onBlur = (): void => {
       this.keysDown.clear();
       this.isDraggingLook = false;
       this.dragLookPointerId = null;
@@ -1594,6 +1618,25 @@ export class WalkthroughController {
       this.touchLookPitch = 0;
       this.groundVelX = 0;
       this.groundVelZ = 0;
-    });
+    };
+    window.addEventListener('blur', onBlur, { signal });
+    this.listenerCleanups.push(() => window.removeEventListener('blur', onBlur));
+  }
+
+  public dispose(): void {
+    if (this.disposed) return;
+    if (this.active) {
+      this.exit();
+    } else if (typeof document !== 'undefined' && document.pointerLockElement === this.canvas) {
+      document.exitPointerLock?.();
+    }
+    this.disposed = true;
+    this.pointerLocked = false;
+    this.abortController.abort();
+    for (const cleanup of this.listenerCleanups.splice(0)) {
+      cleanup();
+    }
+    this.keysDown.clear();
+    this.listeners.clear();
   }
 }

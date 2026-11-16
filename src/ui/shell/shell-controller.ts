@@ -114,6 +114,8 @@ function formatTier(stats: TwinGraphicsStats): string {
 export class ShellController {
   public readonly api: TwinApi;
   private readonly notesTools: ShellNotesTools;
+  private readonly disposers: Array<() => void> = [];
+  private disposed = false;
   private levelPushTimer: ReturnType<typeof setTimeout> | null = null;
   private lastLevelPush = 0;
   private pendingLevels: Readonly<CircuitLevels> | null = null;
@@ -157,58 +159,80 @@ export class ShellController {
     });
     this.refreshGraphicsReadout();
 
-    api.rooms.onChanged((zoneId) => {
-      currentRoomId.value = zoneId;
-    });
-    api.trades.onChanged((view) => {
-      tradeView.value = view;
-    });
-    api.camera.onViewChanged((view) => {
-      if (floorMode.value !== view.floorViewMode) floorMode.value = view.floorViewMode;
-      const cut = api.floors.isCeilingCutaway();
-      if (sectionCut.value !== cut) sectionCut.value = cut;
-    });
-    api.sky?.onChanged((snap) => {
-      skyWeatherSnapshot.value = snap;
-      if (timeOfDay.value !== snap.timeOfDay) {
-        timeOfDay.value = snap.timeOfDay;
-      }
-    });
-    api.walkthrough.onChanged((walking) => {
-      if (walking && viewMode.value !== 'walk') viewMode.value = 'walk';
-      else if (!walking && viewMode.value === 'walk') viewMode.value = '3d';
-      this.syncImmersivePanels(walking);
-    });
+    this.trackDisposer(
+      api.rooms.onChanged((zoneId) => {
+        currentRoomId.value = zoneId;
+      })
+    );
+    this.trackDisposer(
+      api.trades.onChanged((view) => {
+        tradeView.value = view;
+      })
+    );
+    this.trackDisposer(
+      api.camera.onViewChanged((view) => {
+        if (floorMode.value !== view.floorViewMode) floorMode.value = view.floorViewMode;
+        const cut = api.floors.isCeilingCutaway();
+        if (sectionCut.value !== cut) sectionCut.value = cut;
+      })
+    );
+    this.trackDisposer(
+      api.sky?.onChanged((snap) => {
+        skyWeatherSnapshot.value = snap;
+        if (timeOfDay.value !== snap.timeOfDay) {
+          timeOfDay.value = snap.timeOfDay;
+        }
+      })
+    );
+    this.trackDisposer(
+      api.walkthrough.onChanged((walking) => {
+        if (walking && viewMode.value !== 'walk') viewMode.value = 'walk';
+        else if (!walking && viewMode.value === 'walk') viewMode.value = '3d';
+        this.syncImmersivePanels(walking);
+      })
+    );
     this.syncImmersivePanels(api.walkthrough.isActive());
-    api.lighting.onLevelsChanged((levels) => this.pushLiveLevels(levels));
-    api.lighting.subscribe((event) => {
-      if (event.type !== 'stateChange') return;
-      deviceRevision.value += 1;
-      const tod = api.lighting.getTimeOfDay();
-      if (tod !== timeOfDay.value) timeOfDay.value = tod;
-    });
-    api.devices.onChanged(() => {
-      deviceRevision.value += 1;
-    });
-    api.graphics.onToast((message) => showToast(message, 3200));
+    this.trackDisposer(api.lighting.onLevelsChanged((levels) => this.pushLiveLevels(levels)));
+    this.trackDisposer(
+      api.lighting.subscribe((event) => {
+        if (event.type !== 'stateChange') return;
+        deviceRevision.value += 1;
+        const tod = api.lighting.getTimeOfDay();
+        if (tod !== timeOfDay.value) timeOfDay.value = tod;
+      })
+    );
+    this.trackDisposer(
+      api.devices.onChanged(() => {
+        deviceRevision.value += 1;
+      })
+    );
+    this.trackDisposer(api.graphics.onToast((message) => showToast(message, 3200)));
 
-    api.notes.subscribe((records) => {
-      pruneScopedNoteMeta(this.getHouseId(), records.map((r) => r.id));
-    });
+    this.trackDisposer(
+      api.notes.subscribe((records) => {
+        pruneScopedNoteMeta(this.getHouseId(), records.map((r) => r.id));
+      })
+    );
 
-    api.terrainSculpt?.onChanged((snap) => {
-      terrainSculptSnapshot.value = snap;
-    });
+    this.trackDisposer(
+      api.terrainSculpt?.onChanged((snap) => {
+        terrainSculptSnapshot.value = snap;
+      })
+    );
 
-    api.variations?.onChanged((groups) => {
-      roomVariations.value = groups;
-      if (groups.length === 0) variationsPopoverOpen.value = false;
-    });
+    this.trackDisposer(
+      api.variations?.onChanged((groups) => {
+        roomVariations.value = groups;
+        if (groups.length === 0) variationsPopoverOpen.value = false;
+      })
+    );
 
-    api.assets?.onChanged((snap) => {
-      inspectedAssetSnapshot.value = snap;
-      assetInspectMode.value = api.assets?.isInspectMode() ?? false;
-    });
+    this.trackDisposer(
+      api.assets?.onChanged((snap) => {
+        inspectedAssetSnapshot.value = snap;
+        assetInspectMode.value = api.assets?.isInspectMode() ?? false;
+      })
+    );
 
     // Tool state follows the notes inspector, asset inspector & terrain sculpt controller.
     const syncTool = (): void => {
@@ -226,16 +250,47 @@ export class ShellController {
               : 'note';
       if (activeTool.value !== next) activeTool.value = next;
     };
-    annotatorActive.subscribe(syncTool);
-    annotationTool.subscribe(syncTool);
-    terrainSculptSnapshot.subscribe(syncTool);
-    assetInspectMode.subscribe(syncTool);
+    this.trackDisposer(annotatorActive.subscribe(syncTool));
+    this.trackDisposer(annotationTool.subscribe(syncTool));
+    this.trackDisposer(terrainSculptSnapshot.subscribe(syncTool));
+    this.trackDisposer(assetInspectMode.subscribe(syncTool));
 
     // Double-click a surface to jump into that room.
-    api.camera.onSurfaceDoubleClick((point) => {
-      const room = api.rooms.findAt(point);
-      if (room) this.selectRoom(room.zoneId);
-    });
+    this.trackDisposer(
+      api.camera.onSurfaceDoubleClick((point) => {
+        const room = api.rooms.findAt(point);
+        if (room) this.selectRoom(room.zoneId);
+      })
+    );
+  }
+
+  /** Registers an additional teardown callback executed on dispose(). */
+  public addDisposer(disposer: () => void): void {
+    if (this.disposed) {
+      disposer();
+      return;
+    }
+    this.disposers.push(disposer);
+  }
+
+  private trackDisposer(disposer: (() => void) | undefined): void {
+    if (typeof disposer === 'function') {
+      this.disposers.push(disposer);
+    }
+  }
+
+  /** Unmounts the shell UI, removes listeners/subscriptions, and cancels pending timers. */
+  public dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    if (this.levelPushTimer !== null) {
+      clearTimeout(this.levelPushTimer);
+      this.levelPushTimer = null;
+    }
+    this.pendingLevels = null;
+    for (const d of this.disposers.splice(0)) {
+      d();
+    }
   }
 
   /**
@@ -478,6 +533,7 @@ export class ShellController {
 
   /** Throttled mirror of KNX live levels into the panel. */
   private pushLiveLevels(levels: Readonly<CircuitLevels>): void {
+    if (this.disposed) return;
     this.pendingLevels = levels;
     const now = performance.now();
     const elapsed = now - this.lastLevelPush;

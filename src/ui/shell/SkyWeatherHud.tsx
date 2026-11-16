@@ -14,6 +14,7 @@ import {
 import {
   canonicalDayOfYearForSeason,
   deriveSeasonFromDayOfYear,
+  isHouseEnvironmentPresetId,
   resolveClimateCapabilities,
   type Season,
   type SeasonSelection,
@@ -585,7 +586,9 @@ export function SkyWeatherHud(): JSX.Element | null {
         label: snap.locationLabel,
       },
       season: effectiveSeason,
-      environment: snap.environmentId as any,
+      environment: isHouseEnvironmentPresetId(snap.environmentId)
+        ? snap.environmentId
+        : undefined,
     });
   const snowDisabled = !climate.snowAllowedNow;
   const snowDisabledReason =

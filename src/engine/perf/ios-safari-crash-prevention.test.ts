@@ -194,17 +194,17 @@ describe('Mobile HDRI resolution cap, cache bounds, preload suppression & WebGPU
     ).toBeNull();
     expect(
       deriveDetailWebpUrl(
-        '/textures/hdr/tur_langton_summer_day_clear_2k.hdr',
+        '/textures/hdr/english_countryside_summer_day_clear_2k.hdr',
         '/textures/hdr/english_countryside_day_4k.webp',
         true
       )
     ).toBeNull();
     expect(
-      deriveDetailWebpUrl('/textures/hdr/tur_langton_summer_day_clear_2k.hdr', undefined, true)
+      deriveDetailWebpUrl('/textures/hdr/english_countryside_summer_day_clear_2k.hdr', undefined, true)
     ).toBeNull();
     expect(
-      deriveDetailWebpUrl('/textures/hdr/tur_langton_summer_day_clear_2k.hdr', undefined, false)
-    ).toBe('/textures/hdr/tur_langton_summer_day_clear_8k.webp');
+      deriveDetailWebpUrl('/textures/hdr/english_countryside_summer_day_clear_2k.hdr', undefined, false)
+    ).toBe('/textures/hdr/english_countryside_summer_day_clear_8k.webp');
   });
 
   it('caps MAX_CACHED_CELLS to <= 2 on mobile and suppresses background neighbour preloads on mobile', () => {
