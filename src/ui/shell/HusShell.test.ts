@@ -184,8 +184,22 @@ class FakeElement {
       stopPropagation: () => {},
       preventDefault: () => {},
     };
-    for (const fn of this.listeners.get('click') ?? []) {
-      fn(ev);
+    for (const fn of [...(this.listeners.get('click') ?? [])]) {
+      fn.call(this, ev);
+    }
+  }
+
+  public dispatchChange(nextValue?: string): void {
+    if (nextValue !== undefined) this.value = nextValue;
+    const ev = {
+      type: 'change',
+      currentTarget: this,
+      target: this,
+      stopPropagation: () => {},
+      preventDefault: () => {},
+    };
+    for (const fn of [...(this.listeners.get('change') ?? [])]) {
+      fn.call(this, ev);
     }
   }
 
@@ -491,36 +505,72 @@ function createFakeTwinApi(): {
       setSfxEnabled: vi.fn(),
       onChanged: () => () => {},
     },
-    trades: {
-      getView: () => 'owner',
-      setView: vi.fn(),
-      onChanged: () => () => {},
-      exportServiceSchedule: () => '',
-    },
-    walkthrough: {
-      isActive: () => false,
-      getState: () => ({
-        active: false,
-        prompt: null,
-        crouched: false,
-        pointerLocked: false,
-        fovDeg: 68,
-      }),
-      onStateChanged: () => () => {},
-      interact: () => false,
-      toggleCrouch: () => false,
-      jump: vi.fn(),
-      setTouchMove: vi.fn(),
-      setTouchLook: vi.fn(),
-      requestMouseLook: vi.fn(),
-      enter: vi.fn(),
-      exit: vi.fn(),
-      toggle: () => false,
-      spawns: () => [],
-      teleport: () => false,
-      onChanged: () => () => {},
-      onFootPositionChanged: () => () => {},
-    },
+    trades: (() => {
+      let currentTrade: 'owner' | 'architect' | 'builder' | 'electrician' | 'plumber' = 'owner';
+      const tradeSubs = new Set<(v: typeof currentTrade) => void>();
+      return {
+        getView: () => currentTrade,
+        setView: vi.fn((next: typeof currentTrade) => {
+          currentTrade = next;
+          for (const fn of tradeSubs) fn(currentTrade);
+        }),
+        onChanged: (fn: (v: typeof currentTrade) => void) => {
+          tradeSubs.add(fn);
+          return () => tradeSubs.delete(fn);
+        },
+        exportServiceSchedule: () => '',
+      };
+    })(),
+    walkthrough: (() => {
+      let walking = false;
+      const walkSubs = new Set<(active: boolean) => void>();
+      const stateSubs = new Set<(st: { active: boolean; prompt: null; crouched: boolean; pointerLocked: boolean; fovDeg: number }) => void>();
+      const notifyWalk = (): void => {
+        for (const fn of walkSubs) fn(walking);
+        const st = { active: walking, prompt: null, crouched: false, pointerLocked: false, fovDeg: 68 };
+        for (const fn of stateSubs) fn(st);
+      };
+      return {
+        isActive: () => walking,
+        getState: () => ({
+          active: walking,
+          prompt: null,
+          crouched: false,
+          pointerLocked: false,
+          fovDeg: 68,
+        }),
+        onStateChanged: (fn: (st: { active: boolean; prompt: null; crouched: boolean; pointerLocked: boolean; fovDeg: number }) => void) => {
+          stateSubs.add(fn);
+          return () => stateSubs.delete(fn);
+        },
+        interact: () => false,
+        toggleCrouch: () => false,
+        jump: vi.fn(),
+        setTouchMove: vi.fn(),
+        setTouchLook: vi.fn(),
+        requestMouseLook: vi.fn(),
+        enter: vi.fn(() => {
+          walking = true;
+          notifyWalk();
+        }),
+        exit: vi.fn(() => {
+          walking = false;
+          notifyWalk();
+        }),
+        toggle: () => {
+          walking = !walking;
+          notifyWalk();
+          return walking;
+        },
+        spawns: () => [],
+        teleport: () => false,
+        onChanged: (fn: (active: boolean) => void) => {
+          walkSubs.add(fn);
+          return () => walkSubs.delete(fn);
+        },
+        onFootPositionChanged: () => () => {},
+      };
+    })(),
     notes: {
       isActive: () => annotationActive,
       setActive: (v) => {
@@ -791,6 +841,149 @@ describe('Self-contained <HusShell /> & dynamic loading screen (zero index.html 
       expect(
         shellRoot.querySelector('.terrain-sculpt-panel')?.classList.contains('is-open')
       ).toBe(true);
+
+      render(null, shellRoot as unknown as HTMLElement);
+      await new Promise((r) => setTimeout(r, 0));
+    } finally {
+      (globalThis as unknown as Record<string, unknown>).document = prevDoc;
+      (globalThis as unknown as Record<string, unknown>).window = prevWin;
+      (globalThis as unknown as Record<string, unknown>).HTMLElement = prevEl;
+    }
+  });
+
+  it('renders decluttered TopBar without redundant Exit walk button, moves View as & Help into SettingsModal, and supports ? shortcut', async () => {
+    const prevDoc = globalThis.document;
+    const prevWin = globalThis.window;
+    const prevEl = globalThis.HTMLElement;
+
+    const fakeDoc = new FakeDocument();
+    const shellRoot = fakeDoc.createElement('div');
+    fakeDoc.body.appendChild(shellRoot);
+
+    const keyListeners = new Set<(e: unknown) => void>();
+    const fakeWin = {
+      location: { search: '', href: 'http://localhost/' },
+      innerWidth: 1440,
+      innerHeight: 900,
+      localStorage: {
+        getItem: () => null,
+        setItem: () => {},
+        removeItem: () => {},
+      },
+      addEventListener: (type: string, fn: (e: unknown) => void) => {
+        if (type === 'keydown') keyListeners.add(fn);
+      },
+      removeEventListener: (type: string, fn: (e: unknown) => void) => {
+        if (type === 'keydown') keyListeners.delete(fn);
+      },
+      setInterval: () => 1,
+      clearInterval: () => {},
+      setTimeout: globalThis.setTimeout.bind(globalThis),
+      clearTimeout: globalThis.clearTimeout.bind(globalThis),
+      requestAnimationFrame: (cb: () => void) => setTimeout(cb, 0),
+    };
+
+    try {
+      (globalThis as unknown as Record<string, unknown>).document = fakeDoc;
+      (globalThis as unknown as Record<string, unknown>).window = fakeWin;
+      (globalThis as unknown as Record<string, unknown>).HTMLElement = FakeElement;
+
+      const { api } = createFakeTwinApi();
+      const ctl = mountHusShell(
+        { api, bindKeyboard: true },
+        shellRoot as unknown as HTMLElement
+      );
+
+      const topbar = shellRoot.querySelector('.shell-topbar');
+      expect(topbar).not.toBeNull();
+
+      // 1. Default Owner mode renders zero View-as select and zero role pill in TopBar
+      expect(topbar?.querySelector('select')).toBeNull();
+      expect(topbar?.querySelector('.shell-role-pill')).toBeNull();
+
+      // 2. Help (?) button is removed from TopBar; Share is a quiet icon button (not .shell-btn-primary); single drawer toggle
+      const topbarBtns = topbar?.querySelectorAll('button') ?? [];
+      expect(topbarBtns.find((b) => b.getAttribute('aria-label') === 'Help')).toBeUndefined();
+      const shareBtn = topbarBtns.find((b) => b.getAttribute('aria-label') === 'Share view');
+      expect(shareBtn).toBeDefined();
+      expect(shareBtn?.classList.contains('shell-icon-btn')).toBe(true);
+      expect(shareBtn?.classList.contains('shell-btn-primary')).toBe(false);
+
+      const drawerToggles = shellRoot.querySelectorAll('button').filter(
+        (b) => b.getAttribute('aria-label') === 'Toggle room controls'
+      );
+      expect(drawerToggles).toHaveLength(1);
+
+      // 3. Compact icon-only lighting pills have accessible aria-labels and zero visible text clutter
+      const todBtns = topbar?.querySelectorAll('.shell-topbar-tod .shell-seg-btn') ?? [];
+      expect(todBtns).toHaveLength(3);
+      expect(todBtns.map((b) => b.getAttribute('aria-label'))).toEqual(['Day', 'Dusk', 'Night']);
+      expect(todBtns.map((b) => b.textContent)).toEqual(['', '', '']);
+
+      // 4. Entering Walk mode adds zero redundant Exit walk button to TopBar, and clicking active Walk segment exits back to 3D
+      const walkSegBtn = topbarBtns.find((b) => b.textContent === 'Walk');
+      expect(walkSegBtn).toBeDefined();
+      walkSegBtn!.dispatchClick();
+      await new Promise((r) => setTimeout(r, 0));
+      expect(ctl.isWalking()).toBe(true);
+      expect(topbar?.querySelector('.shell-walk-exit')).toBeNull();
+      expect(topbar?.textContent).not.toContain('Exit walk');
+
+      // Clicking Walk while active exits back to 3D
+      walkSegBtn!.dispatchClick();
+      await new Promise((r) => setTimeout(r, 0));
+      expect(ctl.isWalking()).toBe(false);
+
+      // 5. Opening SettingsModal exposes View as role selector and Help guide action
+      const settingsBtn = topbarBtns.find((b) => b.getAttribute('aria-label') === 'Settings');
+      expect(settingsBtn).toBeDefined();
+      const waitForEl = async (sel: string): Promise<FakeElement | null> => {
+        for (let i = 0; i < 60; i += 1) {
+          const found = shellRoot.querySelector(sel);
+          if (found) return found;
+          await new Promise((r) => setTimeout(r, 15));
+        }
+        return null;
+      };
+
+      settingsBtn!.dispatchClick();
+      const modal = await waitForEl('.shell-modal');
+      expect(modal).not.toBeNull();
+      const viewAsSelect = modal?.querySelector('select');
+      expect(viewAsSelect).not.toBeNull();
+      expect(viewAsSelect?.getAttribute('aria-label')).toBe('View as');
+
+      // Selecting Architect updates role and renders compact interactive role pill in TopBar
+      viewAsSelect!.dispatchChange('architect');
+      await new Promise((r) => setTimeout(r, 0));
+      const rolePill = topbar?.querySelector('.shell-role-pill');
+      expect(rolePill).not.toBeNull();
+      expect(rolePill?.textContent).toContain('Architect');
+
+      // Clicking Help guide inside Settings closes Settings and opens HelpOverlay
+      const helpGuideBtn = modal?.querySelectorAll('button').find((b) => b.textContent.includes('Help guide'));
+      expect(helpGuideBtn).toBeDefined();
+      helpGuideBtn!.dispatchClick();
+      expect(await waitForEl('.shell-help-backdrop')).not.toBeNull();
+
+      // Close HelpOverlay via Escape, then verify ? shortcut still opens HelpOverlay
+      for (const fn of keyListeners) {
+        fn({ key: 'Escape', code: 'Escape', metaKey: false, ctrlKey: false, altKey: false, repeat: false, preventDefault: () => {} });
+      }
+      await new Promise((r) => setTimeout(r, 10));
+      expect(shellRoot.querySelector('.shell-help-backdrop')).toBeNull();
+
+      for (const fn of keyListeners) {
+        fn({ key: '?', code: 'Slash', metaKey: false, ctrlKey: false, altKey: false, repeat: false, preventDefault: () => {} });
+      }
+      await new Promise((r) => setTimeout(r, 25));
+      expect(shellRoot.querySelector('.shell-help-backdrop')).not.toBeNull();
+
+      // Clicking TopBar role pill resets trade view back to Owner and removes the pill
+      rolePill!.dispatchClick();
+      await new Promise((r) => setTimeout(r, 0));
+      expect(api.trades.getView()).toBe('owner');
+      expect(topbar?.querySelector('.shell-role-pill')).toBeNull();
 
       render(null, shellRoot as unknown as HTMLElement);
       await new Promise((r) => setTimeout(r, 0));

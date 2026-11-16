@@ -121,30 +121,28 @@ export function TopBarVariationsButton(): JSX.Element | null {
 
   const activeRoomGroup = roomGroups.length === 1 ? roomGroups[0] : undefined;
   const activeRoomOpt = activeRoomGroup?.options.find((o) => o.id === activeRoomGroup.activeOptionId);
+  const label =
+    activeRoomGroup && activeRoomOpt
+      ? `Design variations · ${activeRoomGroup.label}: ${activeRoomOpt.label}`
+      : `Design variations (${groups.length})`;
 
   return (
     <button
       type="button"
-      class={`shell-btn shell-var-topbar-btn${open ? ' is-active' : ''}${
+      class={`shell-icon-btn shell-var-topbar-btn${open ? ' is-active' : ''}${
         modifiedCount > 0 || roomGroups.length > 0 ? ' has-badge' : ''
       }`}
+      aria-label={label}
       aria-expanded={open}
       aria-haspopup="dialog"
-      title={
-        activeRoomGroup && activeRoomOpt
-          ? `Design variations · ${activeRoomGroup.label}: ${activeRoomOpt.label}`
-          : `Design variations (${groups.length})`
-      }
+      title={label}
       onClick={() => {
         const next = !variationsPopoverOpen.value;
         if (next) skyHudPopover.value = 'none';
         variationsPopoverOpen.value = next;
       }}
     >
-      <Icon name="layers" size={15} />
-      <span class="shell-btn-label">
-        {activeRoomOpt ? activeRoomOpt.label : 'Variations'}
-      </span>
+      <Icon name="layers" size={16} />
       <span class={`shell-var-count-badge${modifiedCount > 0 ? ' is-modified' : ''}`}>
         {groups.length}
       </span>

@@ -338,7 +338,9 @@ describe('Viewer Variations UI (<TopBarVariationsButton />, <VariationsPopover /
       pills[1]!.dispatchClick();
       await new Promise((r) => setTimeout(r, 0));
       expect(varApi.variations?.getActiveOptionId('gallery-east-wall')).toBe('cupboards');
-      expect(topBtn?.textContent).toContain('Full Cupboards');
+      expect(topBtn?.textContent).toBe('1');
+      expect(topBtn?.getAttribute('title')).toContain('Full Cupboards');
+      expect(topBtn?.getAttribute('aria-label')).toContain('Full Cupboards');
 
       // Clicking TopBar button opens popover
       topBtn!.dispatchClick();

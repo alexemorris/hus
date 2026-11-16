@@ -34,6 +34,7 @@ export interface MaterialDeduplicationDeps {
 export class MaterialTextureDeduplicator {
   private readonly canonicalBySig = new Map<string, THREE.Material>();
   private readonly imageIdMap = new WeakMap<object, number>();
+  private readonly canvasMaxDimMap = new WeakMap<HTMLCanvasElement, number>();
   private nextImageId = 1;
   private readonly canonicalSourceByKey = new Map<string, THREE.Source>();
   private readonly canonicalTexBySig = new Map<string, THREE.Texture>();
@@ -78,6 +79,16 @@ export class MaterialTextureDeduplicator {
         return img.data;
       }
       return img;
+    };
+
+    const canvasMaxDimMap = this.canvasMaxDimMap;
+    const getCanvasMaxDim = (canvas: HTMLCanvasElement): number => {
+      const liveMax = Math.max(canvas.width, canvas.height);
+      if (liveMax > 0) {
+        canvasMaxDimMap.set(canvas, liveMax);
+        return liveMax;
+      }
+      return canvasMaxDimMap.get(canvas) ?? 0;
     };
 
     const getImgId = (keyObj: object): number => {
@@ -188,7 +199,7 @@ export class MaterialTextureDeduplicator {
               ? 256
               : 128
             : isRepeatTiled
-              ? Math.min(1024, Math.max(tex.image.width, tex.image.height))
+              ? Math.min(1024, getCanvasMaxDim(tex.image))
               : 512;
           let scalarTex = scalarTexCache.get(scalarCacheKey);
           if (scalarTex === undefined) {
@@ -225,12 +236,12 @@ export class MaterialTextureDeduplicator {
               ? usage!.maxWorldSpanM > 0 && usage!.maxWorldSpanM < 1.2
                 ? 128
                 : 256
-              : Math.min(512, Math.max(tex.image.width, tex.image.height))
+              : Math.min(512, getCanvasMaxDim(tex.image))
             : isSmallClampedProp
               ? usage!.maxWorldSpanM > 0 && usage!.maxWorldSpanM < 0.65
                 ? 256
                 : 512
-              : Math.max(tex.image.width, tex.image.height);
+              : getCanvasMaxDim(tex.image);
           const cId = getImgId(tex.image);
           const repX = forceUnitUv ? 1 : working.repeat.x;
           const repY = forceUnitUv ? 1 : working.repeat.y;

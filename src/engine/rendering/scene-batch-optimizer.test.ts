@@ -341,6 +341,10 @@ describe('SceneBatchOptimizer', () => {
     expect(dormantEntries.length).toBe(2);
     expect(dormantEntries[0]!).not.toBeInstanceOf(THREE.Mesh);
 
+    // Simulate releaseUploadedStaticCanvases zeroing static canvas backing stores after upload
+    (canvasTex.image as { width: number; height: number }).width = 0;
+    (canvasTex.image as { width: number; height: number }).height = 0;
+
     optimizer.unbatchAll();
     optimizer.optimize();
 

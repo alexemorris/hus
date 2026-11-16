@@ -794,7 +794,7 @@ export class ShellController {
     };
   }
 
-  public async share(): Promise<void> {
+  public async share(): Promise<boolean> {
     const url = buildShareUrl(this.captureShareState(true));
     const ok = await copyTextWithFallback(url);
     const viewLabel = TRADE_VIEW_LABELS[this.api.trades.getView()];
@@ -804,6 +804,7 @@ export class ShellController {
         : 'Could not copy the link: check clipboard permissions',
       3600
     );
+    return ok;
   }
 
   /** Applies a decoded `?v=` share state (called once after the scene is ready). */

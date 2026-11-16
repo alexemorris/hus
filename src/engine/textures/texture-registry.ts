@@ -288,8 +288,11 @@ function extractDownsampledRgbaPixels(
   targetW: number,
   targetH: number
 ): Uint8ClampedArray | null {
-  const srcW = Math.max(1, sourceCanvas.width);
-  const srcH = Math.max(1, sourceCanvas.height);
+  if (sourceCanvas.width <= 0 || sourceCanvas.height <= 0) {
+    return null;
+  }
+  const srcW = sourceCanvas.width;
+  const srcH = sourceCanvas.height;
   if (targetW === srcW && targetH === srcH) {
     const srcCtx = sourceCanvas.getContext('2d', { willReadFrequently: true });
     if (!srcCtx || typeof srcCtx.getImageData !== 'function') return null;

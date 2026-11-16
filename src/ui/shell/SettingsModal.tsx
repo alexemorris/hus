@@ -13,11 +13,18 @@ import {
   setDevMode,
   setUnits,
   settingsOpen,
+  tradeView,
   units,
 } from '../../state/shell-store.ts';
-import type { GraphicsMode } from '../../core/types/twin-ux.ts';
+import { TRADE_VIEW_LABELS, type GraphicsMode, type TradeView } from '../../core/types/twin-ux.ts';
 import { Icon } from './icons.tsx';
 import { useShell } from './shell-context.ts';
+
+const TRADE_VIEWS: readonly TradeView[] = ['owner', 'architect', 'builder', 'electrician', 'plumber'];
+
+function isTradeView(value: string): value is TradeView {
+  return TRADE_VIEWS.some((v) => v === value);
+}
 
 const GRAPHICS_OPTIONS: readonly { readonly id: GraphicsMode; readonly label: string; readonly hint: string }[] = [
   { id: 'auto', label: 'Auto (recommended)', hint: 'Adapts quality to keep movement smooth on this device' },
@@ -55,6 +62,7 @@ export function SettingsModal(): JSX.Element | null {
 
   if (!open) return null;
   const mode = graphicsMode.value;
+  const trade = tradeView.value;
   const fps = graphicsFps.value;
   const [ssaoEnabled, setSsaoEnabled] = useState<boolean>(() => ctl.api.graphics.isSsaoEnabled());
   const [fxaaEnabled, setFxaaEnabled] = useState<boolean>(() => ctl.api.graphics.isFxaaEnabled());
@@ -107,6 +115,55 @@ export function SettingsModal(): JSX.Element | null {
         </div>
 
         <div class="shell-modal-body">
+          <section class="shell-settings-section">
+            <h3>Role &amp; units</h3>
+            <label class="shell-toggle-row">
+              <span class="shell-radio-text">
+                <span>View as</span>
+                <span class="shell-muted">Show the model and schedules tailored to a role or trade</span>
+              </span>
+              <select
+                class="shell-select"
+                value={trade}
+                aria-label="View as"
+                onChange={(e) => {
+                  const next = e.currentTarget.value;
+                  if (isTradeView(next)) ctl.setTradeView(next);
+                }}
+              >
+                {TRADE_VIEWS.map((v) => (
+                  <option key={v} value={v}>
+                    {TRADE_VIEW_LABELS[v]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div class="shell-toggle-row" style={{ marginTop: '8px' }}>
+              <span class="shell-radio-text">
+                <span>Measurement units</span>
+                <span class="shell-muted">Display dimensions in metres or imperial feet &amp; inches</span>
+              </span>
+              <div class="shell-seg" role="group" aria-label="Units">
+                <button
+                  type="button"
+                  class={`shell-seg-btn${units.value === 'm' ? ' is-active' : ''}`}
+                  aria-pressed={units.value === 'm'}
+                  onClick={() => setUnits('m')}
+                >
+                  Metres
+                </button>
+                <button
+                  type="button"
+                  class={`shell-seg-btn${units.value === 'ftin' ? ' is-active' : ''}`}
+                  aria-pressed={units.value === 'ftin'}
+                  onClick={() => setUnits('ftin')}
+                >
+                  Feet &amp; in
+                </button>
+              </div>
+            </div>
+          </section>
+
           <section class="shell-settings-section">
             <h3>Graphics</h3>
             <p class="shell-muted">
@@ -226,7 +283,7 @@ export function SettingsModal(): JSX.Element | null {
                 step={1}
                 value={Math.round(audioVolume * 100)}
                 aria-label="Master volume"
-                style={{ width: '130px', accentColor: 'var(--shell-accent, #f59e0b)' }}
+                style={{ width: '130px', accentColor: 'var(--shell-accent)' }}
                 onInput={(e) => {
                   const nextVol = Number(e.currentTarget.value) / 100;
                   ctl.api.audio?.setVolume(nextVol);
@@ -277,27 +334,24 @@ export function SettingsModal(): JSX.Element | null {
           </section>
 
           <section class="shell-settings-section">
-            <h3>Units</h3>
-            <div class="shell-seg" role="group" aria-label="Units">
+            <h3>Keyboard shortcuts &amp; help</h3>
+            <div class="shell-toggle-row" style={{ marginBottom: '6px' }}>
+              <span class="shell-radio-text">
+                <span>Keyboard shortcuts &amp; help</span>
+                <span class="shell-muted">Open the interactive guide to navigation, rooms &amp; notes (?)</span>
+              </span>
               <button
                 type="button"
-                class={`shell-seg-btn${units.value === 'm' ? ' is-active' : ''}`}
-                onClick={() => setUnits('m')}
+                class="shell-btn"
+                onClick={() => {
+                  settingsOpen.value = false;
+                  openHelp(0);
+                }}
               >
-                Metres
-              </button>
-              <button
-                type="button"
-                class={`shell-seg-btn${units.value === 'ftin' ? ' is-active' : ''}`}
-                onClick={() => setUnits('ftin')}
-              >
-                Feet &amp; inches
+                <Icon name="help" size={15} />
+                <span>Help guide</span>
               </button>
             </div>
-          </section>
-
-          <section class="shell-settings-section">
-            <h3>Controls</h3>
             <dl class="shell-shortcuts">
               {SHORTCUTS.map((s) => (
                 <div key={s.keys} class="shell-shortcut">
@@ -311,7 +365,7 @@ export function SettingsModal(): JSX.Element | null {
           </section>
 
           <section class="shell-settings-section">
-            <h3>App &amp; tutorial</h3>
+            <h3>App &amp; developer</h3>
             <div class="shell-toggle-row" style={{ marginBottom: '10px' }}>
               <span class="shell-radio-text">
                 <span>Installable web app</span>
@@ -335,28 +389,8 @@ export function SettingsModal(): JSX.Element | null {
                 </button>
               )}
             </div>
-            <div class="shell-toggle-row">
-              <span class="shell-radio-text">
-                <span>Interactive walkthrough guide</span>
-                <span class="shell-muted">Reopen the 3-step introduction to navigation, rooms &amp; notes</span>
-              </span>
-              <button
-                type="button"
-                class="shell-btn"
-                onClick={() => {
-                  settingsOpen.value = false;
-                  openHelp(0);
-                }}
-              >
-                Open tutorial
-              </button>
-            </div>
-          </section>
-
-          <section class="shell-settings-section">
-            <h3>Developer mode</h3>
             {guestMode.value ? (
-              <p class="shell-muted">Not available in shared (read-only) views.</p>
+              <p class="shell-muted">Developer tools are not available in shared (read-only) views.</p>
             ) : (
               <label class="shell-toggle-row">
                 <span class="shell-radio-text">

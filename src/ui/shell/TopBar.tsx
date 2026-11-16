@@ -1,13 +1,12 @@
 import { TopBarVariationsButton } from './VariationsControl.tsx';
 import type { JSX } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import {
   devDrawerOpen,
   devMode,
   floorMode,
   guestMode,
   navigatorOpen,
-  openHelp,
   roomPanelOpen,
   settingsOpen,
   timeOfDay,
@@ -18,9 +17,7 @@ import {
   type ShellViewMode,
 } from '../../state/shell-store.ts';
 import type { FloorViewMode, TimeOfDay } from '../../core/types/scene.ts';
-import { TRADE_VIEW_LABELS, type TradeView } from '../../core/types/twin-ux.ts';
-
-const TRADE_VIEWS: readonly TradeView[] = ['owner', 'architect', 'builder', 'electrician', 'plumber'];
+import { TRADE_VIEW_LABELS } from '../../core/types/twin-ux.ts';
 import { buildFloorPills, listFloors, propertyNameOf, type FloorPill } from './room-data.ts';
 import { HusBrandMark, Icon, type IconName } from './icons.tsx';
 import { useShell } from './shell-context.ts';
@@ -68,10 +65,6 @@ const TODS: readonly { readonly id: TimeOfDay; readonly label: string; readonly 
   { id: 'night', label: 'Night', icon: 'moon' },
 ];
 
-function isTradeView(value: string): value is TradeView {
-  return TRADE_VIEWS.some((v) => v === value);
-}
-
 export function TopBar(): JSX.Element {
   const ctl = useShell();
   const floor = floorMode.value;
@@ -79,6 +72,8 @@ export function TopBar(): JSX.Element {
   const trade = tradeView.value;
   const tod = timeOfDay.value;
   const [muted, setMuted] = useState<boolean>(() => ctl.api.audio?.isMuted() ?? false);
+  const [copied, setCopied] = useState<boolean>(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!ctl.api.audio) return undefined;
@@ -87,6 +82,24 @@ export function TopBar(): JSX.Element {
       setMuted(ctl.api.audio.isMuted());
     });
   }, [ctl]);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current !== null) clearTimeout(copyTimerRef.current);
+    };
+  }, []);
+
+  const handleShare = (): void => {
+    void ctl.share().then((ok) => {
+      if (!ok) return;
+      setCopied(true);
+      if (copyTimerRef.current !== null) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => {
+        copyTimerRef.current = null;
+        setCopied(false);
+      }, 1800);
+    });
+  };
 
   return (
     <header class="shell-topbar" role="banner">
@@ -115,19 +128,23 @@ export function TopBar(): JSX.Element {
           onSelect={(id) => ctl.setFloor(id)}
         />
         <div class="shell-seg" role="group" aria-label="View mode">
-          {VIEWS.map((v) => (
-            <button
-              key={v.id}
-              type="button"
-              class={`shell-seg-btn${view === v.id ? ' is-active' : ''}`}
-              aria-pressed={view === v.id}
-              title={v.hint}
-              onClick={() => ctl.setViewMode(v.id)}
-            >
-              <Icon name={v.icon} size={15} />
-              <span class="shell-seg-label">{v.label}</span>
-            </button>
-          ))}
+          {VIEWS.map((v) => {
+            const isActive = view === v.id;
+            const isActiveWalk = v.id === 'walk' && isActive;
+            return (
+              <button
+                key={v.id}
+                type="button"
+                class={`shell-seg-btn${isActive ? ' is-active' : ''}`}
+                aria-pressed={isActive}
+                title={isActiveWalk ? 'Exit walkthrough (Esc)' : v.hint}
+                onClick={() => ctl.setViewMode(isActiveWalk ? '3d' : v.id)}
+              >
+                <Icon name={v.icon} size={15} />
+                <span class="shell-seg-label">{v.label}</span>
+              </button>
+            );
+          })}
         </div>
         <div class="shell-seg shell-topbar-tod" role="group" aria-label="Time of day">
           {TODS.map((o) => (
@@ -135,119 +152,93 @@ export function TopBar(): JSX.Element {
               key={o.id}
               type="button"
               class={`shell-seg-btn${tod === o.id ? ' is-active' : ''}`}
+              aria-label={o.label}
               aria-pressed={tod === o.id}
               title={`${o.label} lighting`}
               onClick={() => ctl.setTimeOfDay(o.id)}
             >
-              <Icon name={o.icon} size={14} />
-              <span class="shell-seg-label">{o.label}</span>
+              <Icon name={o.icon} size={15} />
             </button>
           ))}
         </div>
-        {view === 'walk' && (
-          <button
-            type="button"
-            class="shell-btn shell-walk-exit"
-            title="Leave the walkthrough (Esc)"
-            onClick={() => ctl.setViewMode('3d')}
-          >
-            <Icon name="close" size={15} />
-            <span class="shell-btn-label">Exit walk</span>
-          </button>
-        )}
       </div>
 
       <div class="shell-topbar-right">
-        <TopBarVariationsButton />
-        <label class="shell-viewas" title="Show the model as a particular trade sees it">
-          <Icon name="eye" size={15} />
-          <span class="shell-viewas-label">View as</span>
-          <select
-            class="shell-select"
-            value={trade}
-            aria-label="View as"
-            onChange={(e) => {
-              const next = e.currentTarget.value;
-              if (isTradeView(next)) ctl.setTradeView(next);
-            }}
-          >
-            {TRADE_VIEWS.map((v) => (
-              <option key={v} value={v}>
-                {TRADE_VIEW_LABELS[v]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          type="button"
-          class="shell-btn shell-btn-primary"
-          title="Copy a link to this exact view"
-          onClick={() => {
-            void ctl.share();
-          }}
-        >
-          <Icon name="share" size={16} />
-          <span class="shell-btn-label">Share</span>
-        </button>
-        {devMode.value && (
+        {trade !== 'owner' && (
           <button
             type="button"
-            class={`shell-icon-btn${devDrawerOpen.value ? ' is-active' : ''}`}
-            title="Developer tools"
-            aria-label="Developer tools"
-            aria-pressed={devDrawerOpen.value}
-            onClick={() => {
-              devDrawerOpen.value = !devDrawerOpen.value;
-            }}
+            class="shell-role-pill"
+            aria-label={`${TRADE_VIEW_LABELS[trade]} view — reset to Owner`}
+            title={`Viewing as ${TRADE_VIEW_LABELS[trade]} — click to reset to Owner`}
+            onClick={() => ctl.setTradeView('owner')}
           >
-            <Icon name="code" />
+            <Icon name="eye" size={14} />
+            <span class="shell-role-pill-label">{TRADE_VIEW_LABELS[trade]}</span>
+            <Icon name="close" size={13} />
           </button>
         )}
-        <button
-          type="button"
-          class={`shell-icon-btn${!muted ? ' is-active' : ''}`}
-          title={muted ? 'Unmute audio' : 'Mute audio'}
-          aria-label={muted ? 'Unmute audio' : 'Mute audio'}
-          aria-pressed={!muted}
-          onClick={() => {
-            const next = ctl.api.audio?.toggleMuted() ?? !muted;
-            setMuted(next);
-          }}
-        >
-          <Icon name={muted ? 'volume-mute' : 'volume'} />
-        </button>
-        <button
-          type="button"
-          class="shell-icon-btn"
-          title="Help (?)"
-          aria-label="Help"
-          onClick={() => openHelp(0)}
-        >
-          <Icon name="help" />
-        </button>
-        <button
-          type="button"
-          class={`shell-icon-btn${settingsOpen.value ? ' is-active' : ''}`}
-          title="Settings"
-          aria-label="Settings"
-          onClick={() => {
-            settingsOpen.value = true;
-          }}
-        >
-          <Icon name="gear" />
-        </button>
-        <button
-          type="button"
-          class={`shell-icon-btn${roomPanelOpen.value ? ' is-active' : ''}`}
-          title="Room controls"
-          aria-label="Toggle room controls"
-          aria-pressed={roomPanelOpen.value}
-          onClick={() => toggleRoomPanel()}
-        >
-          <Icon name="panel" />
-        </button>
+        <TopBarVariationsButton />
+        <div class="shell-topbar-actions">
+          {devMode.value && (
+            <button
+              type="button"
+              class={`shell-icon-btn${devDrawerOpen.value ? ' is-active' : ''}`}
+              title="Developer tools"
+              aria-label="Developer tools"
+              aria-pressed={devDrawerOpen.value}
+              onClick={() => {
+                devDrawerOpen.value = !devDrawerOpen.value;
+              }}
+            >
+              <Icon name="code" />
+            </button>
+          )}
+          <button
+            type="button"
+            class={`shell-icon-btn${!muted ? ' is-unmuted' : ''}`}
+            title={muted ? 'Unmute audio' : 'Mute audio'}
+            aria-label={muted ? 'Unmute audio' : 'Mute audio'}
+            onClick={() => {
+              const next = ctl.api.audio?.toggleMuted() ?? !muted;
+              setMuted(next);
+            }}
+          >
+            <Icon name={muted ? 'volume-mute' : 'volume'} />
+          </button>
+          <button
+            type="button"
+            class={`shell-icon-btn${copied ? ' is-copied' : ''}`}
+            title={copied ? 'Link copied' : 'Share view'}
+            aria-label={copied ? 'Link copied' : 'Share view'}
+            onClick={handleShare}
+          >
+            <Icon name={copied ? 'check' : 'share'} />
+          </button>
+          <button
+            type="button"
+            class={`shell-icon-btn${settingsOpen.value ? ' is-active' : ''}`}
+            title="Settings"
+            aria-label="Settings"
+            aria-haspopup="dialog"
+            aria-expanded={settingsOpen.value}
+            onClick={() => {
+              settingsOpen.value = !settingsOpen.value;
+            }}
+          >
+            <Icon name="gear" />
+          </button>
+          <button
+            type="button"
+            class={`shell-icon-btn${roomPanelOpen.value ? ' is-active' : ''}`}
+            title="Room controls"
+            aria-label="Toggle room controls"
+            aria-pressed={roomPanelOpen.value}
+            onClick={() => toggleRoomPanel()}
+          >
+            <Icon name="panel" />
+          </button>
+        </div>
       </div>
     </header>
   );
 }
-
