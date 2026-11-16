@@ -1031,7 +1031,26 @@ export class MirrorReflectorController {
     };
 
     baseReflector.updateBefore = (frame: unknown) => {
-      const frameObj = frame as { camera?: THREE.Camera } | null | undefined;
+      const frameObj = frame as {
+        camera?: THREE.Camera;
+        renderer?: THREE.WebGLRenderer & {
+          getRenderTarget?: () => THREE.RenderTarget | null;
+          setRenderTarget?: (rt: THREE.RenderTarget | null) => void;
+          getMRT?: () => unknown;
+          setMRT?: (mrt: unknown) => void;
+          autoClear?: boolean;
+          _handleObjectFunction?: unknown;
+          _renderObjectDirect?: unknown;
+        };
+      } | null | undefined;
+      const frameRenderer = frameObj?.renderer;
+      if (
+        frameRenderer &&
+        frameRenderer._renderObjectDirect &&
+        frameRenderer._handleObjectFunction !== frameRenderer._renderObjectDirect
+      ) {
+        return;
+      }
       const mainCamera = frameObj?.camera ?? null;
       const currentCandidate = slot.boundCandidate;
       if (currentCandidate === null) {
@@ -1088,16 +1107,29 @@ export class MirrorReflectorController {
         if (vCam) syncBakedLightCameraMatrix(vCam);
       }
 
+      const prevRt = frameRenderer?.getRenderTarget?.() ?? null;
+      const prevMrt = frameRenderer?.getMRT?.() ?? null;
+      const prevAutoClear = frameRenderer?.autoClear;
       setInMirrorPass(true);
       try {
         return origUpdateBefore(frame);
       } finally {
         setInMirrorPass(false);
+        if (frameRenderer) {
+          frameRenderer.setRenderTarget?.(prevRt);
+          frameRenderer.setMRT?.(prevMrt);
+          if (typeof prevAutoClear === 'boolean') {
+            frameRenderer.autoClear = prevAutoClear;
+          }
+        }
         if (mainCamera) {
           syncBakedLightCameraMatrix(mainCamera);
         }
         if (selfMesh && wasSelfVisible) {
           selfMesh.visible = true;
+        }
+        if (slot.material) {
+          slot.material.visible = true;
         }
         for (const entry of swappedOthers) {
           entry.mesh.material = entry.mat;

@@ -339,12 +339,6 @@ export async function promptPwaInstall(appName?: string): Promise<boolean> {
 }
 
 if (typeof window !== 'undefined') {
-  window.addEventListener('beforeinstallprompt', (e: Event) => {
-    e.preventDefault();
-    deferredPwaPrompt = e as BeforeInstallPromptEvent;
-    pwaCanInstall.value = true;
-  });
-
   window.addEventListener('appinstalled', () => {
     deferredPwaPrompt = null;
     pwaCanInstall.value = false;

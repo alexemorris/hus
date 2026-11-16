@@ -1076,7 +1076,49 @@ export class PostProcessingPipeline {
     this.uSharpenIntensity.value = postActive && this.sharpenEnabled ? SHARPEN_INTENSITY : 0.0;
     this.uFxaaEnabled.value = postActive && !scrubBypass && this.fxaaEnabled ? 1.0 : 0.0;
 
-    postProcessing.render();
+    const rtSetter = this.renderer as unknown as {
+      setRenderTarget: (rt: THREE.RenderTarget | null) => void;
+      setMRT?: (mrt: unknown) => void;
+    };
+    const prevToneMapping = this.renderer.toneMapping;
+    const prevColorSpace = this.renderer.outputColorSpace;
+    const prevXrEnabled = this.renderer.xr.enabled;
+
+    rtSetter.setRenderTarget(null);
+    if (typeof rtSetter.setMRT === 'function') {
+      rtSetter.setMRT(null);
+    }
+
+    let renderSucceeded = false;
+    try {
+      postProcessing.render();
+      renderSucceeded = true;
+    } finally {
+      if (!renderSucceeded) {
+        const rendererInternal = this.renderer as unknown as {
+          _currentRenderContext?: unknown;
+          _handleObjectFunction?: unknown;
+          _renderObjectDirect?: unknown;
+        };
+        if ('_currentRenderContext' in rendererInternal) {
+          rendererInternal._currentRenderContext = null;
+        }
+        if (
+          rendererInternal._renderObjectDirect &&
+          rendererInternal._handleObjectFunction !== rendererInternal._renderObjectDirect
+        ) {
+          rendererInternal._handleObjectFunction = rendererInternal._renderObjectDirect;
+        }
+        this.renderer.toneMapping = prevToneMapping;
+        this.renderer.outputColorSpace = prevColorSpace;
+        this.renderer.xr.enabled = prevXrEnabled;
+      }
+      rtSetter.setRenderTarget(null);
+      if (typeof rtSetter.setMRT === 'function') {
+        rtSetter.setMRT(null);
+      }
+    }
+
     if (shouldUpdateBloom) {
       this.halfResRenderedOnce = true;
     }

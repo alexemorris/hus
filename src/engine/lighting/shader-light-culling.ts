@@ -520,7 +520,14 @@ export const husCloudPenumbraShadowFilter = Fn((inputs: ShadowFilterInputs) => {
 
   // Analytical receiver-plane depth slope from true geometric normal (immune to normal maps and
   // WGSL non-uniform derivative restrictions) so multi-texel PCF taps never self-shadow sloped ceilings/walls.
-  const geomN = normalWorldGeometry;
+  const safeNormalWorldGeometry = Fn((builder: unknown) => {
+    const b = builder as { geometry?: { hasAttribute?: (name: string) => boolean } } | undefined;
+    if (b?.geometry?.hasAttribute?.('normal') === false) {
+      return vec3(0, 1, 0);
+    }
+    return normalWorldGeometry;
+  });
+  const geomN = safeNormalWorldGeometry();
   const rawNz = dot(geomN, uSunShadowAxisZNode).toVar('husShadowRawNz');
   const signedNz = select(
     rawNz.greaterThanEqual(0.0),

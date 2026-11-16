@@ -756,6 +756,42 @@ export function createBrowserDataOrCanvasTextureFromImageData(
  * skipping any dynamic runtime canvases in `retainedCanvases` and any `RecordingCanvasStub`,
  * and evicts zeroed canvases from `canvasCache` and `canvasPairCache`.
  */
+/**
+ * Collects any HTMLCanvasElement still referenced by cached CanvasTextures in
+ * `textureCache` or `propTextureCache` so they are never zeroed while live.
+ */
+export function collectCachedTextureCanvases(out: Set<HTMLCanvasElement>): void {
+  const addTexCanvas = (val: unknown): void => {
+    if (!val || typeof val !== 'object') return;
+    const maybeTex = val as { isTexture?: boolean; image?: unknown };
+    if (!maybeTex.isTexture) {
+      for (const prop of Object.values(val as Record<string, unknown>)) {
+        if (prop && typeof prop === 'object' && (prop as { isTexture?: boolean }).isTexture) {
+          addTexCanvas(prop);
+        }
+      }
+      return;
+    }
+    const img = maybeTex.image;
+    if (
+      typeof img === 'object' &&
+      img !== null &&
+      !isRecordingCanvasStub(img) &&
+      typeof (img as HTMLCanvasElement).getContext === 'function' &&
+      typeof (img as HTMLCanvasElement).width === 'number' &&
+      typeof (img as HTMLCanvasElement).height === 'number'
+    ) {
+      out.add(img as HTMLCanvasElement);
+    }
+  };
+  for (const tex of textureCache.values()) {
+    addTexCanvas(tex);
+  }
+  for (const tex of propTextureCache.values()) {
+    addTexCanvas(tex);
+  }
+}
+
 export function releaseUploadedStaticCanvases(
   extraCanvases?: Iterable<HTMLCanvasElement>,
   retainedCanvases?: ReadonlySet<HTMLCanvasElement>

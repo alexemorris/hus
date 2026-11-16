@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { RoomLodController } from '../lod/lod-manager.ts';
 import { createPropertySceneLayers } from '../viewer/scene-content.ts';
 import { SceneBatchOptimizer } from './scene-batch-optimizer.ts';
+import { collectCachedTextureCanvases, getOrCreateCachedCanvas, getOrCreateCachedTexture, releaseUploadedStaticCanvases } from '../textures/texture-registry.ts';
 type OptimizerDeps = ConstructorParameters<typeof SceneBatchOptimizer>[0];
 
 function makeOptimizerHarness() {
@@ -794,5 +795,34 @@ describe('SceneBatchOptimizer', () => {
     );
     const hits = raycaster.intersectObjects(scene.children, true);
     expect(hits.length).toBeGreaterThan(0);
+  });
+});
+
+describe('BatchRestorationStore & texture-registry WebGPU canvas retention', () => {
+  it('visits unmerged deduplicated mesh original materials in forEachDormantMaterial and retains cached CanvasTexture canvases', () => {
+    const { layers, optimizer } = makeOptimizerHarness();
+    const unmergedCanvas = { width: 16, height: 16, getContext: () => null } as unknown as HTMLCanvasElement;
+    const unmergedTex = new THREE.CanvasTexture(unmergedCanvas);
+    const unmergedMat = new THREE.MeshStandardMaterial({ map: unmergedTex });
+    const unmergedMesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), unmergedMat);
+    unmergedMesh.userData = { noBatch: true };
+    layers.firstFloorMeshGroup.add(unmergedMesh);
+    optimizer.optimize();
+
+    const visited: THREE.Material[] = [];
+    optimizer.forEachDormantMaterial((mat: THREE.Material) => visited.push(mat));
+    expect(visited).toContain(unmergedMat);
+
+    if (typeof document !== 'undefined') {
+      const tex = getOrCreateCachedTexture('test_cached_canvas_retention', () => {
+        const c = getOrCreateCachedCanvas('test_cached_canvas_retention_src', 32, 32, () => {});
+        return new THREE.CanvasTexture(c);
+      });
+      const retained = new Set<HTMLCanvasElement>();
+      collectCachedTextureCanvases(retained);
+      expect(retained.has(tex.image as HTMLCanvasElement)).toBe(true);
+      releaseUploadedStaticCanvases(undefined, retained);
+      expect((tex.image as HTMLCanvasElement).width).toBe(32);
+    }
   });
 });

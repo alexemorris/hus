@@ -26,6 +26,7 @@ import { RoomLodController } from '../lod/lod-manager.ts';
 import { applySelectiveBevelModifier } from '../rendering/bevel-modifier.ts';
 import { MirrorReflectorController } from '../rendering/mirror-reflector-controller.ts';
 import {
+  collectCachedTextureCanvases,
   isRecordingCanvasStub,
   releaseUploadedStaticCanvases,
 } from '../textures/texture-registry.ts';
@@ -836,6 +837,7 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
         this.secondaryCompileInFlight = true;
         void this.compileSecondaryBucketWhenIdle(nextBucket).finally(() => {
           this.secondaryCompileInFlight = false;
+          this.renderer.requestRender();
         });
       } else if (!this.idleNeighborPrewarmTriggered) {
         this.idleNeighborPrewarmTriggered = true;
@@ -963,20 +965,22 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
       weatherRendered ||
       this.devices.hasActiveAnimations();
 
-    const rendered = this.renderer.renderIfNeeded(
-      this.scene,
-      rig.getActiveCamera(),
-      dtSeconds,
-      cameraMoved,
-      () => {
-        this.annotations.controller.prepareForRender();
-        this.mirrors.update(
+    const rendered = this.secondaryCompileInFlight
+      ? false
+      : this.renderer.renderIfNeeded(
+          this.scene,
           rig.getActiveCamera(),
-          this.rooms.getCurrent(),
-          this.walkthrough.isActive()
+          dtSeconds,
+          cameraMoved,
+          () => {
+            this.annotations.controller.prepareForRender();
+            this.mirrors.update(
+              rig.getActiveCamera(),
+              this.rooms.getCurrent(),
+              this.walkthrough.isActive()
+            );
+          }
         );
-      }
-    );
     if (rendered) {
       this.graphics.recordFrame(dtSeconds * 1000, cameraMoved || this.userInteracting);
     }
@@ -1481,7 +1485,7 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
       return;
     }
     const perspCam = this.camera.rig.perspCamera;
-    await this.compileSceneForBuckets(perspCam, [bucket]);
+    await this.compileSceneForBuckets(perspCam, [bucket], false);
   }
 
   private ensureSceneVegetationAttributes(): void {
@@ -1515,7 +1519,8 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
 
   private async compileSceneForBuckets(
     perspCam: THREE.PerspectiveCamera,
-    buckets: readonly TimeOfDay[]
+    buckets: readonly TimeOfDay[],
+    compileCompositeQuad = true
   ): Promise<void> {
     if (this.disposed) return;
     const glRenderer = this.renderer.renderer;
@@ -1571,7 +1576,7 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
               for (const m of zeroOpacityMats) m.opacity = 0;
             }
           }, buckets),
-        true
+        compileCompositeQuad
       );
     } catch (err) {
       console.warn('[warmUpForStartup] full-scene compileAsync warning:', err);
@@ -1627,8 +1632,13 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
       if (obj instanceof THREE.Light && obj.shadow?.map?.texture) {
         collectTex(obj.shadow.map.texture);
       }
-      if (obj instanceof THREE.Mesh) {
-        collectMeshTextures(obj);
+      if (
+        obj instanceof THREE.Mesh ||
+        obj instanceof THREE.Sprite ||
+        obj instanceof THREE.Points ||
+        obj instanceof THREE.Line
+      ) {
+        collectMeshTextures(obj as THREE.Mesh);
       }
     });
     this.staticScene.batchOptimizer.forEachDormantMaterial((mat) => {
@@ -1660,11 +1670,34 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
       if (this.disposed) return uniqueTextures;
     }
 
+    const uploadedTextures = new Set<THREE.Texture>();
+    const isInvalidExternalImage = (img: unknown): boolean => {
+      if (!img || typeof img !== 'object') return false;
+      const maybeCanvas = img as { getContext?: unknown; width?: number; height?: number };
+      if (
+        typeof maybeCanvas.getContext === 'function' &&
+        (Number(maybeCanvas.width) <= 0 || Number(maybeCanvas.height) <= 0)
+      ) {
+        return true;
+      }
+      if (
+        typeof HTMLImageElement !== 'undefined' &&
+        img instanceof HTMLImageElement &&
+        (!img.complete || img.naturalWidth <= 0 || img.naturalHeight <= 0)
+      ) {
+        return true;
+      }
+      return false;
+    };
+
     const texArray = Array.from(uniqueTextures);
     const total = Math.max(1, texArray.length);
     for (let i = 0; i < texArray.length; i++) {
-      if (this.disposed) return uniqueTextures;
+      if (this.disposed) return uploadedTextures;
       const tex = texArray[i]!;
+      if (isInvalidExternalImage(tex.image)) {
+        continue;
+      }
       if (
         !(tex instanceof THREE.DataTexture && tex.minFilter === THREE.LinearFilter) &&
         tex.generateMipmaps !== false &&
@@ -1673,8 +1706,14 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
         tex.anisotropy = maxAnisotropy;
         tex.needsUpdate = true;
       }
+      if (tex.version === 0 && tex.image) {
+        tex.needsUpdate = true;
+      }
       try {
         glRenderer.initTexture(tex);
+        if (tex.version > 0) {
+          uploadedTextures.add(tex);
+        }
       } catch {
         // Ignore placeholder/incomplete textures in headless environments
       }
@@ -1684,7 +1723,7 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
         await options?.yieldIfNeeded?.();
       }
     }
-    return uniqueTextures;
+    return uploadedTextures;
   }
 
   private releaseUploadedStaticSceneCanvases(uploadedTextures: ReadonlySet<THREE.Texture>): void {
@@ -1727,19 +1766,27 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
     for (const mat of mutableMaterials) {
       retainMaterialCanvases(mat);
     }
+    batchOpt.forEachDormantMaterial((mat) => {
+      retainMaterialCanvases(mat);
+    });
+    collectCachedTextureCanvases(retainedCanvases);
 
     this.scene.traverse((obj) => {
-      if (!(obj instanceof THREE.Mesh)) return;
-      const meshDynamic = Boolean(
-        obj.userData?.isDynamicInteractionObject || obj.userData?.isDynamicObject
-      );
+      if (
+        !(
+          obj instanceof THREE.Mesh ||
+          obj instanceof THREE.Sprite ||
+          obj instanceof THREE.Points ||
+          obj instanceof THREE.Line
+        )
+      ) {
+        return;
+      }
       const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
       for (let i = 0; i < mats.length; i++) {
         const m = mats[i];
         if (!m) continue;
-        if (meshDynamic || batchOpt.isMaterialRenderDynamic(m, mutableMaterials)) {
-          retainMaterialCanvases(m);
-        }
+        retainMaterialCanvases(m);
       }
     });
 
@@ -1860,6 +1907,10 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
       }
       if (!g.getAttribute('position')) {
         g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(9), 3));
+      }
+      if (!g.getAttribute('normal')) {
+        const normals = new Float32Array([0, 1, 0, 0, 1, 0, 0, 1, 0]);
+        g.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
       }
       if (!g.getAttribute('aVegPivot')) {
         g.setAttribute('aVegPivot', new THREE.BufferAttribute(new Float32Array(9), 3));

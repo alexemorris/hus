@@ -13,6 +13,7 @@ import {
   isLikelyMirrorGlassMesh,
   markMirrorSurface,
 } from '../mirror-reflector-controller.ts';
+import { PostProcessingPipeline } from '../post-processing-pipeline.ts';
 import { SceneBatchOptimizer } from '../scene-batch-optimizer.ts';
 
 function makeCamera(position: [number, number, number], lookAtTarget: [number, number, number]): THREE.PerspectiveCamera {
@@ -522,6 +523,7 @@ describe('MirrorReflectorController startup prewarmSlots', () => {
     markMirrorSurface(mirror);
     mirror.position.set(0, 1.5, -2.5);
     scene.add(mirror);
+    scene.updateMatrixWorld(true);
 
     const ctrl = new MirrorReflectorController(scene, {
       graphicsTier: 'high',
@@ -534,5 +536,100 @@ describe('MirrorReflectorController startup prewarmSlots', () => {
     expect(ctrl.getWarmupMaterials().length).toBe(1);
     expect(ctrl.getActiveMirrorCount()).toBe(0);
     ctrl.dispose();
+  });
+});
+
+describe('WebGPU render-target & compileAsync re-entrancy guards', () => {
+  it('skips MirrorReflectorController updateBefore during compileAsync and restores renderTarget on throw', () => {
+    const scene = new THREE.Scene();
+    const mirror = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.2, 1.8),
+      createMirrorMaterial({ name: 'testMirrorGuard' })
+    );
+    markMirrorSurface(mirror);
+    mirror.position.set(0, 1.5, -2.5);
+    scene.add(mirror);
+
+    const ctrl = new MirrorReflectorController(scene, {
+      graphicsTier: 'high',
+      isConstrainedMobile: false,
+    });
+    ctrl.discoverMirrors(scene);
+    ctrl.prewarmSlots();
+
+    const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 100);
+    camera.position.set(0, 1.5, 0);
+    camera.lookAt(0, 1.5, -2.5);
+    camera.updateMatrixWorld();
+    ctrl.update(camera, null, true);
+
+    const slot = (ctrl as unknown as { slots: Array<{ baseReflector: { updateBefore: (frame: unknown) => void }; material: THREE.Material }> }).slots[0]!;
+    // Simulate compileAsync (_handleObjectFunction !== _renderObjectDirect)
+    const compileRenderer = {
+      _renderObjectDirect: () => {},
+      _handleObjectFunction: () => {},
+    };
+    expect(() => slot.baseReflector.updateBefore({ camera, renderer: compileRenderer })).not.toThrow();
+    expect(ctrl.getActiveMirrorCount()).toBe(1);
+    expect(ctrl.getReflectionPassCount()).toBe(0);
+
+    // Simulate throw inside origUpdateBefore with an active render target
+    let restoredRt: unknown = 'unset';
+    const normalFn = () => {};
+    ctrl.invalidateReflections();
+    const throwingRenderer = {
+      _renderObjectDirect: normalFn,
+      _handleObjectFunction: normalFn,
+      getRenderTarget: () => null,
+      setRenderTarget: (rt: unknown) => { restoredRt = rt; },
+      getMRT: () => null,
+      setMRT: () => {},
+      getDrawingBufferSize: () => { throw new Error('simulated mirror render error'); },
+      getPixelRatio: () => { throw new Error('simulated mirror render error'); },
+      autoClear: true,
+    };
+    (slot.baseReflector as unknown as { bounces: boolean }).bounces = true;
+    expect(() => slot.baseReflector.updateBefore({ camera, renderer: throwingRenderer, scene })).toThrow();
+    expect(restoredRt).toBeNull();
+    expect(slot.material.visible).toBe(true);
+    ctrl.dispose();
+  });
+
+  it('PostProcessingPipeline.render resets setRenderTarget(null) and clears _currentRenderContext if postProcessing.render() throws', () => {
+    const rt = new THREE.WebGLRenderTarget(8, 8);
+    let currentRt: THREE.RenderTarget | null = rt;
+    const normalFn = () => {};
+    const fakeRenderer = {
+      toneMapping: THREE.ACESFilmicToneMapping,
+      outputColorSpace: THREE.SRGBColorSpace,
+      coordinateSystem: THREE.WebGPUCoordinateSystem,
+      toneMappingExposure: 1,
+      xr: { enabled: false },
+      getDrawingBufferSize: (v: THREE.Vector2) => v.set(64, 64),
+      setRenderTarget: (next: THREE.RenderTarget | null) => { currentRt = next; },
+      setMRT: () => {},
+      _currentRenderContext: { broken: true } as unknown,
+      _renderObjectDirect: normalFn,
+      _handleObjectFunction: () => {},
+    };
+
+    const pipe = new PostProcessingPipeline(fakeRenderer as unknown as never, 64, 64);
+    (pipe as unknown as { postEnabled: boolean }).postEnabled = true;
+    (pipe as unknown as { ensurePostProcessing: () => { render: () => void } }).ensurePostProcessing = () => ({
+      render: () => {
+        currentRt = rt;
+        throw new Error('simulated copyExternalImageToTexture failure');
+      },
+    });
+
+    const scene = new THREE.Scene();
+    const cam = new THREE.PerspectiveCamera();
+    expect(() => pipe.render(scene, cam, 0.016)).toThrow('simulated copyExternalImageToTexture failure');
+    expect(currentRt).toBeNull();
+    expect(fakeRenderer._currentRenderContext).toBeNull();
+    expect(fakeRenderer._handleObjectFunction).toBe(normalFn);
+    expect(fakeRenderer.toneMapping).toBe(THREE.ACESFilmicToneMapping);
+    pipe.dispose();
+    rt.dispose();
   });
 });

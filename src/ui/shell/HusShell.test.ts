@@ -1072,3 +1072,31 @@ describe('StartupProgressMeter & frame-budget yielder', () => {
     }
   });
 });
+
+describe('beforeinstallprompt handling', () => {
+  it('does not register a beforeinstallprompt preventDefault() listener in shell-store', async () => {
+    const registeredTypes: string[] = [];
+    const prevWindow = (globalThis as { window?: unknown }).window;
+    const prevNavigator = (globalThis as { navigator?: unknown }).navigator;
+    const fakeWindow = new EventTarget() as unknown as Window & typeof globalThis;
+    (fakeWindow as unknown as { navigator: { standalone: boolean } }).navigator = { standalone: false };
+    const origAdd = fakeWindow.addEventListener.bind(fakeWindow);
+    fakeWindow.addEventListener = ((type: string, listener: EventListenerOrEventListenerObject, opts?: boolean | AddEventListenerOptions) => {
+      registeredTypes.push(type);
+      return origAdd(type, listener, opts);
+    }) as typeof fakeWindow.addEventListener;
+    (globalThis as { window?: unknown }).window = fakeWindow;
+    (globalThis as { navigator?: unknown }).navigator = { standalone: false };
+    try {
+      vi.resetModules();
+      await import('../../state/shell-store.ts');
+      expect(registeredTypes).not.toContain('beforeinstallprompt');
+      const ev = new Event('beforeinstallprompt', { cancelable: true });
+      fakeWindow.dispatchEvent(ev);
+      expect(ev.defaultPrevented).toBe(false);
+    } finally {
+      (globalThis as { window?: unknown }).window = prevWindow;
+      (globalThis as { navigator?: unknown }).navigator = prevNavigator;
+    }
+  });
+});

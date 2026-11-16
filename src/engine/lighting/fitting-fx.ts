@@ -789,6 +789,7 @@ export class FittingEffects {
       geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
       geo.setAttribute('uv', new THREE.BufferAttribute(uvArr, 2));
       geo.setIndex(new THREE.BufferAttribute(idxArr, 1));
+      geo.computeVertexNormals();
       geo.computeBoundingSphere();
       const decal = new THREE.Mesh(geo, material);
       decal.name = 'fx.ledWash.batch';

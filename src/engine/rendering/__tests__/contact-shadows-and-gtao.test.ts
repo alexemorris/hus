@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
+import { husCloudPenumbraShadowFilter } from '../../lighting/shader-light-culling.ts';
 import { Fn, float, rtt, texture, uniform, vec2, vec3, vec4 } from 'three/tsl';
 import type { TextureNode } from 'three/webgpu';
 import {
@@ -480,5 +481,25 @@ describe('contact-shadows-and-gtao', () => {
     // Constrained mobile always 1x
     expect(resolveScenePassMsaaSamples('ultra', true, 1.0)).toBe(1);
     expect(resolveScenePassMsaaSamples('high', true, 1.0)).toBe(1);
+  });
+});
+
+describe('husCloudPenumbraShadowFilter missing normal attribute guard', () => {
+  it('builds without throwing or logging TSL missing-normal warning when geometry lacks normal attribute', () => {
+    const warns: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (...args: unknown[]) => { warns.push(args.map(String).join(' ')); };
+    try {
+      const depthTex = new THREE.DepthTexture(8, 8);
+      const node = husCloudPenumbraShadowFilter({
+        depthTexture: depthTex,
+        shadowCoord: { x: 0, y: 0, z: 0 } as unknown as never,
+        depthLayer: 0 as unknown as never,
+      });
+      expect(node).toBeDefined();
+      expect(warns.filter((w) => w.includes('Vertex attribute "normal"'))).toHaveLength(0);
+    } finally {
+      console.warn = origWarn;
+    }
   });
 });

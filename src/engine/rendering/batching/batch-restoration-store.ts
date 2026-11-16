@@ -460,8 +460,7 @@ export class BatchRestorationStore {
    */
   public forEachDormantMaterial(visitor: (mat: THREE.Material) => void): void {
     const seen = new Set<THREE.Material>();
-    for (const [mesh, props] of this.originalMeshProps.entries()) {
-      if (!this.recordsByOriginalMesh.has(mesh)) continue;
+    for (const props of this.originalMeshProps.values()) {
       const mat = props.material;
       if (Array.isArray(mat)) {
         for (let i = 0; i < mat.length; i++) {
