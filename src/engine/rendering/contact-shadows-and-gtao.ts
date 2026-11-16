@@ -117,6 +117,88 @@ export function isScreenUvInsideSafeViewport(u: number, v: number): boolean {
  * receive zero sun contact shadow (`facingWeight = 0`), and grazing camera angles (`nDotV` small)
  * scale `minBias` by `1 / max(nDotV, 0.15)` so flat oblique walls never self-shadow.
  */
+/**
+ * Minimum elevation (metres) above the receiver tangent plane required for a GTAO horizon tap
+ * to register occlusion. Set above 5 mm heritage lime-plaster undulation so flat or hand-trowelled
+ * oblique walls never self-occlude as the 1PV camera moves.
+ */
+export const GTAO_MIN_PLANE_ELEV_M = 0.006;
+
+/** Close-up plaster micro-relief outer fade distance (metres), matching micro-surface-detail.ts. */
+export const CLOSE_UP_MICRO_RELIEF_MAX_DIST_M = 1.95;
+
+/**
+ * Pure CPU reference for the view-ray-orthogonal, unoccluded-normalized GTAO slice estimator.
+ * Verifies that any unoccluded flat wall at any oblique angle and off-axis view ray produces
+ * exact `rawVisibility = 1.0` (eliminating camera-following oblique wall darkening bands),
+ * while genuine architectural corners (`horizonElevRad > 0`) produce physical occlusion.
+ */
+export function evaluateNormalizedGtaoVisibilityCpu(
+  viewPos: THREE.Vector3,
+  viewNormal: THREE.Vector3,
+  ignAngleRad = 0.7,
+  extraHorizonRad = 0
+): number {
+  const viewDir = viewPos.clone().negate().normalize();
+  const unitNormal = viewNormal.clone().normalize();
+  const refUp =
+    Math.abs(viewDir.y) < 0.999 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+  const basisX = new THREE.Vector3().crossVectors(refUp, viewDir).normalize();
+  const basisY = new THREE.Vector3().crossVectors(viewDir, basisX);
+
+  let visAccum = 0;
+  let unoccludedAccum = 0;
+
+  const integrateHalfSlice = (
+    projNormLen: number,
+    nx: number,
+    ny: number,
+    cPos: number,
+    cNeg: number
+  ): number => {
+    const sPos = Math.sqrt(Math.max(0, 1 - cPos * cPos));
+    const sNeg = Math.sqrt(Math.max(0, 1 - cNeg * cNeg));
+    const thPos = Math.acos(THREE.MathUtils.clamp(cPos, -1, 1));
+    const thNeg = Math.acos(THREE.MathUtils.clamp(cNeg, -1, 1));
+    const termPos = ny * (1 - cPos * cPos) + nx * (thPos - sPos * cPos);
+    const termNeg = ny * (1 - cNeg * cNeg) - nx * (thNeg - sNeg * cNeg);
+    return projNormLen * 0.25 * Math.max(0, termPos + termNeg);
+  };
+
+  for (let s = 0; s < GTAO_SLICE_COUNT; s++) {
+    const sliceAngle = ignAngleRad + (s / GTAO_SLICE_COUNT) * Math.PI;
+    const sampleDir = basisX
+      .clone()
+      .multiplyScalar(Math.cos(sliceAngle))
+      .addScaledVector(basisY, Math.sin(sliceAngle));
+    const sliceBitangent = new THREE.Vector3().crossVectors(sampleDir, viewDir).normalize();
+    const rawProjNormal = unitNormal
+      .clone()
+      .sub(sliceBitangent.clone().multiplyScalar(unitNormal.dot(sliceBitangent)));
+    const projNormLen = THREE.MathUtils.clamp(
+      Math.sqrt(Math.max(1e-6, rawProjNormal.dot(rawProjNormal))),
+      0.05,
+      1.0
+    );
+    const normalInSlice = rawProjNormal.divideScalar(projNormLen);
+    const tangentToNormal = new THREE.Vector3().crossVectors(normalInSlice, sliceBitangent);
+
+    const cx0 = THREE.MathUtils.clamp(viewDir.dot(tangentToNormal), -1, 1);
+    const cy0 = THREE.MathUtils.clamp(viewDir.dot(tangentToNormal.clone().negate()), -1, 1);
+    const nx = normalInSlice.dot(sampleDir);
+    const ny = normalInSlice.dot(viewDir);
+
+    const baseVis = integrateHalfSlice(projNormLen, nx, ny, cx0, cy0);
+    unoccludedAccum += baseVis;
+
+    const thPos = Math.max(0, Math.acos(cx0) - extraHorizonRad);
+    const thNeg = Math.max(0, Math.acos(cy0) - extraHorizonRad);
+    visAccum += integrateHalfSlice(projNormLen, nx, ny, Math.cos(thPos), Math.cos(thNeg));
+  }
+
+  return THREE.MathUtils.clamp(visAccum / Math.max(1e-4, unoccludedAccum), 0, 1);
+}
+
 export function computeContactShadowFacingAndBias(
   nDotL: number,
   nDotV: number,
@@ -343,16 +425,23 @@ export function evaluateHalfResGtao(
       screenCoordinate.xy.add(vec2(19.0, 37.0))
     ).toVar();
 
+    // Orthonormal tangent basis perpendicular to viewDir so off-center perspective rays
+    // sample a true view-ray-orthogonal hemisphere instead of tilting into the wall plane.
+    const refUp = select(
+      abs(viewDir.y).lessThan(0.999),
+      vec3(0.0, 1.0, 0.0),
+      vec3(1.0, 0.0, 0.0)
+    );
+    const basisX = normalize(cross(refUp, viewDir)).toVar();
+    const basisY = cross(viewDir, basisX).toVar();
+
     const visAccum = float(0.0).toVar();
+    const unoccludedAccum = float(0.0).toVar();
 
     for (let s = 0; s < GTAO_SLICE_COUNT; s++) {
       const sliceAngle = ignAngle.add(float(s / GTAO_SLICE_COUNT).mul(PI));
-      const sampleDir = vec3(cos(sliceAngle), sin(sliceAngle), 0.0).toVar();
-      const rawBitangent = cross(sampleDir, viewDir);
-      const sliceBitangent = normalize(
-        select(dot(rawBitangent, rawBitangent).greaterThan(1e-8), rawBitangent, vec3(0.0, 1.0, 0.0))
-      ).toVar();
-      const sliceTangent = cross(sliceBitangent, viewDir).toVar();
+      const sampleDir = basisX.mul(cos(sliceAngle)).add(basisY.mul(sin(sliceAngle))).toVar();
+      const sliceBitangent = normalize(cross(sampleDir, viewDir)).toVar();
 
       const rawProjNormal = viewNormal.sub(sliceBitangent.mul(dot(viewNormal, sliceBitangent))).toVar();
       const projNormLen = clamp(
@@ -363,8 +452,10 @@ export function evaluateHalfResGtao(
       const normalInSlice = rawProjNormal.div(projNormLen).toVar();
       const tangentToNormal = cross(normalInSlice, sliceBitangent).toVar();
 
-      const cosHx = clamp(dot(viewDir, tangentToNormal), -1.0, 1.0).toVar();
-      const cosHy = clamp(dot(viewDir, tangentToNormal.negate()), -1.0, 1.0).toVar();
+      const cx0 = clamp(dot(viewDir, tangentToNormal), -1.0, 1.0).toVar();
+      const cy0 = clamp(dot(viewDir, tangentToNormal.negate()), -1.0, 1.0).toVar();
+      const cosHx = float(cx0).toVar();
+      const cosHy = float(cy0).toVar();
 
       for (let j = 0; j < GTAO_STEPS_PER_SIDE; j++) {
         const tFrac = float(j)
@@ -383,10 +474,10 @@ export function evaluateHalfResGtao(
             const distSq = dot(delta, delta);
             If(distSq.greaterThan(1e-7), () => {
               const dist = sqrt(distSq);
-              // Reject coplanar/grazing depth-quantization self-occlusion on flat walls while
-              // preserving crisp 90-degree architectural corner, skirting, and frame crevices.
+              // Clear <= 5 mm hand-trowelled plaster undulation & grazing depth quantization
+              // while preserving crisp 90-degree architectural corner, skirting, and frame crevices.
               const planeElev = dot(rawDeltaPos, viewNormal);
-              const minPlaneElev = max(0.0025, dist.mul(0.036)).mul(grazingBiasScale);
+              const minPlaneElev = max(GTAO_MIN_PLANE_ELEV_M, dist.mul(0.038)).mul(grazingBiasScale);
               const planeGate = smoothstep(minPlaneElev, minPlaneElev.mul(2.4), planeElev);
               const falloff = planeGate
                 .mul(float(1.0).sub(smoothstep(worldRadius.mul(0.62), worldRadius.mul(1.28), dist)))
@@ -412,7 +503,9 @@ export function evaluateHalfResGtao(
             If(distSqNeg.greaterThan(1e-7), () => {
               const distNeg = sqrt(distSqNeg);
               const planeElevNeg = dot(rawDeltaNeg, viewNormal);
-              const minPlaneElevNeg = max(0.0025, distNeg.mul(0.036)).mul(grazingBiasScale);
+              const minPlaneElevNeg = max(GTAO_MIN_PLANE_ELEV_M, distNeg.mul(0.038)).mul(
+                grazingBiasScale
+              );
               const planeGateNeg = smoothstep(
                 minPlaneElevNeg,
                 minPlaneElevNeg.mul(2.4),
@@ -434,18 +527,31 @@ export function evaluateHalfResGtao(
         });
       }
 
+      const nx = dot(normalInSlice, sampleDir).toVar();
+      const ny = dot(normalInSlice, viewDir).toVar();
+
+      const sx0 = sqrt(max(0.0, float(1.0).sub(cx0.mul(cx0))));
+      const sy0 = sqrt(max(0.0, float(1.0).sub(cy0.mul(cy0))));
+      const thP0 = acos(cx0);
+      const thN0 = acos(cy0);
+      const baseTerm = ny
+        .mul(float(2.0).sub(cx0.mul(cx0)).sub(cy0.mul(cy0)))
+        .add(nx.mul(thP0.sub(sx0.mul(cx0)).sub(thN0.sub(sy0.mul(cy0)))));
+      unoccludedAccum.addAssign(projNormLen.mul(0.25).mul(max(0.0, baseTerm)));
+
       const cx = clamp(cosHx, -1.0, 1.0).toVar();
       const cy = clamp(cosHy, -1.0, 1.0).toVar();
       const sx = sqrt(max(0.0, float(1.0).sub(cx.mul(cx))));
       const sy = sqrt(max(0.0, float(1.0).sub(cy.mul(cy))));
-      const nx = dot(normalInSlice, sliceTangent);
-      const ny = dot(normalInSlice, viewDir);
-      const nxb = float(0.5).mul(acos(cy).sub(acos(cx)).add(sx.mul(cx).sub(sy.mul(cy))));
-      const nyb = float(0.5).mul(float(2.0).sub(cx.mul(cx)).sub(cy.mul(cy)));
-      visAccum.addAssign(projNormLen.mul(nx.mul(nxb).add(ny.mul(nyb))));
+      const thP = acos(cx);
+      const thN = acos(cy);
+      const occTerm = ny
+        .mul(float(2.0).sub(cx.mul(cx)).sub(cy.mul(cy)))
+        .add(nx.mul(thP.sub(sx.mul(cx)).sub(thN.sub(sy.mul(cy)))));
+      visAccum.addAssign(projNormLen.mul(0.25).mul(max(0.0, occTerm)));
     }
 
-    const rawVisibility = clamp(visAccum.div(float(GTAO_SLICE_COUNT)), 0.0, 1.0);
+    const rawVisibility = clamp(visAccum.div(max(1e-4, unoccludedAccum)), 0.0, 1.0);
     const closeFade = select(
       uIsOrtho.greaterThan(0.5),
       float(1.0),
@@ -579,7 +685,7 @@ export function evaluateScreenSpaceContactShadow(
             // Also require the occluder to rise above the receiver tangent plane so flat oblique
             // walls never self-shadow along raking rays.
             const planeElev = dot(scenePos.sub(centerViewPos), centerViewNormal);
-            const minPlaneElev = max(0.0022, tMeters.mul(0.04)).mul(grazingScale);
+            const minPlaneElev = max(0.0055, tMeters.mul(0.042)).mul(grazingScale);
             const planeGate = smoothstep(minPlaneElev, minPlaneElev.mul(2.2), planeElev);
 
             const enterHit = smoothstep(minBias, minBias.mul(2.4).add(0.002), depthDiff);
@@ -615,7 +721,7 @@ export function evaluateScreenSpaceContactShadow(
 /**
  * Applies Jimenez multi-bounce colored ambient occlusion (preserving warm plaster & cornice bounce
  * instead of grey corner soot), Specular AO highlight damping, Screen-Space Contact Shadows,
- * and subtle close-up (< 1.85 m) world-space triplanar plaster micro-relief.
+ * and subtle close-up (< 1.95 m) world-space triplanar plaster micro-relief.
  */
 export const applyPhotorealismShading = Fn(
   ([
@@ -664,7 +770,7 @@ export const applyPhotorealismShading = Fn(
     const specularDamped = hdr.mul(specularAo).mul(contactVis);
     hdr.assign(mix(diffuseShaded, specularDamped, specMask.mul(0.55)));
 
-    If(scaleDistIn.lessThan(1.85), () => {
+    If(scaleDistIn.lessThan(CLOSE_UP_MICRO_RELIEF_MAX_DIST_M), () => {
       const worldPos = uCameraWorldMatrix.mul(vec4(centerViewPosIn, 1.0)).xyz;
       const worldNormal = normalize(uCameraWorldMatrix.mul(vec4(centerViewNormalIn, 0.0)).xyz);
       const smoothSurfaceMask = float(1.0).sub(smoothstep(0.012, 0.048, localLumaSpanIn));

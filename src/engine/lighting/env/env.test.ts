@@ -622,6 +622,77 @@ describe('Direct Daylight, Camera-Fitted 4096 Shadows & Volumetric Cloud Cover',
     env.dispose();
   });
 
+  it("locks 1PV walkthrough directional shadow frustum to the full interior building envelope with zero UV clipping or camera-following shadow shifts", () => {
+    const scene = new THREE.Scene();
+    const env = new EnvironmentLighting(scene);
+    env.setInteriorRoomBounds([
+      { minX: -23.0, maxX: -17.1, minY: -0.65, maxY: 5.1, minZ: -2.55, maxZ: 11.55 },
+      { minX: -18.6, maxX: 5.05, minY: -0.95, maxY: 5.1, minZ: -2.5, maxZ: 8.3 },
+      { minX: -22.25, maxX: 9.65, minY: -0.8, maxY: 5.15, minZ: 15.45, maxZ: 21.42 },
+    ]);
+    env.applyTimeOfDay("day");
+
+    let sunLight!: THREE.DirectionalLight;
+    scene.traverse((o) => {
+      if (o instanceof THREE.DirectionalLight && o.castShadow) sunLight = o;
+    });
+    expect(sunLight).toBeDefined();
+
+    // Enter 1PV walkthrough in East Wing and walk all the way through Hall, West Wing, and Outbuildings
+    const walkthroughPath = [
+      new THREE.Vector3(3.2, 1.65, 0.8),
+      new THREE.Vector3(-7.0, 1.65, 2.5),
+      new THREE.Vector3(-14.7, 1.4, 1.7),
+      new THREE.Vector3(-15.0, 3.8, 1.4),
+      new THREE.Vector3(-21.4, 1.2, 6.2),
+      new THREE.Vector3(-19.5, 1.65, 18.4),
+      new THREE.Vector3(6.5, 1.65, 18.2),
+    ];
+
+    expect(env.updateShadowFrustumForCamera(walkthroughPath[0]!, 3.5, true)).toBe(true);
+    const firstDiag = env.getShadowFrustumDiagnostics();
+    sunLight.shadow.needsUpdate = false;
+
+    for (let i = 1; i < walkthroughPath.length; i++) {
+      const changed = env.updateShadowFrustumForCamera(walkthroughPath[i]!, 3.5, true);
+      expect(changed).toBe(false);
+      expect(sunLight.shadow.needsUpdate).toBe(false);
+      const stepDiag = env.getShadowFrustumDiagnostics();
+      expect(stepDiag.centerCellX).toBeCloseTo(firstDiag.centerCellX, 6);
+      expect(stepDiag.centerCellZ).toBeCloseTo(firstDiag.centerCellZ, 6);
+      expect(stepDiag.halfExtentM).toBeCloseTo(firstDiag.halfExtentM, 6);
+    }
+
+    // Verify every interior wall corner stays strictly inside shadowCoord.xy in [0, 1] across morning, midday, and late afternoon
+    const interiorCorners = [
+      new THREE.Vector3(-23.0, -0.65, -2.55),
+      new THREE.Vector3(-23.0, 5.1, 11.55),
+      new THREE.Vector3(5.05, 5.1, -2.5),
+      new THREE.Vector3(-22.25, 3.25, 21.42),
+      new THREE.Vector3(9.65, 5.15, 21.22),
+    ];
+
+    for (const civilHour of [7.5, 10.35, 13.0, 16.5, 18.5]) {
+      env.setSolarDateTime({ civilHour, dayOfYear: 172, year: 2026 });
+      const cam = sunLight.shadow.camera;
+      const viewProj = new THREE.Matrix4().multiplyMatrices(
+        cam.projectionMatrix,
+        cam.matrixWorldInverse
+      );
+      for (const corner of interiorCorners) {
+        const ndc = corner.clone().applyMatrix4(viewProj);
+        const u = ndc.x * 0.5 + 0.5;
+        const v = ndc.y * 0.5 + 0.5;
+        expect(u).toBeGreaterThan(0.01);
+        expect(u).toBeLessThan(0.99);
+        expect(v).toBeGreaterThan(0.01);
+        expect(v).toBeLessThan(0.99);
+      }
+    }
+
+    env.dispose();
+  });
+
   it('scrubs 0..100% Cloud Cover & weather presets with 0 shadow re-bakes when sunDirection is unchanged', () => {
     const scene = new THREE.Scene();
     const shadowInvalidationFlags: boolean[] = [];

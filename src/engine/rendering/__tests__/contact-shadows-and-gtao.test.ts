@@ -3,8 +3,11 @@ import * as THREE from 'three';
 import { Fn, float, texture, uniform, vec2, vec3 } from 'three/tsl';
 import type { TextureNode } from 'three/webgpu';
 import {
+  CLOSE_UP_MICRO_RELIEF_MAX_DIST_M,
   CONTACT_SHADOW_MIN_NDOTL,
   GTAO_MAX_REL_SCREEN_RADIUS,
+  GTAO_MIN_PLANE_ELEV_M,
+  evaluateNormalizedGtaoVisibilityCpu,
   VIEWPORT_SAFE_UV_MAX,
   VIEWPORT_SAFE_UV_MIN,
   computeContactShadowFacingAndBias,
@@ -142,5 +145,43 @@ describe('contact-shadows-and-gtao', () => {
       headOn.minBiasM / 0.15,
       6
     );
+  });
+  it("normalizes GTAO slice visibility in the view-ray-orthogonal basis so unoccluded oblique 1PV walls stay 1.0 across all camera positions and screen UVs", () => {
+    // Sweep oblique grazing angles (up to ~80 deg) and off-axis screen rays (top-left to bottom-right)
+    const wallAnglesDeg = [0, 25, 50, 68, 76, 81];
+    const viewOffsets = [
+      new THREE.Vector3(0, 0, -1.6),
+      new THREE.Vector3(0.85, 0.55, -1.35),
+      new THREE.Vector3(1.15, -0.62, -1.10),
+      new THREE.Vector3(-0.95, 0.48, -2.15),
+    ];
+
+    for (const deg of wallAnglesDeg) {
+      const rad = THREE.MathUtils.degToRad(deg);
+      const wallNormal = new THREE.Vector3(-Math.sin(rad), 0.04, Math.cos(rad)).normalize();
+      for (const viewPos of viewOffsets) {
+        // Ensure surface faces the camera ray (dot(N, -viewPos) > 0.05)
+        const viewDir = viewPos.clone().negate().normalize();
+        if (wallNormal.dot(viewDir) <= 0.08) continue;
+        for (const ign of [0.0, 0.65, 1.42, 2.35]) {
+          const vis = evaluateNormalizedGtaoVisibilityCpu(viewPos, wallNormal, ign, 0);
+          expect(vis).toBeCloseTo(1.0, 5);
+        }
+      }
+    }
+
+    // Genuine architectural corner (elevated horizon) still produces strong physical AO (< 1.0)
+    const cornerVis = evaluateNormalizedGtaoVisibilityCpu(
+      new THREE.Vector3(0.4, 0.1, -1.8),
+      new THREE.Vector3(-0.5, 0.0, 0.866).normalize(),
+      0.5,
+      0.55
+    );
+    expect(cornerVis).toBeLessThan(0.75);
+    expect(cornerVis).toBeGreaterThan(0.15);
+
+    // Heritage lime-plaster undulation clearance (> 5 mm) and micro-relief fade alignment (1.95 m)
+    expect(GTAO_MIN_PLANE_ELEV_M).toBeGreaterThanOrEqual(0.006);
+    expect(CLOSE_UP_MICRO_RELIEF_MAX_DIST_M).toBeCloseTo(1.95, 5);
   });
 });

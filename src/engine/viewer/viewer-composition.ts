@@ -275,7 +275,7 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
     if (profile.soundscape !== undefined) {
       this.environment.setSoundscape(profile.soundscape);
     }
-    this.environment.weather.setInteriorRoomBounds(
+    this.environment.setInteriorRoomBounds(
       profile.lodRegistrations.filter((r) => r.isInterior !== false).map((r) => r.bounds)
     );
     this.setTimeOfDay('dusk');

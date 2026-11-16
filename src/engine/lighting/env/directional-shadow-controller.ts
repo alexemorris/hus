@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { RoomBoundingBox } from '../../../core/types/topology.ts';
 import { detectIOS, detectMobile } from '../../perf/device-tier.ts';
 import type { WebGPURenderer } from 'three/webgpu';
 import {
@@ -57,6 +58,9 @@ export class DirectionalShadowController {
   private lastAppliedShadowMapSize = 0;
   private readonly fitPosScratch = new THREE.Vector3();
   private readonly fitTargetScratch = new THREE.Vector3();
+  private hasWalkthroughEnvelope = false;
+  private readonly walkthroughEnvelopeCenter = new THREE.Vector3(-4.0, 2.5, 6.0);
+  private walkthroughHalfExtentM = SHADOW_HALF_EXTENT_MID_M;
 
   public constructor(sunLight: THREE.DirectionalLight, renderer?: WebGPURenderer) {
     this.sunLight = sunLight;
@@ -70,6 +74,62 @@ export class DirectionalShadowController {
     (this.sunLight.shadow as unknown as { filterNode: unknown }).filterNode =
       husCloudPenumbraShadowFilter;
     setSunShadowPenumbraUniforms(1.0, this.shadowMapSize);
+  }
+
+  /**
+   * Locks the first-person walkthrough directional shadow frustum to the bounding sphere of all
+   * interior rooms (padded for exterior wall reveals and roof eaves).
+   *
+   * Because the sphere center and radius depend only on the architectural envelope — never on
+   * player position or sun azimuth — every interior wall stays strictly inside `shadowCoord.xy in [0, 1]`
+   * at all solar hours with zero camera-following shadow boundaries and zero mid-walk shadow re-bakes.
+   */
+  public setWalkthroughRoomBounds(bounds: readonly RoomBoundingBox[]): void {
+    if (bounds.length === 0) {
+      this.hasWalkthroughEnvelope = false;
+      return;
+    }
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    let minZ = Infinity;
+    let maxZ = -Infinity;
+    for (const b of bounds) {
+      if (b.minX < minX) minX = b.minX;
+      if (b.maxX > maxX) maxX = b.maxX;
+      if (b.minY < minY) minY = b.minY;
+      if (b.maxY > maxY) maxY = b.maxY;
+      if (b.minZ < minZ) minZ = b.minZ;
+      if (b.maxZ > maxZ) maxZ = b.maxZ;
+    }
+    if (!Number.isFinite(minX) || !Number.isFinite(maxX)) {
+      this.hasWalkthroughEnvelope = false;
+      return;
+    }
+    const padMinX = minX - 2.0;
+    const padMaxX = maxX + 2.0;
+    const padMinY = minY - 0.6;
+    const padMaxY = maxY + 2.6;
+    const padMinZ = minZ - 2.0;
+    const padMaxZ = maxZ + 2.0;
+
+    this.walkthroughEnvelopeCenter.set(
+      (padMinX + padMaxX) * 0.5,
+      (padMinY + padMaxY) * 0.5,
+      (padMinZ + padMaxZ) * 0.5
+    );
+    const halfDx = (padMaxX - padMinX) * 0.5;
+    const halfDy = (padMaxY - padMinY) * 0.5;
+    const halfDz = (padMaxZ - padMinZ) * 0.5;
+    const sphereRadiusM = Math.hypot(halfDx, halfDy, halfDz) + 0.5;
+    const quantizedExtent = Math.ceil(sphereRadiusM * 2.0) * 0.5;
+    this.walkthroughHalfExtentM = THREE.MathUtils.clamp(
+      quantizedExtent,
+      SHADOW_HALF_EXTENT_CLOSE_M,
+      SHADOW_HALF_EXTENT_FAR_M
+    );
+    this.hasWalkthroughEnvelope = true;
   }
 
   public isStaleWhileExtinct(): boolean {
@@ -167,59 +227,71 @@ export class DirectionalShadowController {
   ): boolean {
     const dist = Number.isFinite(cameraDistanceM) ? Math.max(1.0, cameraDistanceM) : 20.0;
     let nextHalfExtent = this.shadowHalfExtentM;
-    if (!this.shadowCameraFitted) {
-      nextHalfExtent =
-        dist < 22.0
-          ? SHADOW_HALF_EXTENT_CLOSE_M
-          : dist <= 36.0
-            ? SHADOW_HALF_EXTENT_MID_M
-            : SHADOW_HALF_EXTENT_FAR_M;
-    } else if (
-      isWalkthrough &&
-      (this.shadowHalfExtentM === SHADOW_HALF_EXTENT_CLOSE_M ||
-        this.shadowHalfExtentM === SHADOW_HALF_EXTENT_MID_M)
-    ) {
-      // Hold close/mid shadow extent steady throughout first-person walkthrough
-      nextHalfExtent = this.shadowHalfExtentM;
-    } else if (this.shadowHalfExtentM === SHADOW_HALF_EXTENT_CLOSE_M) {
-      if (dist > 40.0) nextHalfExtent = SHADOW_HALF_EXTENT_FAR_M;
-      else if (dist > 24.5) nextHalfExtent = SHADOW_HALF_EXTENT_MID_M;
-    } else if (this.shadowHalfExtentM === SHADOW_HALF_EXTENT_MID_M) {
-      if (dist < 21.0) nextHalfExtent = SHADOW_HALF_EXTENT_CLOSE_M;
-      else if (dist > 40.0) nextHalfExtent = SHADOW_HALF_EXTENT_FAR_M;
-    } else {
-      if (dist < 21.0) nextHalfExtent = SHADOW_HALF_EXTENT_CLOSE_M;
-      else if (dist <= 36.0) nextHalfExtent = SHADOW_HALF_EXTENT_MID_M;
-    }
-
-    const clampedX = THREE.MathUtils.clamp(
-      cameraTarget.x,
-      SITE_SHADOW_BOX.min[0] + 4.0,
-      SITE_SHADOW_BOX.max[0] - 4.0
-    );
-    const clampedZ = THREE.MathUtils.clamp(
-      cameraTarget.z,
-      SITE_SHADOW_BOX.min[2] + 4.0,
-      SITE_SHADOW_BOX.max[2] - 4.0
-    );
-    const deadbandM = isWalkthrough ? SHADOW_CENTER_WALKTHROUGH_DEADBAND_M : SHADOW_CENTER_DEADBAND_M;
     let nextCellX = this.shadowCellCenter.x;
+    let nextCellY = 2.0;
     let nextCellZ = this.shadowCellCenter.z;
-    if (
-      !this.shadowCameraFitted ||
-      Math.abs(clampedX - this.shadowCellCenter.x) > deadbandM ||
-      Math.abs(clampedZ - this.shadowCellCenter.z) > deadbandM
-    ) {
-      nextCellX = Math.round(clampedX / SHADOW_CENTER_GRID_M) * SHADOW_CENTER_GRID_M;
-      nextCellZ = Math.round(clampedZ / SHADOW_CENTER_GRID_M) * SHADOW_CENTER_GRID_M;
+
+    if (isWalkthrough && this.hasWalkthroughEnvelope) {
+      nextHalfExtent = this.walkthroughHalfExtentM;
+      nextCellX = this.walkthroughEnvelopeCenter.x;
+      nextCellY = this.walkthroughEnvelopeCenter.y;
+      nextCellZ = this.walkthroughEnvelopeCenter.z;
+    } else {
+      if (!this.shadowCameraFitted) {
+        nextHalfExtent =
+          dist < 22.0
+            ? SHADOW_HALF_EXTENT_CLOSE_M
+            : dist <= 36.0
+              ? SHADOW_HALF_EXTENT_MID_M
+              : SHADOW_HALF_EXTENT_FAR_M;
+      } else if (
+        isWalkthrough &&
+        (this.shadowHalfExtentM === SHADOW_HALF_EXTENT_CLOSE_M ||
+          this.shadowHalfExtentM === SHADOW_HALF_EXTENT_MID_M)
+      ) {
+        // Hold close/mid shadow extent steady throughout first-person walkthrough
+        nextHalfExtent = this.shadowHalfExtentM;
+      } else if (this.shadowHalfExtentM === SHADOW_HALF_EXTENT_CLOSE_M) {
+        if (dist > 40.0) nextHalfExtent = SHADOW_HALF_EXTENT_FAR_M;
+        else if (dist > 24.5) nextHalfExtent = SHADOW_HALF_EXTENT_MID_M;
+      } else if (this.shadowHalfExtentM === SHADOW_HALF_EXTENT_MID_M) {
+        if (dist < 21.0) nextHalfExtent = SHADOW_HALF_EXTENT_CLOSE_M;
+        else if (dist > 40.0) nextHalfExtent = SHADOW_HALF_EXTENT_FAR_M;
+      } else {
+        if (dist < 21.0) nextHalfExtent = SHADOW_HALF_EXTENT_CLOSE_M;
+        else if (dist <= 36.0) nextHalfExtent = SHADOW_HALF_EXTENT_MID_M;
+      }
+
+      const clampedX = THREE.MathUtils.clamp(
+        cameraTarget.x,
+        SITE_SHADOW_BOX.min[0] + 4.0,
+        SITE_SHADOW_BOX.max[0] - 4.0
+      );
+      const clampedZ = THREE.MathUtils.clamp(
+        cameraTarget.z,
+        SITE_SHADOW_BOX.min[2] + 4.0,
+        SITE_SHADOW_BOX.max[2] - 4.0
+      );
+      const deadbandM = isWalkthrough
+        ? SHADOW_CENTER_WALKTHROUGH_DEADBAND_M
+        : SHADOW_CENTER_DEADBAND_M;
+      if (
+        !this.shadowCameraFitted ||
+        Math.abs(clampedX - this.shadowCellCenter.x) > deadbandM ||
+        Math.abs(clampedZ - this.shadowCellCenter.z) > deadbandM
+      ) {
+        nextCellX = Math.round(clampedX / SHADOW_CENTER_GRID_M) * SHADOW_CENTER_GRID_M;
+        nextCellZ = Math.round(clampedZ / SHADOW_CENTER_GRID_M) * SHADOW_CENTER_GRID_M;
+      }
     }
 
     const wasFitted = this.shadowCameraFitted;
     const cellOrExtentChanged =
       !wasFitted ||
       nextHalfExtent !== this.shadowHalfExtentM ||
-      nextCellX !== this.shadowCellCenter.x ||
-      nextCellZ !== this.shadowCellCenter.z ||
+      Math.abs(nextCellX - this.shadowCellCenter.x) > 1e-5 ||
+      Math.abs(nextCellY - this.shadowCellCenter.y) > 1e-5 ||
+      Math.abs(nextCellZ - this.shadowCellCenter.z) > 1e-5 ||
       this.shadowMapSize !== this.lastAppliedShadowMapSize;
 
     if (!cellOrExtentChanged) {
@@ -228,7 +300,7 @@ export class DirectionalShadowController {
 
     this.shadowCameraFitted = true;
     this.shadowHalfExtentM = nextHalfExtent;
-    this.shadowCellCenter.set(nextCellX, 2.0, nextCellZ);
+    this.shadowCellCenter.set(nextCellX, nextCellY, nextCellZ);
     onCloudAnchorChanged(nextCellX, nextCellZ);
 
     const probe = fitCameraTargetShadowFrustum(

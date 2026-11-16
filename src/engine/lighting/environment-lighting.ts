@@ -26,6 +26,7 @@ import {
   type SeasonSelection,
 } from '../../core/types/environment-hdri.ts';
 import type { TimeOfDay } from '../../core/types/scene.ts';
+import type { RoomBoundingBox } from '../../core/types/topology.ts';
 import type {
   HouseLocation,
   SkyWeatherSnapshot,
@@ -432,6 +433,12 @@ export class EnvironmentLighting {
       windAnimating,
       dtSeconds,
     });
+  }
+
+  /** Registers interior room AABBs so 1PV walkthroughs lock the directional shadow frustum to the full building envelope. */
+  public setInteriorRoomBounds(bounds: readonly RoomBoundingBox[]): void {
+    this.weather.setInteriorRoomBounds(bounds);
+    this.shadowController.setWalkthroughRoomBounds(bounds);
   }
 
   public updateShadowFrustumForCamera(
