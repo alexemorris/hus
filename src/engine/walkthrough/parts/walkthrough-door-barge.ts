@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { accelerateStaticMeshRaycast, prebuildGeometryBvh } from '../../rendering/mesh-bvh.ts';
+import { accelerateStaticMeshRaycast } from '../../rendering/mesh-bvh.ts';
 import { getStaircaseWalkableSampler } from '../auto-elevation-composer.ts';
 import { sampleGenericWalkableElevation } from './walkthrough-elevation-solver.ts';
 
@@ -1128,7 +1128,6 @@ export class WalkthroughDoorBargeAndCollisionSolver {
         visitStamp: 0,
       };
       accelerateStaticMeshRaycast(obj, 64);
-      prebuildGeometryBvh(obj.geometry, 64);
       list.push(obs);
       if (hasDynamicAncestor) {
         dynList.push(obs);

@@ -188,4 +188,42 @@ export class SceneZoneRegistry {
     }
     return merged;
   }
+
+  public async buildAllZonesAsync(
+    ctx: SceneBuilderContext,
+    options?: {
+      readonly yieldIfNeeded?: (label?: string) => Promise<void>;
+      readonly onProgress?: (label: string, fraction01: number) => Promise<void> | void;
+    }
+  ): Promise<ZoneIndicatorMaterials> {
+    let merged: ZoneIndicatorMaterials = {};
+    const total = Math.max(1, this.modules.length);
+    for (let i = 0; i < this.modules.length; i++) {
+      const mod = this.modules[i]!;
+      const baseLabel = `Building ${mod.name}…`;
+      await options?.onProgress?.(baseLabel, i / total);
+      await options?.yieldIfNeeded?.(baseLabel);
+
+      const scopedCtx: SceneBuilderContext = {
+        ...ctx,
+        yieldIfNeeded: async (subLabel?: string) => {
+          await options?.yieldIfNeeded?.(subLabel);
+        },
+        reportZoneProgress: async (subLabel: string, subFrac01: number) => {
+          const clamped = Math.max(0, Math.min(1, subFrac01));
+          await options?.onProgress?.(subLabel, (i + clamped) / total);
+          await options?.yieldIfNeeded?.(subLabel);
+        },
+      };
+
+      const res = mod.buildAsync ? await mod.buildAsync(scopedCtx) : mod.build(scopedCtx);
+      if (mod.variations && mod.variations.length > 0) {
+        ctx.variations?.registerAll(mod.variations);
+      }
+      merged = { ...merged, ...res };
+      await options?.onProgress?.(baseLabel, (i + 1) / total);
+      await options?.yieldIfNeeded?.();
+    }
+    return merged;
+  }
 }

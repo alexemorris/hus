@@ -8,6 +8,7 @@ import type {
 } from '../../core/types/acoustics.ts';
 import type { SeasonSelection } from '../../core/types/environment-hdri.ts';
 import type { FloorViewMode, InteractiveUserData, TimeOfDay } from '../../core/types/scene.ts';
+const TIMES_OF_DAY: readonly TimeOfDay[] = ['day', 'dusk', 'night'];
 import type {
   LiveWeatherState,
   PrecipitationType,
@@ -19,7 +20,7 @@ import { computeAcousticOcclusion } from '../audio/acoustic-occlusion.ts';
 import { soundEngine } from '../audio/sound-engine.ts';
 import { getAttachedAudioEmitters, type AudioEmitterHandle } from '../audio/spatial-emitters.ts';
 import { CutawayController } from '../cutaway/cutaway-controller.ts';
-import { EnvironmentLighting } from '../lighting/environment-lighting.ts';
+import { EnvironmentLighting, type PreflightedPreviewHdr } from '../lighting/environment-lighting.ts';
 import { installShaderLightCulling } from '../lighting/shader-light-culling.ts';
 import { RoomLodController } from '../lod/lod-manager.ts';
 import { applySelectiveBevelModifier } from '../rendering/bevel-modifier.ts';
@@ -35,6 +36,7 @@ import {
 import type { PropertySceneProfile, SecurityOverlay3D } from './property-scene-profile.ts';
 import {
   buildPropertySceneContent,
+  buildPropertySceneContentAsync,
   createPropertySceneLayers,
   type PropertySceneContent,
   type PropertySceneLayers,
@@ -68,6 +70,29 @@ import { createViewerWalkthrough } from './services/viewer-walkthrough.ts';
  *
  * Home-specific data comes from a `PropertySceneProfile`.
  */
+export const POST_LOAD_INPUT_IDLE_COOLDOWN_MS = 2000;
+
+export interface PropertySceneAsyncOptions {
+  readonly preflightRenderer?: ViewerRenderer;
+  readonly rendererInitPromise?: Promise<void>;
+  readonly preflightPreviewHdr?: PreflightedPreviewHdr | null;
+  readonly yieldIfNeeded?: (label?: string) => Promise<void>;
+  readonly onZoneProgress?: (label: string, fraction01: number) => Promise<void> | void;
+  readonly onBatchProgress?: (label: string, fraction01: number) => Promise<void> | void;
+}
+
+export interface WarmUpForStartupOptions {
+  readonly rendererInitPromise?: Promise<void>;
+  readonly yieldIfNeeded?: (label?: string) => Promise<void>;
+  readonly onTextureProgress?: (
+    uploaded: number,
+    total: number,
+    fraction01: number
+  ) => Promise<void> | void;
+  readonly onCompileProgress?: (label: string, fraction01: number) => Promise<void> | void;
+  readonly onFirstFrameProgress?: (label: string) => Promise<void> | void;
+}
+
 export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOverlay3D> {
   public readonly scene: THREE.Scene;
   public readonly renderer: ViewerRenderer;
@@ -107,6 +132,12 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
   private lastProgrammaticScrubMs = -10_000;
   private lastScrubShadowBakeMs = -10_000;
   private readonly scrubSettledListeners = new Set<() => void>();
+  private lastUserActivityTimeMs =
+    typeof performance !== 'undefined' ? performance.now() : Date.now();
+  private startupWarmupComplete = false;
+  private readonly pendingSecondaryCompileBuckets: TimeOfDay[] = [];
+  private secondaryCompileInFlight = false;
+  private idleNeighborPrewarmTriggered = false;
   private readonly audioEmitters: readonly AudioEmitterHandle[];
   private readonly isInteriorAcousticPoint: (x: number, y: number, z: number) => boolean;
   private readonly exteriorPortalsScratch: AcousticPortalState[] = [];
@@ -126,13 +157,24 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
         readonly worldPosition?: { readonly x: number; readonly y: number; readonly z: number };
       }
     ) => void,
-    profile: PropertySceneProfile<TSecurity>
+    profile: PropertySceneProfile<TSecurity>,
+    prebuilt?: {
+      readonly scene: THREE.Scene;
+      readonly layers: PropertySceneLayers;
+      readonly zoneRegistry: SceneZoneRegistry;
+      readonly lodController: RoomLodController;
+      readonly content: PropertySceneContent<TSecurity>;
+      readonly renderer?: ViewerRenderer;
+      readonly preflightPreviewHdr?: PreflightedPreviewHdr | null;
+      readonly deferBatchOptimize?: boolean;
+      readonly ceilingCutaway?: boolean;
+    }
   ) {
     installShaderLightCulling();
     this.canvas = canvas;
     this.profile = profile;
-    this.zoneRegistry = profile.createZoneRegistry();
-    this.lodController = new RoomLodController(profile.lodRegistrations);
+    this.zoneRegistry = prebuilt?.zoneRegistry ?? profile.createZoneRegistry();
+    this.lodController = prebuilt?.lodController ?? new RoomLodController(profile.lodRegistrations);
     const interiorAcousticZones = profile.lodRegistrations
       .filter((r) => r.isInterior !== false)
       .map((r) => ({
@@ -174,10 +216,10 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
       return false;
     };
 
-    const scene = (this.scene = new THREE.Scene());
+    const scene = (this.scene = prebuilt?.scene ?? new THREE.Scene());
     scene.background = new THREE.Color(0x0f1318);
 
-    const renderer = (this.renderer = new ViewerRenderer(canvas));
+    const renderer = (this.renderer = prebuilt?.renderer ?? new ViewerRenderer(canvas));
     this.camera = new CameraService({
       canvas,
       scene,
@@ -196,7 +238,7 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
       renderer.requestRender();
     });
 
-    const layers = (this.layers = createPropertySceneLayers(scene, profile.floors));
+    const layers = (this.layers = prebuilt?.layers ?? createPropertySceneLayers(scene, profile.floors));
     this.cutaways = new CutawayController(layers, this.zoneRegistry, this.lodController, profile);
     this.rooms = new RoomService({
       scene,
@@ -289,16 +331,23 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
     this.environment.setInteriorRoomBounds(
       profile.lodRegistrations.filter((r) => r.isInterior !== false).map((r) => r.bounds)
     );
+    if (prebuilt?.preflightPreviewHdr) {
+      this.environment.setPreflightedPreviewHdr(prebuilt.preflightPreviewHdr);
+    }
     this.setTimeOfDay('dusk');
 
-    const content = (this.content = buildPropertySceneContent(layers, {
-      profile,
-      registry: this.zoneRegistry,
-      lodController: this.lodController,
-      ceilingCutaway: this.cutaways.isCeilingCutaway(),
-    }));
+    const content = (this.content =
+      prebuilt?.content ??
+      buildPropertySceneContent(layers, {
+        profile,
+        registry: this.zoneRegistry,
+        lodController: this.lodController,
+        ceilingCutaway: this.cutaways.isCeilingCutaway(),
+      }));
     this.audioEmitters = getAttachedAudioEmitters(scene);
-    applySelectiveBevelModifier(layers);
+    if (!prebuilt?.deferBatchOptimize) {
+      applySelectiveBevelModifier(layers);
+    }
     this.devices = new DeviceService({
       content,
       profile,
@@ -375,10 +424,12 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
       batches.unbatchSubtree(targetRoot);
     });
 
-    this.walkthrough.captureFurnitureColliders();
-    this.environment.weather.indexExteriorMaterials(scene);
-    this.syncSceneTimeOfDayIfChanged(this.environment.getTimeOfDay());
-    batches.optimize();
+    if (!prebuilt?.deferBatchOptimize) {
+      this.walkthrough.captureFurnitureColliders();
+      this.environment.weather.indexExteriorMaterials(scene);
+      this.syncSceneTimeOfDayIfChanged(this.environment.getTimeOfDay());
+      batches.optimize();
+    }
     this.mirrors = new MirrorReflectorController(scene, {
       isFirstPerson: () => this.walkthrough.isActive(),
       resolveZoneAtPoint: (worldPoint) => {
@@ -417,7 +468,10 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
         return bestId;
       },
     });
-    this.mirrors.discoverMirrors(scene);
+    if (!prebuilt?.deferBatchOptimize) {
+      this.mirrors.discoverMirrors(scene);
+      this.mirrors.prewarmSlots();
+    }
     this.variations = new RoomVariationController({
       groups: content.variations,
       onAfterVariationChange: () => {
@@ -425,6 +479,7 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
         this.staticScene.batchOptimizer.stepFades(0);
         this.cutaways.collectDynamicCutawayWalls();
         this.mirrors.discoverMirrors(scene);
+        this.mirrors.prewarmSlots();
         this.cutaways.invalidateLodCache();
         this.walkthrough.invalidateObstacleCache();
         this.refreshView(true);
@@ -434,10 +489,12 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
     });
     const budgetAnchorZone = profile.lodRegistrations.find((r) => r.isInterior !== false)?.zoneId;
     if (budgetAnchorZone) batches.setBudgetAnchorZone(budgetAnchorZone);
-    this.staticScene.batchOptimizer.refreshManagedLights();
-    this.staticScene.batchOptimizer.stepFades(0);
-    this.refreshView(true);
-    this.staticScene.freezeStaticMatrices();
+    if (!prebuilt?.deferBatchOptimize) {
+      this.staticScene.batchOptimizer.refreshManagedLights();
+      this.staticScene.batchOptimizer.stepFades(0);
+      this.refreshView(true);
+      this.staticScene.freezeStaticMatrices();
+    }
     this.terrainSculpt = new TerrainSculptController({
       canvas,
       scene,
@@ -509,6 +566,24 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
       onObjectInteraction,
     });
     const { signal } = this.disposeAbortController;
+    const onInputActivity = (): void => {
+      this.noteUserActivity();
+    };
+    const onPointerMoveActivity = (ev: Event): void => {
+      const pe = ev as PointerEvent;
+      if (this.userInteracting || this.walkthrough.isActive() || (typeof pe.buttons === 'number' && pe.buttons !== 0)) {
+        this.noteUserActivity();
+      }
+    };
+    if (typeof canvas.addEventListener === 'function') {
+      canvas.addEventListener('pointerdown', onInputActivity, { signal, passive: true });
+      canvas.addEventListener('pointermove', onPointerMoveActivity, { signal, passive: true });
+      canvas.addEventListener('pointerup', onInputActivity, { signal, passive: true });
+      canvas.addEventListener('wheel', onInputActivity, { signal, passive: true });
+      canvas.addEventListener('touchstart', onInputActivity, { signal, passive: true });
+      canvas.addEventListener('touchmove', onInputActivity, { signal, passive: true });
+    }
+    window.addEventListener('keydown', onInputActivity, { signal, passive: true });
     window.addEventListener('resize', this.onWindowResize, { signal });
     window.addEventListener('orientationchange', this.onWindowResize, { signal });
     window.visualViewport?.addEventListener('resize', this.onWindowResize, { signal });
@@ -522,10 +597,12 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
     rig.setSurfacePicker((ndcX, ndcY) => this.camera.pickVisibleSurfacePointNdc(ndcX, ndcY));
     rig.controls.addEventListener('start', () => {
       this.userInteracting = true;
+      this.noteUserActivity();
       renderer.requestRender();
     });
     rig.controls.addEventListener('end', () => {
       this.userInteracting = false;
+      this.noteUserActivity();
       if (this.deferredShadowFrustumUpdate) {
         this.deferredShadowFrustumUpdate = false;
         this.refreshView(false);
@@ -542,6 +619,130 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
       refreshView: () => this.refreshView(true),
     });
     this.walkthrough.restoreFromSessionIfActive(this.camera.getPoseSnapshot());
+  }
+
+  public noteUserActivity(): void {
+    this.lastUserActivityTimeMs =
+      typeof performance !== 'undefined' ? performance.now() : Date.now();
+  }
+
+  public getMillisSinceLastUserActivity(): number {
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    return Math.max(0, now - this.lastUserActivityTimeMs);
+  }
+
+  public isInputIdleForBackgroundWork(
+    cameraMoved = false,
+    minCooldownMs = POST_LOAD_INPUT_IDLE_COOLDOWN_MS
+  ): boolean {
+    if (
+      this.disposed ||
+      cameraMoved ||
+      this.userInteracting ||
+      this.interactiveScrubActive ||
+      this.camera.rig.isTweening()
+    ) {
+      return false;
+    }
+    return this.getMillisSinceLastUserActivity() >= minCooldownMs;
+  }
+
+  public getPendingSecondaryCompileBucketCount(): number {
+    return this.pendingSecondaryCompileBuckets.length;
+  }
+
+  protected async finalizeAsyncSceneConstruction(
+    options?: PropertySceneAsyncOptions
+  ): Promise<void> {
+    if (this.disposed) return;
+    await options?.onBatchProgress?.('Refining architectural bevels…', 0.02);
+    await options?.yieldIfNeeded?.();
+    applySelectiveBevelModifier(this.layers);
+
+    await options?.onBatchProgress?.('Indexing walkthrough colliders…', 0.08);
+    await options?.yieldIfNeeded?.();
+    this.scene.updateMatrixWorld(true);
+    this.walkthrough.captureFurnitureColliders();
+    this.environment.weather.indexExteriorMaterials(this.scene);
+    this.syncSceneTimeOfDayIfChanged(this.environment.getTimeOfDay());
+
+    await this.staticScene.batchOptimizer.optimizeAsync({
+      skipInitialMatrixUpdate: true,
+      ...(options?.yieldIfNeeded ? { yieldIfNeeded: options.yieldIfNeeded } : {}),
+      onProgress: (label, frac01) =>
+        options?.onBatchProgress?.(label, 0.12 + frac01 * 0.84),
+    });
+
+    if (this.disposed) return;
+    this.mirrors.discoverMirrors(this.scene);
+    this.mirrors.prewarmSlots();
+    this.staticScene.batchOptimizer.refreshManagedLights();
+    this.staticScene.batchOptimizer.stepFades(0);
+    this.refreshView(true);
+    this.staticScene.freezeStaticMatrices();
+    await options?.onBatchProgress?.('Static geometry batched', 1);
+    await options?.yieldIfNeeded?.();
+  }
+
+  public static async createCompositionAsync<TSecurity extends SecurityOverlay3D = SecurityOverlay3D>(
+    canvas: HTMLCanvasElement,
+    onObjectInteraction: (
+      data: InteractiveUserData,
+      details?: {
+        readonly pressDurationMs: number;
+        readonly worldPosition?: { readonly x: number; readonly y: number; readonly z: number };
+      }
+    ) => void,
+    profile: PropertySceneProfile<TSecurity>,
+    options?: PropertySceneAsyncOptions,
+    instantiate?: (prebuilt: {
+      readonly scene: THREE.Scene;
+      readonly layers: PropertySceneLayers;
+      readonly zoneRegistry: SceneZoneRegistry;
+      readonly lodController: RoomLodController;
+      readonly content: PropertySceneContent<TSecurity>;
+      readonly renderer?: ViewerRenderer;
+      readonly preflightPreviewHdr?: PreflightedPreviewHdr | null;
+      readonly deferBatchOptimize?: boolean;
+      readonly ceilingCutaway?: boolean;
+    }) => ViewerComposition<TSecurity>
+  ): Promise<ViewerComposition<TSecurity>> {
+    installShaderLightCulling();
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0f1318);
+    const layers = createPropertySceneLayers(scene, profile.floors);
+    const zoneRegistry = profile.createZoneRegistry();
+    const lodController = new RoomLodController(profile.lodRegistrations);
+    const ceilingCutaway = profile.initialView?.sectionCut ?? false;
+
+    const content = await buildPropertySceneContentAsync(layers, {
+      profile,
+      registry: zoneRegistry,
+      lodController,
+      ceilingCutaway,
+      ...(options?.yieldIfNeeded ? { yieldIfNeeded: options.yieldIfNeeded } : {}),
+      ...(options?.onZoneProgress ? { onProgress: options.onZoneProgress } : {}),
+    });
+
+    const prebuilt = {
+      scene,
+      layers,
+      zoneRegistry,
+      lodController,
+      content,
+      deferBatchOptimize: true,
+      ceilingCutaway,
+      ...(options?.preflightRenderer ? { renderer: options.preflightRenderer } : {}),
+      ...(options?.preflightPreviewHdr !== undefined
+        ? { preflightPreviewHdr: options.preflightPreviewHdr }
+        : {}),
+    };
+
+    const instance = instantiate
+      ? instantiate(prebuilt)
+      : new ViewerComposition<TSecurity>(canvas, onObjectInteraction, profile, prebuilt);
+    await instance.finalizeAsyncSceneConstruction(options);
+    return instance;
   }
 
   public handleResize(): void {
@@ -568,6 +769,12 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
   }
 
   public hasActiveAnimations(): boolean {
+    const hasDeferredIdleWork =
+      this.startupWarmupComplete &&
+      (this.environment.hasPendingHdrBakes() ||
+        this.environment.hasPendingProceduralBuckets() ||
+        this.pendingSecondaryCompileBuckets.length > 0 ||
+        !this.idleNeighborPrewarmTriggered);
     return (
       this.renderer.hasPendingRender() ||
       this.viewDirtyFromControls ||
@@ -577,7 +784,8 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
       this.environment.isTransitioning() ||
       this.environment.weather.isAnimating() ||
       this.devices.hasActiveAnimations() ||
-      this.lastTickActive
+      this.lastTickActive ||
+      hasDeferredIdleWork
     );
   }
 
@@ -609,7 +817,34 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
       this.refreshView(false);
       refreshedThisFrame = true;
     }
-    const envTransitioned = this.environment.stepTransition(dtSeconds, !cameraMoved && !this.userInteracting);
+    if (cameraMoved || this.userInteracting || this.interactiveScrubActive) {
+      this.noteUserActivity();
+    }
+    const allowIdleBackgroundWork = this.isInputIdleForBackgroundWork(cameraMoved);
+    // Run at most ONE heavy background item per >=2,000 ms input-idle check, immediately pausing if input resumes!
+    let consumedIdleSlot = false;
+    if (allowIdleBackgroundWork && this.environment.hasPendingHdrBakes()) {
+      consumedIdleSlot = true;
+    }
+    const envTransitioned = this.environment.stepTransition(
+      dtSeconds,
+      allowIdleBackgroundWork
+    );
+    if (allowIdleBackgroundWork && !consumedIdleSlot && this.startupWarmupComplete) {
+      if (this.environment.bakeNextProceduralBucketIfPending(this.renderer.renderer)) {
+        consumedIdleSlot = true;
+      } else if (!this.secondaryCompileInFlight && this.pendingSecondaryCompileBuckets.length > 0) {
+        const nextBucket = this.pendingSecondaryCompileBuckets.shift()!;
+        consumedIdleSlot = true;
+        this.secondaryCompileInFlight = true;
+        void this.compileSecondaryBucketWhenIdle(nextBucket).finally(() => {
+          this.secondaryCompileInFlight = false;
+        });
+      } else if (!this.idleNeighborPrewarmTriggered) {
+        this.idleNeighborPrewarmTriggered = true;
+        this.environment.scheduleIdleBackgroundPrewarm(this.renderer.renderer);
+      }
+    }
     const walkthroughActive = this.walkthrough.isActive();
     this.devices.update(dtSeconds, walkthroughActive && cameraMoved, walkthroughActive);
     if (this.devices.hasPortalOrDoorAnimations()) {
@@ -945,6 +1180,7 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
 
   private noteScrubActivity(): void {
     const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    this.lastUserActivityTimeMs = nowMs;
     const prevMs = this.lastProgrammaticScrubMs;
     this.lastProgrammaticScrubMs = nowMs;
     if (this.interactiveScrubActive) {
@@ -1108,38 +1344,47 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
    * zero lag when the viewport becomes interactive.
    */
   public async warmUpForStartup(
-    onProgress?: (label: string, fraction: number) => Promise<void> | void
+    onProgress?: (label: string, fraction: number) => Promise<void> | void,
+    options?: WarmUpForStartupOptions
   ): Promise<void> {
     if (this.disposed) return;
-    await this.renderer.init();
+    await (options?.rendererInitPromise ?? this.renderer.init());
     if (this.disposed) return;
     this.graphics.refreshDeviceProfile();
     this.staticScene.batchOptimizer.stepFades(0);
     this.walkthrough.warmSpatialIndices();
 
     const glRenderer = this.renderer.renderer;
-    this.environment.bakeProceduralEnvironments(glRenderer);
+    this.environment.bakeProceduralEnvironments(glRenderer, { onlyActiveBucket: true });
     this.environment.applyTimeOfDay(this.environment.currentMinutes, this.scene);
 
-    // Load & PMREM-bake the 512x256 HDRI upfront during #loading-screen
-    //    so zero post-boot HDR fetch/decode/PMREM stalls ever occur after loading.finish().
-    await onProgress?.('Loading countryside HDRI…', 0.72);
+    // Resolve startup HDRI readiness as soon as the single active 512x256 preview .hdr
+    // (or procedural fallback) is PMREM-baked — without waiting for 8K .hdr + _detail.webp!
+    await onProgress?.('Baking active preview HDRI…', 0.68);
     if (this.disposed) return;
     await this.environment.preloadActiveHdr(glRenderer);
     if (this.disposed) return;
 
-    // Upload unique scene textures (DataTextures, HDR PMREM, async images, canvases)
-    //    to GPU VRAM upfront while #loading-screen is visible so zero post-boot texture uploads occur.
-    await onProgress?.('Uploading PBR surface maps…', 0.80);
+    await onProgress?.('Uploading PBR surface maps…', 0.71);
     if (this.disposed) return;
-    const uploadedTextures = await this.uploadAllSceneTexturesUpfront();
+    const uploadedTextures = await this.uploadAllSceneTexturesUpfront({
+      ...(options?.yieldIfNeeded ? { yieldIfNeeded: options.yieldIfNeeded } : {}),
+      onProgress: async (uploaded, total, frac01) => {
+        if (options?.onTextureProgress) {
+          await options.onTextureProgress(uploaded, total, frac01);
+        } else {
+          await onProgress?.(
+            `Uploading PBR surface maps (${uploaded}/${total})…`,
+            0.71 + frac01 * 0.09
+          );
+        }
+      },
+    });
     if (this.disposed) return;
 
-    // Synchronize starting exterior view & matrices, then compile unique scene
-    //    GPURenderPipelines (including hidden LOD0/LOD1/LOD2 rooms, cutaway walls, doors,
-    //    transparent glass, DoubleSide, mirrored negative-scale, and cutaway-toggled light variants)
-    //    asynchronously in parallel against the exact MSAA rgba16float PassNode target.
-    await onProgress?.('Compiling GPU pipelines…', 0.88);
+    await onProgress?.('Compiling active GPU pipelines…', 0.82);
+    await options?.onCompileProgress?.('Preparing shader warmup set…', 0.08);
+    await options?.yieldIfNeeded?.();
     if (this.disposed) return;
     const rendererCoordSys = (
       glRenderer as unknown as { coordinateSystem?: THREE.CoordinateSystem }
@@ -1152,6 +1397,11 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
     this.viewDirtyFromControls = false;
     this.refreshView(true);
     this.scene.updateMatrixWorld(true);
+
+    // Prewarm pooled MirrorReflectorController slots & virtual-camera RenderTargets before warmup!
+    this.mirrors.prewarmSlots();
+    this.mirrors.prewarmCameraRenderTargets(perspCam, glRenderer);
+    this.ensureSceneVegetationAttributes();
 
     const warmupGroup = this.buildFullSceneWarmupGroup();
     const temporarilyShownMaterials: THREE.Material[] = [];
@@ -1168,6 +1418,14 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
     this.scene.add(warmupGroup);
     warmupGroup.updateMatrixWorld(true);
 
+    const activeStartupBucket = this.environment.getActiveHdrBucket();
+    this.pendingSecondaryCompileBuckets.length = 0;
+    for (const mode of TIMES_OF_DAY) {
+      if (mode !== activeStartupBucket) {
+        this.pendingSecondaryCompileBuckets.push(mode);
+      }
+    }
+
     try {
       this.renderer.invalidateShadows();
       for (const child of this.scene.children) {
@@ -1177,12 +1435,20 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
         }
       }
 
-      await this.compileSceneAcrossTimeOfDayBuckets(perspCam);
+      await options?.onCompileProgress?.(
+        `Compiling ${activeStartupBucket} GPU pipelines…`,
+        0.25
+      );
+      await options?.yieldIfNeeded?.();
+      await this.compileSceneForBuckets(perspCam, [activeStartupBucket]);
       if (this.disposed) return;
+      await options?.onCompileProgress?.('GPU pipelines compiled', 1.0);
+      await options?.yieldIfNeeded?.();
 
       // Render Frame 0 (including the 4096x4096 directional shadow pass while zero-area warmup
-      //    dummies are attached so all shadow-caster depth pipelines also compile upfront).
+      // dummies are attached so all shadow-caster depth pipelines also compile upfront).
       await onProgress?.('Rendering first frame…', 0.96);
+      await options?.onFirstFrameProgress?.('Rendering first frame…');
       if (this.disposed) return;
       this.renderer.invalidateShadows();
       this.renderer.requestRender();
@@ -1205,6 +1471,8 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
 
     if (this.disposed) return;
     this.releaseUploadedStaticSceneCanvases(uploadedTextures);
+    this.noteUserActivity();
+    this.startupWarmupComplete = true;
 
     try {
       this.camera.pickVisibleSurfacePointNdc(0, 0);
@@ -1213,8 +1481,49 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
     }
   }
 
-  private async compileSceneAcrossTimeOfDayBuckets(
-    perspCam: THREE.PerspectiveCamera
+  private async compileSecondaryBucketWhenIdle(bucket: TimeOfDay): Promise<void> {
+    if (this.disposed || !this.isInputIdleForBackgroundWork(false)) {
+      if (!this.disposed) {
+        this.pendingSecondaryCompileBuckets.unshift(bucket);
+      }
+      return;
+    }
+    const perspCam = this.camera.rig.perspCamera;
+    await this.compileSceneForBuckets(perspCam, [bucket]);
+  }
+
+  private ensureSceneVegetationAttributes(): void {
+    this.scene.traverse((obj) => {
+      if (!(obj instanceof THREE.Mesh) || !(obj.geometry instanceof THREE.BufferGeometry)) return;
+      const posAttr = obj.geometry.getAttribute('position');
+      if (!posAttr || posAttr.count === 0) {
+        obj.visible = false;
+        return;
+      }
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+      const hasVeg = mats.some(
+        (m) =>
+          Boolean(m) &&
+          ((m as unknown as { isPhenologyMaterial?: boolean }).isPhenologyMaterial === true ||
+            m!.userData?.isVegetationMaterial === true)
+      );
+      if (!hasVeg) return;
+      const geo = obj.geometry;
+      const pos = geo.getAttribute('position');
+      const count = pos ? pos.count : 0;
+      if (count <= 0) return;
+      if (!geo.getAttribute('aVegPivot')) {
+        geo.setAttribute('aVegPivot', new THREE.BufferAttribute(new Float32Array(count * 3), 3));
+      }
+      if (!geo.getAttribute('aVegMeta')) {
+        geo.setAttribute('aVegMeta', new THREE.BufferAttribute(new Float32Array(count * 4), 4));
+      }
+    });
+  }
+
+  private async compileSceneForBuckets(
+    perspCam: THREE.PerspectiveCamera,
+    buckets: readonly TimeOfDay[]
   ): Promise<void> {
     if (this.disposed) return;
     const glRenderer = this.renderer.renderer;
@@ -1269,7 +1578,7 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
             } finally {
               for (const m of zeroOpacityMats) m.opacity = 0;
             }
-          }),
+          }, buckets),
         true
       );
     } catch (err) {
@@ -1283,7 +1592,14 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
     }
   }
 
-  private async uploadAllSceneTexturesUpfront(): Promise<Set<THREE.Texture>> {
+  private async uploadAllSceneTexturesUpfront(options?: {
+    readonly yieldIfNeeded?: (label?: string) => Promise<void>;
+    readonly onProgress?: (
+      uploaded: number,
+      total: number,
+      fraction01: number
+    ) => Promise<void> | void;
+  }): Promise<Set<THREE.Texture>> {
     const glRenderer = this.renderer.renderer;
     const maxAnisotropy = this.renderer.getMaxAnisotropy();
     const uniqueTextures = new Set<THREE.Texture>();
@@ -1352,7 +1668,11 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
       if (this.disposed) return uniqueTextures;
     }
 
-    for (const tex of uniqueTextures) {
+    const texArray = Array.from(uniqueTextures);
+    const total = Math.max(1, texArray.length);
+    for (let i = 0; i < texArray.length; i++) {
+      if (this.disposed) return uniqueTextures;
+      const tex = texArray[i]!;
       if (
         !(tex instanceof THREE.DataTexture && tex.minFilter === THREE.LinearFilter) &&
         tex.generateMipmaps !== false &&
@@ -1365,6 +1685,11 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
         glRenderer.initTexture(tex);
       } catch {
         // Ignore placeholder/incomplete textures in headless environments
+      }
+      if ((i & 7) === 7 || i === texArray.length - 1) {
+        const uploaded = i + 1;
+        await options?.onProgress?.(uploaded, texArray.length, uploaded / total);
+        await options?.yieldIfNeeded?.();
       }
     }
     return uniqueTextures;
@@ -1549,6 +1874,12 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
       if (!g.getAttribute('position')) {
         g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(9), 3));
       }
+      if (!g.getAttribute('aVegPivot')) {
+        g.setAttribute('aVegPivot', new THREE.BufferAttribute(new Float32Array(9), 3));
+      }
+      if (!g.getAttribute('aVegMeta')) {
+        g.setAttribute('aVegMeta', new THREE.BufferAttribute(new Float32Array(12), 4));
+      }
       if (srcGeo.index) {
         g.setIndex([0, 1, 2]);
       }
@@ -1667,6 +1998,41 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
         },
         entry.material
       );
+    }
+
+    // Include prewarmed MirrorReflectorController pooled slot materials (husActiveMirrorReflector_*)
+    // so panning near a mirror never triggers a lazy WebGPU pipeline compile!
+    const mirrorWarmupMaterials = this.mirrors.getWarmupMaterials();
+    if (mirrorWarmupMaterials.length > 0) {
+      let sampleMirrorGeo: THREE.BufferGeometry | null = null;
+      this.scene.traverse((obj) => {
+        if (
+          !sampleMirrorGeo &&
+          obj instanceof THREE.Mesh &&
+          (obj.userData?.isMirror === true ||
+            ( !Array.isArray(obj.material) && obj.material?.userData?.isMirrorMaterial === true))
+        ) {
+          sampleMirrorGeo = obj.geometry;
+        }
+      });
+      const fallbackMirrorGeo = sampleMirrorGeo ?? new THREE.PlaneGeometry(0.5, 0.5);
+      if (!sampleMirrorGeo) {
+        disposableGeometries.push(fallbackMirrorGeo);
+      }
+      for (const mirrorMat of mirrorWarmupMaterials) {
+        registerDescriptorMaterials(
+          {
+            geometry: fallbackMirrorGeo,
+            isInstanced: false,
+            hasInstColor: false,
+            receiveShadow: false,
+            castShadow: false,
+            frontFaceCW: false,
+            name: mirrorMat.name || 'husActiveMirrorWarmup',
+          },
+          mirrorMat
+        );
+      }
     }
 
     this.retainedWarmupDisposables.push(

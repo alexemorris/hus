@@ -424,6 +424,69 @@ export class MirrorReflectorController {
     return this.slots.length;
   }
 
+  /**
+   * Eagerly pre-allocates the pooled reflector slot(s) (`husActiveMirrorReflector_*`) during
+   * startup before `compileAsync` so panning near a mirror never lazily creates a ReflectorNode,
+   * RenderTarget, or WebGPU render pipeline mid-pan!
+   * Allocates 0 slots on constrained mobile or `'low'` graphics tier.
+   */
+  public prewarmSlots(explicitCount?: number): number {
+    if (
+      this.disposed ||
+      this.isConstrainedMobile ||
+      this.graphicsTier === 'low' ||
+      this.candidates.length === 0
+    ) {
+      return 0;
+    }
+    const maxBudget = this.getEffectiveMaxMirrors(true);
+    if (maxBudget <= 0) return 0;
+    const targetCount = Math.min(
+      this.candidates.length,
+      explicitCount !== undefined ? Math.max(0, Math.min(maxBudget, explicitCount)) : maxBudget
+    );
+    while (this.slots.length < targetCount) {
+      this.slots.push(this.createReflectorSlot(this.slots.length));
+    }
+    return this.slots.length;
+  }
+
+  /**
+   * Pre-allocates the camera's internal reflection `RenderTarget` on each pooled slot
+   * during startup warmup (without running a reflection scene pass when out of range).
+   */
+  public prewarmCameraRenderTargets(
+    camera: THREE.Camera,
+    renderer?: { getDrawingBufferSize: (target: THREE.Vector2) => THREE.Vector2 }
+  ): void {
+    if (this.disposed || this.slots.length === 0) return;
+    const bufSize = renderer ? renderer.getDrawingBufferSize(new THREE.Vector2()) : null;
+    for (const slot of this.slots) {
+      const base = slot.baseReflector as unknown as {
+        getVirtualCamera?: (c: THREE.Camera) => THREE.Camera;
+        getRenderTarget?: (c: THREE.Camera) => THREE.RenderTarget;
+      };
+      if (typeof base.getVirtualCamera === 'function' && typeof base.getRenderTarget === 'function') {
+        const vCam = base.getVirtualCamera(camera);
+        const rt = base.getRenderTarget(vCam);
+        if (bufSize && bufSize.x > 0 && bufSize.y > 0) {
+          rt.setSize(
+            Math.max(1, Math.round(bufSize.x * this.resolutionScale)),
+            Math.max(1, Math.round(bufSize.y * this.resolutionScale))
+          );
+        }
+      }
+    }
+  }
+
+  /**
+   * Returns all pooled `MeshPhysicalNodeMaterial` instances (`husActiveMirrorReflector_*`)
+   * so `buildFullSceneWarmupGroup()` includes them in startup shader compilation.
+   */
+  public getWarmupMaterials(): readonly THREE.Material[] {
+    return this.slots.map((s) => s.material);
+  }
+
   public getActiveReflectorTargets(): readonly THREE.Object3D[] {
     const out: THREE.Object3D[] = [];
     for (const candidate of this.activeCandidates) {
@@ -971,6 +1034,9 @@ export class MirrorReflectorController {
       const frameObj = frame as { camera?: THREE.Camera } | null | undefined;
       const mainCamera = frameObj?.camera ?? null;
       const currentCandidate = slot.boundCandidate;
+      if (currentCandidate === null) {
+        return;
+      }
 
       if (
         slot.hasRenderedOnce &&

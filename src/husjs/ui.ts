@@ -1,6 +1,17 @@
 export { mountAppShell, mountHusShell, type MountShellOptions } from '../ui/shell/mount-shell.tsx';
 export { HusShell, AppShell, type HusShellProps, type AppShellProps } from '../ui/shell/HusShell.tsx';
-export { getLoadingScreen, type LoadingScreen } from '../ui/shell/loading.ts';
+export {
+  createFrameBudgetYielder,
+  DEFAULT_FRAME_BUDGET_MS,
+  getLoadingScreen,
+  STARTUP_PHASE_RANGES,
+  StartupProgressMeter,
+  yieldToFrameBudget,
+  type FrameBudgetYielder,
+  type LoadingScreen,
+  type StartupPhaseId,
+  type StartupPhaseRange,
+} from '../ui/shell/loading.ts';
 export { DevDrawer, devToolsMounted, mountDevTools, type DevToolsDeps } from '../ui/dev/mount-dev-tools.ts';
 export { hasSeenHelp, openHelp, promptPwaInstall } from '../state/shell-store.ts';
 export {

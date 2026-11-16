@@ -511,3 +511,28 @@ describe('MirrorReflectorController & Mirror Batch Protection', () => {
     expect(controller.getDiscoveredMirrorCount()).toBe(0);
   });
 });
+
+describe('MirrorReflectorController startup prewarmSlots', () => {
+  it('eagerly pre-allocates pooled reflector slots & warmup materials on desktop without rendering unbound passes', () => {
+    const scene = new THREE.Scene();
+    const mirror = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.2, 1.8),
+      createMirrorMaterial({ name: 'testMirrorMat' })
+    );
+    markMirrorSurface(mirror);
+    mirror.position.set(0, 1.5, -2.5);
+    scene.add(mirror);
+
+    const ctrl = new MirrorReflectorController(scene, {
+      graphicsTier: 'high',
+      isConstrainedMobile: false,
+    });
+    ctrl.discoverMirrors(scene);
+    expect(ctrl.getDiscoveredMirrorCount()).toBe(1);
+    ctrl.prewarmSlots();
+    expect(ctrl.getAllocatedSlotCount()).toBe(1);
+    expect(ctrl.getWarmupMaterials().length).toBe(1);
+    expect(ctrl.getActiveMirrorCount()).toBe(0);
+    ctrl.dispose();
+  });
+});

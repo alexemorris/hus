@@ -749,4 +749,50 @@ describe('SceneBatchOptimizer', () => {
     expect(physCarpet!.roughness).toBeCloseTo(0.9, 3);
     expect(physCarpet!.normalScale.x).toBeCloseTo(0.56, 3);
   });
+
+  it('optimizeAsync yields cooperatively, reports monotonic 0..1 progress, and preserves lazy BVH raycasting', async () => {
+    const { scene, optimizer } = makeOptimizerHarness();
+    const mat = new THREE.MeshStandardMaterial({ color: 0x998877, roughness: 0.8 });
+    const group = new THREE.Group();
+    group.name = 'testAsyncBatchGroup';
+    scene.add(group);
+
+    for (let i = 0; i < 6; i++) {
+      const m = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 12), mat);
+      m.position.set(i * 1.2, 0.5, 0);
+      group.add(m);
+    }
+    scene.updateMatrixWorld(true);
+
+    const progressFractions: number[] = [];
+    let yields = 0;
+    await optimizer.optimizeAsync({
+      yieldIfNeeded: async () => {
+        yields++;
+      },
+      onProgress: async (_label, fraction01) => {
+        progressFractions.push(fraction01);
+      },
+    });
+
+    expect(optimizer.isBatched()).toBe(true);
+    let visibleMeshes = 0;
+    scene.traverse((o) => {
+      if (o instanceof THREE.Mesh && o.visible) visibleMeshes++;
+    });
+    expect(visibleMeshes).toBe(1);
+    expect(yields).toBeGreaterThan(0);
+    expect(progressFractions.length).toBeGreaterThanOrEqual(3);
+    for (let i = 1; i < progressFractions.length; i++) {
+      expect(progressFractions[i]!).toBeGreaterThanOrEqual(progressFractions[i - 1]!);
+    }
+    expect(progressFractions[progressFractions.length - 1]).toBe(1);
+
+    const raycaster = new THREE.Raycaster(
+      new THREE.Vector3(0, 0.5, 3),
+      new THREE.Vector3(0, 0, -1)
+    );
+    const hits = raycaster.intersectObjects(scene.children, true);
+    expect(hits.length).toBeGreaterThan(0);
+  });
 });

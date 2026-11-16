@@ -35,17 +35,22 @@ import type { WalkthroughSpawnPoint } from '../walkthrough/parts/walkthrough-spa
 import {
   type WalkthroughController,
 } from '../walkthrough/walkthrough-controller.ts';
-import type { SecurityOverlay3D, UfhSystemOverlay3D, UfhZoneId } from './property-scene-profile.ts';
+import type { InteractiveUserData } from '../../core/types/scene.ts';
+import type { PropertySceneProfile, SecurityOverlay3D, UfhSystemOverlay3D, UfhZoneId } from './property-scene-profile.ts';
 import type { SceneZoneRegistry } from './scene-zone-registry.ts';
 import type {
   PropertySceneViewState,
   RoomFramingBounds,
   ScreenPoint,
 } from './services/viewer-types.ts';
-import { ViewerComposition } from './viewer-composition.ts';
+import {
+  ViewerComposition,
+  type PropertySceneAsyncOptions,
+} from './viewer-composition.ts';
 
 export type { MovableTargetCandidate } from '../annotation/annotation-controller.ts';
 export type { PropertySceneViewState, RoomFramingBounds, ScreenPoint } from './services/viewer-types.ts';
+export type { PropertySceneAsyncOptions, WarmUpForStartupOptions } from './viewer-composition.ts';
 
 type Unsubscribe = () => void;
 
@@ -62,6 +67,27 @@ type Unsubscribe = () => void;
 export class PropertyScene<
   TSecurity extends SecurityOverlay3D = SecurityOverlay3D,
 > extends ViewerComposition<TSecurity> {
+  public static async createAsync<TSec extends SecurityOverlay3D = SecurityOverlay3D>(
+    canvas: HTMLCanvasElement,
+    onObjectInteraction: (
+      data: InteractiveUserData,
+      details?: {
+        readonly pressDurationMs: number;
+        readonly worldPosition?: { readonly x: number; readonly y: number; readonly z: number };
+      }
+    ) => void,
+    profile: PropertySceneProfile<TSec>,
+    options?: PropertySceneAsyncOptions
+  ): Promise<PropertyScene<TSec>> {
+    const inst = await ViewerComposition.createCompositionAsync<TSec>(
+      canvas,
+      onObjectInteraction,
+      profile,
+      options,
+      (prebuilt) => new PropertyScene<TSec>(canvas, onObjectInteraction, profile, prebuilt)
+    );
+    return inst as PropertyScene<TSec>;
+  }
   public flyToPreset(preset: CameraPresetName | string): void { this.camera.flyToPreset(preset); }
   public flyToCameraPose(pose: SceneCameraPoseSnapshot): void { this.camera.flyToCameraPose(pose); }
   public flyToRoomBounds(b: RoomFramingBounds, floor: FloorViewMode): void { this.camera.flyToRoomBounds(b, floor); }

@@ -408,7 +408,21 @@ export class FastGeometryMerger {
 
     let canonGeo = this.canonicalGeoCache.get(srcGeo);
     if (!canonGeo) {
-      const nextGeo = srcGeo.clone();
+      const nextGeo = new THREE.BufferGeometry();
+      nextGeo.name = srcGeo.name;
+      if (srcGeo.index) nextGeo.setIndex(srcGeo.index);
+      for (const attrName of Object.keys(srcGeo.attributes)) {
+        nextGeo.setAttribute(attrName, srcGeo.attributes[attrName]!);
+      }
+      for (let gi = 0; gi < srcGeo.groups.length; gi++) {
+        const grp = srcGeo.groups[gi]!;
+        nextGeo.addGroup(grp.start, grp.count, grp.materialIndex);
+      }
+      if (srcGeo.boundingBox) nextGeo.boundingBox = srcGeo.boundingBox.clone();
+      if (srcGeo.boundingSphere) nextGeo.boundingSphere = srcGeo.boundingSphere.clone();
+      nextGeo.drawRange.start = srcGeo.drawRange.start;
+      nextGeo.drawRange.count = srcGeo.drawRange.count;
+      nextGeo.userData = { ...srcGeo.userData };
       if (!nextGeo.getAttribute('normal')) {
         nextGeo.computeVertexNormals();
       }
@@ -473,5 +487,37 @@ export class FastGeometryMerger {
       obj.geometry = canonGeo;
       store.markGeometrySwappedIfPostUnbatch(obj);
     });
+  }
+
+  public async canonicalizeUnmergedVertexLayoutsAsync(
+    scene: THREE.Scene,
+    store: BatchRestorationStore,
+    yieldIfNeeded?: () => Promise<void>
+  ): Promise<void> {
+    const meshes: THREE.Mesh[] = [];
+    scene.traverse((obj) => {
+      if (
+        obj instanceof THREE.Mesh &&
+        !obj.userData?.isBatchedStaticMesh &&
+        !obj.userData?.[SHADOW_PASS_HOOK_FLAG] &&
+        !(obj as THREE.SkinnedMesh).isSkinnedMesh &&
+        !obj.geometry?.morphAttributes?.position
+      ) {
+        meshes.push(obj);
+      }
+    });
+    for (let i = 0; i < meshes.length; i++) {
+      const obj = meshes[i]!;
+      const srcGeo = obj.geometry;
+      const canonGeo = this.toCanonicalVertexLayoutGeometry(srcGeo);
+      if (canonGeo !== srcGeo) {
+        store.snapshotMeshPropsIfAbsent(obj);
+        obj.geometry = canonGeo;
+        store.markGeometrySwappedIfPostUnbatch(obj);
+      }
+      if (yieldIfNeeded && (i & 63) === 63) {
+        await yieldIfNeeded();
+      }
+    }
   }
 }

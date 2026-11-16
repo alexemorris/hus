@@ -1,6 +1,14 @@
 import type { RoomVariationGroup, RoomVariationGroupInput } from "../engine/variations/room-variation-controller.ts";
 import { createDefaultHouseRuntime } from './default-runtime.ts';
-import { getLoadingScreen } from '../ui/shell/loading.ts';
+import {
+  StartupProgressMeter,
+  getLoadingScreen,
+} from '../ui/shell/loading.ts';
+import {
+  startActivePreviewHdrPreflight,
+  type PreflightedPreviewHdr,
+} from '../engine/lighting/environment-lighting.ts';
+import { ViewerRenderer } from '../engine/viewer/services/viewer-renderer.ts';
 import { CircuitBus, type ElectricalSystemOptions } from '../core/electrical/index.ts';
 import type {
   AccessPointEntityState,
@@ -37,7 +45,10 @@ import type {
   SwitchLedIndicatorRule,
   UfhSystemOverlay3D,
 } from '../engine/viewer/property-scene-profile.ts';
-import { PropertyScene } from '../engine/viewer/property-scene.ts';
+import {
+  PropertyScene,
+  type PropertySceneAsyncOptions,
+} from '../engine/viewer/property-scene.ts';
 import { playCorstonSwitchSound } from '../objects/fixtures/corston-toggle-switch.ts';
 import type { SceneBuilderContext, SceneZoneModule } from '../engine/viewer/scene-types.ts';
 import { SceneZoneRegistry } from '../engine/viewer/scene-zone-registry.ts';
@@ -181,6 +192,18 @@ export interface HouseDefinitionConfig<TSecurity extends SecurityOverlay3D = Sec
     ) => void,
     profile: PropertySceneProfile<TSecurity>
   ) => PropertyScene<TSecurity>;
+  createSceneAsync?: (
+    canvas: HTMLCanvasElement,
+    onObjectInteraction: (
+      data: InteractiveUserData,
+      details?: {
+        readonly pressDurationMs: number;
+        readonly worldPosition?: { readonly x: number; readonly y: number; readonly z: number };
+      }
+    ) => void,
+    profile: PropertySceneProfile<TSecurity>,
+    options?: PropertySceneAsyncOptions
+  ) => Promise<PropertyScene<TSecurity>>;
 }
 
 export interface HouseDefinition<TSecurity extends SecurityOverlay3D = SecurityOverlay3D>
@@ -674,9 +697,29 @@ export async function mountHouse<TSecurity extends SecurityOverlay3D = SecurityO
   const { hostEl, canvasEl, shellRoot } = resolveContainerElements(container, options);
   const disposeZoomGuard = installMobileViewportZoomGuard(canvasEl.id || 'three-canvas');
   const loading = getLoadingScreen(hostEl, house.name);
+  const progress = new StartupProgressMeter(loading);
   if (typeof document !== 'undefined' && typeof document.title === 'string') {
     document.title = `${house.name} — Digital Twin`;
   }
+
+  // Launch GPU WebGPURenderer.init() and active 512x256 preview HDRI worker fetch/decode
+  // in parallel with UI module imports and async scene construction!
+  const useAsyncSceneBuild = Boolean(house.createSceneAsync) || !house.createScene;
+  let preflightRenderer: ViewerRenderer | undefined;
+  let rendererInitPromise: Promise<void> | undefined;
+  let preflightPreviewHdr: PreflightedPreviewHdr | null = null;
+  if (useAsyncSceneBuild) {
+    preflightRenderer = new ViewerRenderer(canvasEl);
+    rendererInitPromise = preflightRenderer.init().catch(() => undefined);
+    preflightPreviewHdr = startActivePreviewHdrPreflight(house.environment, {
+      season: 'summer',
+      time: 'dusk',
+      weather: 'clear',
+    });
+  }
+
+  await progress.advancePhase('preflight', 0.25, 'Initializing GPU & UI shell…');
+
   const [
     { DevDrawer, mountDevTools },
     { mountAppShell },
@@ -687,7 +730,7 @@ export async function mountHouse<TSecurity extends SecurityOverlay3D = SecurityO
     import('../state/shell-store.ts'),
   ]);
 
-  await loading.setProgress('Connecting to the smart-home bus…', 0.1);
+  await progress.advancePhase('preflight', 0.85, 'Connecting to the smart-home bus…');
 
   const smartHome = house.smartHome;
   const addresses = smartHome?.addresses ?? {};
@@ -739,7 +782,7 @@ export async function mountHouse<TSecurity extends SecurityOverlay3D = SecurityO
   );
   const annotations = new SceneAnnotationStore();
 
-  await loading.setProgress(`Building ${house.name}…`, 0.25);
+  await progress.advancePhase('preflight', 1.0, `Preparing ${house.name}…`);
 
   const profile = house.createSceneProfile();
   let scene!: PropertyScene<TSecurity>;
@@ -889,9 +932,35 @@ export async function mountHouse<TSecurity extends SecurityOverlay3D = SecurityO
     }
   };
 
-  scene = house.createScene
-    ? house.createScene(canvasEl, onObjectInteraction, profile)
-    : new PropertyScene<TSecurity>(canvasEl, onObjectInteraction, profile);
+  const asyncSceneOptions: PropertySceneAsyncOptions = {
+    ...(preflightRenderer ? { preflightRenderer } : {}),
+    ...(rendererInitPromise ? { rendererInitPromise } : {}),
+    preflightPreviewHdr,
+    yieldIfNeeded: (subLabel?: string) => progress.yieldIfNeeded(subLabel),
+    onZoneProgress: (zoneLabel, frac01) => progress.advancePhase('zones', frac01, zoneLabel),
+    onBatchProgress: (batchLabel, frac01) => progress.advancePhase('batching', frac01, batchLabel),
+  };
+
+  try {
+    if (house.createSceneAsync) {
+      scene = await house.createSceneAsync(canvasEl, onObjectInteraction, profile, asyncSceneOptions);
+    } else if (house.createScene) {
+      await progress.advancePhase('zones', 0.2, `Building ${house.name}…`);
+      scene = house.createScene(canvasEl, onObjectInteraction, profile);
+      await progress.advancePhase('batching', 1.0, 'Static geometry batched');
+    } else {
+      scene = await PropertyScene.createAsync<TSecurity>(
+        canvasEl,
+        onObjectInteraction,
+        profile,
+        asyncSceneOptions
+      );
+    }
+  } catch (err) {
+    preflightPreviewHdr?.dispose();
+    preflightRenderer?.dispose();
+    throw err;
+  }
 
   const hubUnsub = hub.subscribe((ev) => {
     if (ev.type === 'entityChanged') syncUniFi();
@@ -958,7 +1027,7 @@ export async function mountHouse<TSecurity extends SecurityOverlay3D = SecurityO
   });
   const { api } = runtime;
 
-  await loading.setProgress('Preparing controls…', 0.52);
+  await progress.advancePhase('batching', 1.0, 'Preparing controls…');
 
   const disposeDevTools =
     options.mountDev !== false ? mountDevTools({ scene, knx, hub, api }) : null;
@@ -979,10 +1048,63 @@ export async function mountHouse<TSecurity extends SecurityOverlay3D = SecurityO
   }
 
   try {
-    await scene.warmUpForStartup((label, fraction) => loading.setProgress(label, fraction));
+    await scene.warmUpForStartup(
+      (label, fraction) => progress.setOverall(fraction, label),
+      {
+        ...(rendererInitPromise ? { rendererInitPromise } : {}),
+        yieldIfNeeded: (subLabel?: string) => progress.yieldIfNeeded(subLabel),
+        onTextureProgress: (uploaded, total, frac01) =>
+          progress.advancePhase(
+            'textures',
+            0.2 + frac01 * 0.8,
+            `Uploading PBR surface maps (${uploaded}/${total})…`
+          ),
+        onCompileProgress: (compileLabel, frac01) =>
+          progress.advancePhase('compile', frac01, compileLabel),
+        onFirstFrameProgress: (firstFrameLabel) =>
+          progress.advancePhase('firstFrame', 0.25, firstFrameLabel),
+      }
+    );
     runtime.tick(0.016);
+    await progress.advancePhase('firstFrame', 1.0, 'Ready');
   } catch (err) {
     console.error('[husjs/mountHouse] warmUpForStartup error (continuing boot):', err);
+  }
+  if (typeof document !== 'undefined' && typeof document.querySelectorAll === 'function') {
+    const pendingAsyncLinks = Array.from(
+      document.querySelectorAll('link[data-hus-async-css]')
+    ) as HTMLLinkElement[];
+    const waits = pendingAsyncLinks
+      .filter((lnk) => lnk.media !== 'all' && !lnk.sheet)
+      .map(
+        (lnk) =>
+          new Promise<void>((res) => {
+            const settle = (): void => {
+              lnk.media = 'all';
+              res();
+            };
+            const timer = setTimeout(settle, 800);
+            lnk.addEventListener(
+              'load',
+              () => {
+                clearTimeout(timer);
+                settle();
+              },
+              { once: true }
+            );
+            lnk.addEventListener(
+              'error',
+              () => {
+                clearTimeout(timer);
+                settle();
+              },
+              { once: true }
+            );
+          })
+      );
+    if (waits.length > 0) {
+      await Promise.all(waits);
+    }
   }
   loading.finish();
   let disposed = false;

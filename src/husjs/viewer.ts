@@ -1,5 +1,12 @@
-export { PropertyScene } from '../engine/viewer/property-scene.ts';
-export { ViewerComposition } from '../engine/viewer/viewer-composition.ts';
+export {
+  PropertyScene,
+  type PropertySceneAsyncOptions,
+  type WarmUpForStartupOptions,
+} from '../engine/viewer/property-scene.ts';
+export {
+  POST_LOAD_INPUT_IDLE_COOLDOWN_MS,
+  ViewerComposition,
+} from '../engine/viewer/viewer-composition.ts';
 export * from '../engine/viewer/property-scene-profile.ts';
 export * from '../engine/viewer/scene-content.ts';
 export * from '../engine/viewer/scene-types.ts';

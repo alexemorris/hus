@@ -293,8 +293,10 @@ export class PhenologyMaterial extends MeshStandardNodeMaterial {
       return unfurledPos.add(windOffset);
     })();
 
+    // Note: Do NOT also set castShadowPositionNode when positionNode is set: Three.js WebGPURenderer
+    // already applies material.positionNode to ShadowMaterial, and setting both clobbers
+    // overridePositionNode restoration, leaking PhenologyMaterial attributes onto subsequent meshes.
     this.positionNode = vertexPosNode;
-    this.castShadowPositionNode = vertexPosNode;
 
     const barkTex =
       surfaceKind === 'bark'

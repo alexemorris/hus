@@ -15,6 +15,33 @@ export interface MultiMaterialBakeResult {
  * Holds instance-level baked `THREE.BufferGeometry` caches so `optimize() -> unbatchAll() ->
  * optimize()` reuses identical baked geometries with zero leaks.
  */
+/**
+ * Shallow-clones a `BufferGeometry` sharing immutable attribute buffers, index, groups,
+ * and bounding volumes so baking `uv` or `color` does not deep-copy `position`/`normal`/`index`
+ * TypedArrays before `FastGeometryMerger` merges them.
+ */
+function shallowCloneGeometry(src: THREE.BufferGeometry): THREE.BufferGeometry {
+  const dst = new THREE.BufferGeometry();
+  dst.name = src.name;
+  if (src.index) {
+    dst.setIndex(src.index);
+  }
+  const attrs = src.attributes;
+  for (const name of Object.keys(attrs)) {
+    dst.setAttribute(name, attrs[name]!);
+  }
+  for (let i = 0; i < src.groups.length; i++) {
+    const g = src.groups[i]!;
+    dst.addGroup(g.start, g.count, g.materialIndex);
+  }
+  if (src.boundingBox) dst.boundingBox = src.boundingBox.clone();
+  if (src.boundingSphere) dst.boundingSphere = src.boundingSphere.clone();
+  dst.drawRange.start = src.drawRange.start;
+  dst.drawRange.count = src.drawRange.count;
+  dst.userData = { ...src.userData };
+  return dst;
+}
+
 export class MaterialUvColorBaker {
   private readonly uvBakedGeoCache = new WeakMap<
     THREE.BufferGeometry,
@@ -70,7 +97,7 @@ export class MaterialUvColorBaker {
       dst[i * 2] = e0 * u0 + e3 * v0 + e6;
       dst[i * 2 + 1] = e1 * u0 + e4 * v0 + e7;
     }
-    const clonedGeo = geo.clone();
+    const clonedGeo = shallowCloneGeometry(geo);
     clonedGeo.setAttribute('uv', new THREE.BufferAttribute(dst, 2));
     perGeo.set(transformSig, clonedGeo);
     return clonedGeo;
@@ -197,7 +224,7 @@ export class MaterialUvColorBaker {
         colArr[i + 1] = srcArr[i + 1]! * cg;
         colArr[i + 2] = srcArr[i + 2]! * cb;
       }
-      vcGeo = geo.clone();
+      vcGeo = shallowCloneGeometry(geo);
       vcGeo.setAttribute('color', new THREE.BufferAttribute(colArr, 3));
       perGeo.set(vcGeoKey, vcGeo);
     }
@@ -227,7 +254,7 @@ export class MaterialUvColorBaker {
         colArr[i + 1] = cg;
         colArr[i + 2] = cb;
       }
-      vcGeo = geo.clone();
+      vcGeo = shallowCloneGeometry(geo);
       vcGeo.setAttribute('color', new THREE.BufferAttribute(colArr, 3));
       perGeo.set(vcGeoKey, vcGeo);
     }
@@ -383,7 +410,7 @@ export class MaterialUvColorBaker {
         }
         let cachedMmGeo = perMmGeo.get(mmKey);
         if (!cachedMmGeo) {
-          const clonedMm = workGeo.clone();
+          const clonedMm = shallowCloneGeometry(workGeo);
           if (anySlotVc) {
             const colArr = new Float32Array(vCount * 3);
             colArr.fill(1);

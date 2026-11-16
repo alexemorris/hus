@@ -168,8 +168,9 @@ export function VariationsPopover(): JSX.Element | null {
       if (target instanceof Element && target.closest('.shell-var-topbar-btn')) return;
       variationsPopoverOpen.value = false;
     };
-    window.addEventListener('pointerdown', onPointerDown, true);
-    return () => window.removeEventListener('pointerdown', onPointerDown, true);
+    const win = typeof window !== 'undefined' ? window : null;
+    win?.addEventListener('pointerdown', onPointerDown, true);
+    return () => win?.removeEventListener('pointerdown', onPointerDown, true);
   }, [open]);
 
   if (!open || groups.length === 0) return null;

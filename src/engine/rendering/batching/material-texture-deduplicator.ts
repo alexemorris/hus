@@ -42,11 +42,11 @@ export class MaterialTextureDeduplicator {
   private readonly rgbaTexCache = new Map<string, THREE.DataTexture | null>();
   private readonly baker = new MaterialUvColorBaker();
 
-  public deduplicateMaterialsAndCullSmallShadows(
+  private prepareDeduplicationPlan(
     scene: THREE.Scene,
     mutableMaterials: ReadonlySet<THREE.Material>,
     deps: MaterialDeduplicationDeps
-  ): void {
+  ) {
     const { lodController, store } = deps;
     const canonicalBySig = this.canonicalBySig;
     const imageIdMap = this.imageIdMap;
@@ -344,13 +344,7 @@ export class MaterialTextureDeduplicator {
       return canon;
     };
 
-    const nonUnitUvMaterials = new WeakSet<THREE.Material>();
-    scene.traverse((obj) => {
-      if (!(obj instanceof THREE.Mesh) || Array.isArray(obj.material) || !obj.material) return;
-      if (!baker.hasOnlyUnitUvs(obj.geometry)) {
-        nonUnitUvMaterials.add(obj.material);
-      }
-    });
+    // Single-pass usage scan completed above.
 
     const canonicalizeMaterial = (
       rawMat: THREE.Material,
@@ -752,13 +746,23 @@ export class MaterialTextureDeduplicator {
       return { material: existing, geometry: outGeo };
     };
 
-    const visit = (
+    interface FlatDedupEntry {
+      readonly node: THREE.Mesh;
+      readonly isHighLod: boolean;
+      readonly isLeafOrPlant: boolean;
+      readonly isPergola: boolean;
+      readonly isInteriorScope: boolean;
+    }
+    const flatEntries: FlatDedupEntry[] = [];
+
+    const collectEntries = (
       node: THREE.Object3D,
       ancestorHighLod: boolean,
       ancestorLeafOrPlant: boolean,
       ancestorPergola: boolean,
       ancestorZone: string | undefined
     ): void => {
+      if (node.userData?.[SHADOW_PASS_HOOK_FLAG]) return;
       const u = node.userData;
       const nextZone =
         (typeof (u?.zoneId ?? u?.zone) === 'string'
@@ -774,94 +778,145 @@ export class MaterialTextureDeduplicator {
         (nameStr.length > 0 && LEAF_OR_MICRO_SHADOW_EXCLUDE_RE.test(nameStr));
       const isPergola = ancestorPergola || nameStr.includes('grapeVinePergola');
 
-      if (node.userData?.[SHADOW_PASS_HOOK_FLAG]) return;
-
       if (node instanceof THREE.Mesh) {
-        store.snapshotMeshPropsIfAbsent(node);
-        if (!node.geometry.boundingBox) {
-          node.geometry.computeBoundingBox();
-        }
-        if (!node.geometry.boundingSphere) {
-          node.geometry.computeBoundingSphere();
-        }
-
-        if (node.castShadow) {
-          const allowFoliageShadow = Boolean(u?.allowFoliageShadow);
-          if (isHighLod || (isLeafOrPlant && !allowFoliageShadow)) {
-            node.castShadow = false;
-          } else {
-            const sphere = node.geometry.boundingSphere;
-            const bbox = node.geometry.boundingBox;
-            const sx = Math.abs(node.scale.x);
-            const sy = Math.abs(node.scale.y);
-            const sz = Math.abs(node.scale.z);
-            const maxScale = Math.max(sx, sy, sz);
-            if (isPergola && bbox) {
-              const minBoxDim = Math.min(
-                (bbox.max.x - bbox.min.x) * sx,
-                (bbox.max.y - bbox.min.y) * sy,
-                (bbox.max.z - bbox.min.z) * sz
-              );
-              if (minBoxDim < 0.06) {
-                node.castShadow = false;
-              }
-            }
-            if (node.castShadow && sphere) {
-              const isArch =
-                Boolean(u?.isArchitecturalShell) ||
-                Boolean(u?.cutawayWall) ||
-                Boolean(u?.isCutawayWall);
-              const minShadowRadius = isArch ? 0.22 : 0.42;
-              if (sphere.radius * maxScale < minShadowRadius) {
-                node.castShadow = false;
-              }
-            }
-          }
-        }
-
-        if (Array.isArray(node.material)) {
-          const baked = baker.bakeMultiMaterialGroups(node.geometry, node.material, mutableMaterials);
-          const workGeo = baked.geometry;
-          const { slotVcEligible, slotUvRefTex, bakedPerGroupVc, bakedPerGroupUv } = baked;
-          const canonSlots = node.material.map((m, idx) => {
-            if (!m) return m;
-            const uvMode: boolean | 'prebaked' =
-              bakedPerGroupUv && Boolean(slotUvRefTex[idx]) ? 'prebaked' : false;
-            if (bakedPerGroupVc && slotVcEligible[idx]) {
-              const whiteVc = baker.getWhiteVertexColorSlotMaterial(m);
-              return canonicalizeMaterial(whiteVc, workGeo, uvMode, isInteriorScope).material;
-            }
-            return canonicalizeMaterial(m, workGeo, uvMode, isInteriorScope).material;
-          });
-          const consolidated = consolidateMultiMaterialGeometry(workGeo, canonSlots);
-          if (consolidated.geometry !== node.geometry) {
-            node.geometry = consolidated.geometry;
-            store.markGeometrySwappedIfPostUnbatch(node);
-          }
-          if (consolidated.materials.length === 1) {
-            node.material = consolidated.materials[0]!;
-          } else {
-            node.material = [...consolidated.materials];
-          }
-        } else if (node.material) {
-          const mat = node.material as THREE.MeshStandardMaterial;
-          if (mat.blending === THREE.AdditiveBlending && mat.depthWrite === false) {
-            node.raycast = (): void => {};
-          }
-          const canon = canonicalizeMaterial(mat, node.geometry, true, isInteriorScope);
-          if (canon.geometry !== node.geometry) {
-            node.geometry = canon.geometry;
-            store.markGeometrySwappedIfPostUnbatch(node);
-          }
-          node.material = canon.material;
-        }
+        flatEntries.push({
+          node,
+          isHighLod,
+          isLeafOrPlant,
+          isPergola,
+          isInteriorScope,
+        });
       }
-
       for (const child of node.children) {
-        visit(child, isHighLod, isLeafOrPlant, isPergola, nextZone);
+        collectEntries(child, isHighLod, isLeafOrPlant, isPergola, nextZone);
       }
     };
 
-    visit(scene, false, false, false, undefined);
+    const processMeshEntry = (entry: FlatDedupEntry): void => {
+      const { node, isHighLod, isLeafOrPlant, isPergola, isInteriorScope } = entry;
+      const u = node.userData;
+      store.snapshotMeshPropsIfAbsent(node);
+      if (!node.geometry.boundingBox) {
+        node.geometry.computeBoundingBox();
+      }
+      if (!node.geometry.boundingSphere) {
+        node.geometry.computeBoundingSphere();
+      }
+
+      if (node.castShadow) {
+        const allowFoliageShadow = Boolean(u?.allowFoliageShadow);
+        if (isHighLod || (isLeafOrPlant && !allowFoliageShadow)) {
+          node.castShadow = false;
+        } else {
+          const sphere = node.geometry.boundingSphere;
+          const bbox = node.geometry.boundingBox;
+          const sx = Math.abs(node.scale.x);
+          const sy = Math.abs(node.scale.y);
+          const sz = Math.abs(node.scale.z);
+          const maxScale = Math.max(sx, sy, sz);
+          if (isPergola && bbox) {
+            const minBoxDim = Math.min(
+              (bbox.max.x - bbox.min.x) * sx,
+              (bbox.max.y - bbox.min.y) * sy,
+              (bbox.max.z - bbox.min.z) * sz
+            );
+            if (minBoxDim < 0.06) {
+              node.castShadow = false;
+            }
+          }
+          if (node.castShadow && sphere) {
+            const isArch =
+              Boolean(u?.isArchitecturalShell) ||
+              Boolean(u?.cutawayWall) ||
+              Boolean(u?.isCutawayWall);
+            const minShadowRadius = isArch ? 0.22 : 0.42;
+            if (sphere.radius * maxScale < minShadowRadius) {
+              node.castShadow = false;
+            }
+          }
+        }
+      }
+
+      if (Array.isArray(node.material)) {
+        const baked = baker.bakeMultiMaterialGroups(node.geometry, node.material, mutableMaterials);
+        const workGeo = baked.geometry;
+        const { slotVcEligible, slotUvRefTex, bakedPerGroupVc, bakedPerGroupUv } = baked;
+        const canonSlots = node.material.map((m, idx) => {
+          if (!m) return m;
+          const uvMode: boolean | 'prebaked' =
+            bakedPerGroupUv && Boolean(slotUvRefTex[idx]) ? 'prebaked' : false;
+          if (bakedPerGroupVc && slotVcEligible[idx]) {
+            const whiteVc = baker.getWhiteVertexColorSlotMaterial(m);
+            return canonicalizeMaterial(whiteVc, workGeo, uvMode, isInteriorScope).material;
+          }
+          return canonicalizeMaterial(m, workGeo, uvMode, isInteriorScope).material;
+        });
+        const consolidated = consolidateMultiMaterialGeometry(workGeo, canonSlots);
+        if (consolidated.geometry !== node.geometry) {
+          node.geometry = consolidated.geometry;
+          store.markGeometrySwappedIfPostUnbatch(node);
+        }
+        if (consolidated.materials.length === 1) {
+          node.material = consolidated.materials[0]!;
+        } else {
+          node.material = [...consolidated.materials];
+        }
+      } else if (node.material) {
+        const mat = node.material as THREE.MeshStandardMaterial;
+        if (mat.blending === THREE.AdditiveBlending && mat.depthWrite === false) {
+          node.raycast = (): void => {};
+        }
+        const canon = canonicalizeMaterial(mat, node.geometry, true, isInteriorScope);
+        if (canon.geometry !== node.geometry) {
+          node.geometry = canon.geometry;
+          store.markGeometrySwappedIfPostUnbatch(node);
+        }
+        node.material = canon.material;
+      }
+    };
+
+    collectEntries(scene, false, false, false, undefined);
+    return { flatEntries, processMeshEntry };
+  }
+
+  public deduplicateMaterialsAndCullSmallShadows(
+    scene: THREE.Scene,
+    mutableMaterials: ReadonlySet<THREE.Material>,
+    deps: MaterialDeduplicationDeps
+  ): void {
+    const { flatEntries, processMeshEntry } = this.prepareDeduplicationPlan(
+      scene,
+      mutableMaterials,
+      deps
+    );
+    for (let i = 0; i < flatEntries.length; i++) {
+      processMeshEntry(flatEntries[i]!);
+    }
+  }
+
+  public async deduplicateMaterialsAndCullSmallShadowsAsync(
+    scene: THREE.Scene,
+    mutableMaterials: ReadonlySet<THREE.Material>,
+    deps: MaterialDeduplicationDeps,
+    options?: {
+      readonly yieldIfNeeded?: () => Promise<void>;
+      readonly onProgress?: (fraction01: number) => Promise<void> | void;
+    }
+  ): Promise<void> {
+    const { flatEntries, processMeshEntry } = this.prepareDeduplicationPlan(
+      scene,
+      mutableMaterials,
+      deps
+    );
+    await options?.yieldIfNeeded?.();
+    const total = Math.max(1, flatEntries.length);
+    for (let i = 0; i < flatEntries.length; i++) {
+      processMeshEntry(flatEntries[i]!);
+      if ((i & 63) === 63) {
+        await options?.onProgress?.((i + 1) / total);
+        await options?.yieldIfNeeded?.();
+      }
+    }
+    await options?.onProgress?.(1);
   }
 }

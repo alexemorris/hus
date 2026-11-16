@@ -53,6 +53,19 @@ const SIMPLE_HOUSE_MODULE: SceneZoneModule = {
     buildSimpleHouseFirstInteriors(ctx, shell);
     return {};
   },
+  async buildAsync(ctx: SceneBuilderContext) {
+    await ctx.reportZoneProgress?.('Constructing Georgian brickwork & roof…', 0.05);
+    const shell = buildSimpleHouseArchitecture(ctx, sharedStair);
+    await ctx.reportZoneProgress?.('Landscaping grounds & Yorkstone terrace…', 0.25);
+    buildSimpleHouseGrounds(ctx, shell);
+    await ctx.reportZoneProgress?.('Fitting entrance hall & staircase…', 0.45);
+    buildSimpleHouseStaircaseAndHall(ctx, sharedStair);
+    await ctx.reportZoneProgress?.('Furnishing drawing room & Chichester kitchen…', 0.68);
+    buildSimpleHouseGroundInteriors(ctx, shell);
+    await ctx.reportZoneProgress?.('Furnishing principal suite & first floor…', 0.88);
+    buildSimpleHouseFirstInteriors(ctx, shell);
+    return {};
+  },
 };
 
 export const simpleHouse: HouseDefinition = defineHouse({

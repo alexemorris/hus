@@ -28,8 +28,10 @@ import {
 } from './hdr-cache-and-pmrem.ts';
 import {
   extractRendererHdrLimits,
+  startActivePreviewHdrPreflight,
   startHdrCellLoading,
   type HdrCellLoadStatus,
+  type PreflightedPreviewHdr,
 } from './hdr-cell-loader.ts';
 import {
   HdrDualSlotGraph,
@@ -46,7 +48,14 @@ import {
   type PreparedHdr,
 } from './hdr-processing.ts';
 
-export { MAX_CACHED_CELLS, MOBILE_MAX_CACHED_CELLS, getMaxHdrCachedCells, type PmremTarget };
+export {
+  MAX_CACHED_CELLS,
+  MOBILE_MAX_CACHED_CELLS,
+  getMaxHdrCachedCells,
+  startActivePreviewHdrPreflight,
+  type PmremTarget,
+  type PreflightedPreviewHdr,
+};
 
 const TIMES_OF_DAY: readonly TimeOfDay[] = ['day', 'dusk', 'night'];
 
@@ -122,6 +131,8 @@ export class HdrEnvironmentManager {
   private readonly cellCache = new Map<string, CachedHdrCellTextures>();
   private readonly cellLoadState = new Map<string, HdrCellLoadStatus>();
   private readonly cellLoadPromises = new Map<string, Promise<void>>();
+  private readonly cellPreviewPromises = new Map<string, Promise<void>>();
+  private preflightedPreview: PreflightedPreviewHdr | null = null;
   private readonly pool = new HdrResourcePool();
   private readonly pendingHdrBakes: PendingHdrBakeEntry[] = [];
   private disposed = false;
@@ -349,6 +360,7 @@ export class HdrEnvironmentManager {
       displaySlotB: this.displaySlotB,
       isDisposed: () => this.disposed,
       onClearLastBoundIfMatch: (evictedKey) => {
+        this.cellPreviewPromises.delete(evictedKey);
         if (this.lastBoundHdrCell?.cellId === evictedKey) {
           this.lastBoundHdrCell = null;
         }
@@ -374,6 +386,14 @@ export class HdrEnvironmentManager {
     };
   }
 
+  public setPreflightedPreviewHdr(preflight: PreflightedPreviewHdr | null): void {
+    if (this.disposed) {
+      preflight?.dispose();
+      return;
+    }
+    this.preflightedPreview = preflight;
+  }
+
   public bakeProceduralEnvironments(
     renderer: WebGPURenderer | undefined,
     activeHdrBucket: TimeOfDay,
@@ -381,6 +401,7 @@ export class HdrEnvironmentManager {
     fallbackFogColor: THREE.Color,
     options?: {
       readonly deferHdr?: boolean;
+      readonly onlyActiveBucket?: boolean;
       readonly query?: EnvironmentHdrQuery;
       readonly continuousBlend?: ContinuousEnvironmentHdrBlend;
       readonly plusXTrueBearingDeg?: number;
@@ -395,8 +416,12 @@ export class HdrEnvironmentManager {
     this.pool.pmremRenderer = activeRenderer;
     this.dualGraph.ensureInstalled(this.scene);
 
-    for (const mode of TIMES_OF_DAY) {
-      this.ensureProceduralBucketOnly(mode, activeRenderer);
+    if (options?.onlyActiveBucket === true) {
+      this.ensureProceduralBucketOnly(activeHdrBucket, activeRenderer);
+    } else {
+      for (const mode of TIMES_OF_DAY) {
+        this.ensureProceduralBucketOnly(mode, activeRenderer);
+      }
     }
 
     this.applyEnvironmentTextures(activeHdrBucket, sunDirection, fallbackFogColor, {
@@ -406,6 +431,26 @@ export class HdrEnvironmentManager {
       animate: false,
     });
     return true;
+  }
+
+  public bakeNextProceduralBucketIfPending(renderer?: WebGPURenderer): boolean {
+    const activeRenderer = renderer ?? this.pool.pmremRenderer ?? this.renderer;
+    if (!this.hasBakedProceduralEnvironments || !activeRenderer || this.disposed) return false;
+    for (const mode of TIMES_OF_DAY) {
+      if (!this.proceduralEnvMaps[mode]) {
+        this.ensureProceduralBucketOnly(mode, activeRenderer);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  public hasPendingProceduralBuckets(): boolean {
+    if (!this.hasBakedProceduralEnvironments || this.disposed) return false;
+    for (const mode of TIMES_OF_DAY) {
+      if (!this.proceduralEnvMaps[mode]) return true;
+    }
+    return false;
   }
 
   public startDeferredHdrUpgrade(query?: EnvironmentHdrQuery): void {
@@ -430,35 +475,78 @@ export class HdrEnvironmentManager {
     this.hdrUpgradeEnabled = true;
     const resolved = this.resolveQueryCell(activeHdrBucket, query);
     this.ensureProceduralBucketOnly(resolved.mode, activeRenderer);
-    this.ensureCellLoading(resolved.cellId, resolved.cell, resolved.mode, activeRenderer);
-    const pending = this.cellLoadPromises.get(resolved.cellId);
-    if (pending) {
-      let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
-      let cancelWait: (() => void) | null = null;
-      const timeoutPromise = new Promise<void>((resolve) => {
-        cancelWait = () => {
+
+    const preflight = this.preflightedPreview;
+    this.preflightedPreview = null;
+    let usedPreflightPreview = false;
+    if (preflight) {
+      if (preflight.cellId === resolved.cellId && this.hdrLoader === null && !this.cellCache.has(resolved.cellId)) {
+        const prepared = await preflight.promise;
+        if (this.disposed) {
+          if (prepared) {
+            prepared.envSource.dispose();
+            if (prepared.background !== prepared.envSource) prepared.background.dispose();
+          }
+          return;
+        }
+        if (prepared) {
+          usedPreflightPreview = true;
+          this.enqueuePreparedHdrBake(
+            resolved.cellId,
+            resolved.cell,
+            resolved.mode,
+            'preview',
+            activeRenderer,
+            prepared
+          );
+          if (!detectMobile()) {
+            this.ensureCellLoading(resolved.cellId, resolved.cell, resolved.mode, activeRenderer, {
+              skipPreviewStage: true,
+            });
+          } else {
+            this.cellLoadState.set(resolved.cellId, 'loaded');
+          }
+        }
+      } else {
+        preflight.dispose();
+      }
+    }
+
+    if (!usedPreflightPreview) {
+      this.ensureCellLoading(resolved.cellId, resolved.cell, resolved.mode, activeRenderer);
+      // Resolve startup HDRI readiness as soon as the single active 512x256 preview .hdr
+      // (stage 0) is ready — never block first frame waiting for the 8K .hdr + _detail.webp upgrade!
+      const pending =
+        this.cellPreviewPromises.get(resolved.cellId) ??
+        this.cellLoadPromises.get(resolved.cellId);
+      if (pending) {
+        let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+        let cancelWait: (() => void) | null = null;
+        const timeoutPromise = new Promise<void>((resolve) => {
+          cancelWait = () => {
+            if (fallbackTimer !== null) {
+              clearTimeout(fallbackTimer);
+              fallbackTimer = null;
+            }
+            resolve();
+          };
+          this.activePreloadCancels.add(cancelWait);
+          fallbackTimer = setTimeout(() => {
+            fallbackTimer = null;
+            if (cancelWait) this.activePreloadCancels.delete(cancelWait);
+            resolve();
+          }, 4000);
+        });
+        await Promise.race([pending, timeoutPromise]).finally(() => {
           if (fallbackTimer !== null) {
             clearTimeout(fallbackTimer);
             fallbackTimer = null;
           }
-          resolve();
-        };
-        this.activePreloadCancels.add(cancelWait);
-        fallbackTimer = setTimeout(() => {
-          fallbackTimer = null;
-          if (cancelWait) this.activePreloadCancels.delete(cancelWait);
-          resolve();
-        }, 4000);
-      });
-      await Promise.race([pending, timeoutPromise]).finally(() => {
-        if (fallbackTimer !== null) {
-          clearTimeout(fallbackTimer);
-          fallbackTimer = null;
-        }
-        if (cancelWait) {
-          this.activePreloadCancels.delete(cancelWait);
-        }
-      });
+          if (cancelWait) {
+            this.activePreloadCancels.delete(cancelWait);
+          }
+        });
+      }
     }
     if (this.disposed) return;
     this.flushPendingHdrBakes(
@@ -490,7 +578,8 @@ export class HdrEnvironmentManager {
     fallbackFogColor: THREE.Color,
     onRestoreState: () => void,
     compileStep: (mode: TimeOfDay) => Promise<void>,
-    activeQuery?: EnvironmentHdrQuery
+    activeQuery?: EnvironmentHdrQuery,
+    modes: readonly TimeOfDay[] = TIMES_OF_DAY
   ): Promise<void> {
     if (this.disposed) return;
     const savedUpgrade = this.hdrUpgradeEnabled;
@@ -498,7 +587,7 @@ export class HdrEnvironmentManager {
     const savedBearing = this.lastPlusXTrueBearingDeg;
     this.hdrUpgradeEnabled = false;
     try {
-      for (const mode of TIMES_OF_DAY) {
+      for (const mode of modes) {
         if (this.disposed) return;
         const renderer = this.pool.pmremRenderer ?? this.renderer;
         if (renderer) {
@@ -546,6 +635,12 @@ export class HdrEnvironmentManager {
     this.bakedProceduralSkyCount++;
   }
 
+  public scheduleIdleBackgroundPrewarm(renderer?: WebGPURenderer): void {
+    const activeRenderer = renderer ?? this.pool.pmremRenderer ?? this.renderer;
+    if (!activeRenderer) return;
+    this.maybeScheduleBackgroundPrewarm(activeRenderer);
+  }
+
   private maybeScheduleBackgroundPrewarm(renderer: WebGPURenderer): void {
     if (
       this.disposed ||
@@ -590,7 +685,8 @@ export class HdrEnvironmentManager {
     sunDirection: THREE.Vector3,
     fallbackFogColor: THREE.Color,
     isInteractiveScrub: boolean,
-    activeQuery?: EnvironmentHdrQuery
+    activeQuery?: EnvironmentHdrQuery,
+    options?: { readonly maxItems?: number; readonly allowNeighborPrewarm?: boolean }
   ): boolean {
     if (this.disposed || isInteractiveScrub || this.pendingHdrBakes.length === 0) return false;
     const { count, updatedActive, lastRenderer } = this.pool.drainBakeQueue({
@@ -604,6 +700,7 @@ export class HdrEnvironmentManager {
       bakeEquirectPmrem: this.bakeEquirectPmrem,
       nextLruOrder: () => ++this.lruClock,
       isDisposed: () => this.disposed,
+      ...(options?.maxItems !== undefined ? { maxItems: options.maxItems } : {}),
     });
 
     if (lastRenderer) {
@@ -619,7 +716,7 @@ export class HdrEnvironmentManager {
       this.onApplyIntensities();
       this.onEnvUpdated?.(false);
     }
-    if (lastRenderer) {
+    if (lastRenderer && options?.allowNeighborPrewarm !== false) {
       this.maybeScheduleBackgroundPrewarm(lastRenderer);
     }
     return count > 0;
@@ -648,7 +745,8 @@ export class HdrEnvironmentManager {
     cellId: string,
     cell: HouseEnvironmentHdrCell,
     mode: TimeOfDay,
-    renderer: WebGPURenderer
+    renderer: WebGPURenderer,
+    options?: { readonly skipPreviewStage?: boolean }
   ): void {
     if (!this.hdrUpgradeEnabled || this.cellLoadState.has(cellId) || this.disposed) return;
     startHdrCellLoading(
@@ -656,6 +754,7 @@ export class HdrEnvironmentManager {
         environmentSpec: this.environmentSpec,
         cellLoadState: this.cellLoadState,
         cellLoadPromises: this.cellLoadPromises,
+        cellPreviewPromises: this.cellPreviewPromises,
         activeHdrWorkers: this.activeHdrWorkers,
         getHdrLoader: () => this.hdrLoader,
         setHdrLoader: (loader) => {
@@ -672,7 +771,8 @@ export class HdrEnvironmentManager {
       cellId,
       cell,
       mode,
-      renderer
+      renderer,
+      options
     );
   }
 
@@ -874,15 +974,14 @@ export class HdrEnvironmentManager {
       this.commitDisplaySlots(this.targetSlotA, this.targetSlotB, this.targetBlendT);
     }
 
-    if (activeRenderer) {
-      this.maybeScheduleBackgroundPrewarm(activeRenderer);
-    }
     this.onApplyIntensities();
   }
 
   public dispose(): void {
     this.disposed = true;
     this.hdrTransitionActive = false;
+    this.preflightedPreview?.dispose();
+    this.preflightedPreview = null;
     for (const cancel of [...this.activePreloadCancels]) {
       cancel();
     }
@@ -902,6 +1001,7 @@ export class HdrEnvironmentManager {
     this.cellCache.clear();
     this.cellLoadState.clear();
     this.cellLoadPromises.clear();
+    this.cellPreviewPromises.clear();
     this.lastBoundHdrCell = null;
     for (const mode of TIMES_OF_DAY) {
       this.proceduralBgMaps[mode]?.dispose();

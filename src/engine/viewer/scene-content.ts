@@ -705,15 +705,50 @@ export function buildPropertySceneContent<TSecurity extends SecurityOverlay3D>(
 
   // Build all registered 3D zone modules across the property (main house, annex & grounds).
   const indicatorMats = options.registry.buildAllZones(ctx);
+  return finalizePropertySceneContent(
+    layers,
+    options,
+    ctx,
+    variationRegistry,
+    lightGroups,
+    glowPoolGeometry,
+    bifoldPanels,
+    interactiveMeshes,
+    interactions,
+    roomSwitchLedMats,
+    indicatorMats,
+    tvArtTextures,
+    tvOffTexture
+  );
+}
+
+function finalizePropertySceneContent<TSecurity extends SecurityOverlay3D>(
+  layers: PropertySceneLayers,
+  options: BuildPropertySceneContentOptions<TSecurity> & { readonly skipInitialLodHierarchyIndex?: boolean },
+  ctx: SceneBuilderContext,
+  variationRegistry: VariationRegistry,
+  lightGroups: LightGroupMap,
+  glowPoolGeometry: THREE.PlaneGeometry,
+  bifoldPanels: BifoldPanelRef[],
+  interactiveMeshes: THREE.Object3D[],
+  interactions: SceneInteractionManager,
+  roomSwitchLedMats: RoomSwitchLedBinding[],
+  indicatorMats: ZoneIndicatorMaterials,
+  tvArtTextures: readonly THREE.CanvasTexture[],
+  tvOffTexture: THREE.CanvasTexture
+): PropertySceneContent<TSecurity> {
+  const { scene } = layers;
   const security = options.profile.buildSecurityOverlay(ctx);
   const ufhSystem = options.profile.buildUfhOverlay?.(ctx) ?? null;
   if (options.profile.variations) {
-    const extraVars = typeof options.profile.variations === 'function' ? options.profile.variations(ctx) : options.profile.variations;
+    const extraVars =
+      typeof options.profile.variations === 'function'
+        ? options.profile.variations(ctx)
+        : options.profile.variations;
     variationRegistry.registerAll(extraVars);
   }
   bindSmartAssetsInScene(scene, interactions);
 
-  // Stamp per-room finish swatches & architectural notes onto 3D room roots.
   stampRoomFinishMetadata(
     scene,
     options.lodController,
@@ -721,9 +756,10 @@ export function buildPropertySceneContent<TSecurity extends SecurityOverlay3D>(
     options.profile.roomManifest
   );
 
-  // Index all room furniture (LOD1) and fine hero props (LOD2) across all storeys.
   options.lodController.configure(options.profile.lodOptions);
-  options.lodController.indexBuiltSceneHierarchy(getMountedFloorLodRoots(layers));
+  if (!options.skipInitialLodHierarchyIndex) {
+    options.lodController.indexBuiltSceneHierarchy(getMountedFloorLodRoots(layers));
+  }
 
   return {
     lightGroups,
@@ -739,4 +775,147 @@ export function buildPropertySceneContent<TSecurity extends SecurityOverlay3D>(
     tvOffTexture,
     variations: variationRegistry.getGroups(),
   };
+}
+
+export async function buildPropertySceneContentAsync<TSecurity extends SecurityOverlay3D>(
+  layers: PropertySceneLayers,
+  options: BuildPropertySceneContentOptions<TSecurity> & {
+    readonly yieldIfNeeded?: (label?: string) => Promise<void>;
+    readonly onProgress?: (label: string, fraction01: number) => Promise<void> | void;
+  }
+): Promise<PropertySceneContent<TSecurity>> {
+  if (options.profile.floors && options.profile.floors.length > 0) {
+    layers.ensureFloors(options.profile.floors);
+  }
+  setRoomZoneRegistrations(options.profile.lodRegistrations);
+  const { scene } = layers;
+  bindPropertySceneProfile(scene, options.profile);
+
+  if (
+    options.registry.getInteriorBounds().length === 0 &&
+    options.profile.lodRegistrations.length > 0
+  ) {
+    options.registry.addInteriorBounds(
+      options.profile.lodRegistrations
+        .filter((r) => r.isInterior !== false)
+        .map((r) => r.bounds)
+    );
+  }
+  options.registry.ensureTopCameraPreset(
+    options.profile.floors,
+    options.profile.lodRegistrations.map((r) => r.bounds)
+  );
+
+  const radialGlowTex = createRadialGlowTexture();
+  const glowPoolGeometry = new THREE.PlaneGeometry(1, 1);
+  const lightGroups = createLightGroups(options.profile.circuitMaxIntensity);
+
+  const bifoldPanels: BifoldPanelRef[] = [];
+  const interactiveMeshes: THREE.Object3D[] = [];
+  const interactions = new SceneInteractionManager(interactiveMeshes);
+  if (options.profile.doorPolicy) interactions.setDoorPolicy(options.profile.doorPolicy);
+  const roomSwitchLedMats: RoomSwitchLedBinding[] = [];
+  const variationRegistry = new VariationRegistry();
+
+  const floorScopeCache = new Map<string, FloorBuilderScope>();
+  const resolveFloorScope = (floorId: string): FloorBuilderScope => {
+    const cached = floorScopeCache.get(floorId);
+    if (cached) return cached;
+    const entry = layers.getFloorLayer(floorId);
+    if (!entry) {
+      const validIds = layers.floorLayers.map((f) => f.id).join(', ');
+      throw new Error(
+        `Unknown floorId "${floorId}" in ctx.floor(). Valid floor IDs: [${validIds}]`
+      );
+    }
+    const scope: FloorBuilderScope = {
+      id: entry.id,
+      elevationY: entry.elevationY,
+      ceilingHeight: entry.ceilingHeight,
+      group: entry.contentGroup,
+      slabGroup: entry.slabGroup,
+      ceilingGroup: entry.ceilingGroup,
+      add: (...objects: THREE.Object3D[]) => {
+        entry.contentGroup.add(...objects);
+      },
+    };
+    floorScopeCache.set(floorId, scope);
+    return scope;
+  };
+
+  const ctx: SceneBuilderContext = {
+    scene,
+    firstFloorMeshGroup: layers.firstFloorMeshGroup,
+    groundFloorCeilingGroup: layers.groundFloorCeilingGroup,
+    ceilingMeshGroup: layers.ceilingMeshGroup,
+    roof: layers.roofGroup,
+    site: layers.siteGroup,
+    floor: resolveFloorScope,
+    ceilingCutaway: options.ceilingCutaway,
+    cutawayWallGroups: layers.cutawayWallGroups,
+    bifoldPanels,
+    interactiveMeshes,
+    interactions,
+    lightGroups,
+    variations: variationRegistry,
+    registerVariation: (group) => variationRegistry.register(group),
+    addGlowPool: (circuitId, x, y, z, radius, maxOpacity = 0.35, rotX = -Math.PI / 2) => {
+      const mat = new THREE.MeshBasicMaterial({
+        map: radialGlowTex,
+        transparent: true,
+        opacity: maxOpacity,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const mesh = new THREE.Mesh(glowPoolGeometry, mat);
+      mesh.userData.isLightGlowPool = true;
+      mesh.position.set(x, y, z);
+      mesh.scale.set(radius * 2, radius * 2, 1);
+      mesh.rotation.x = rotX;
+      const floorLayers = layers.floorLayers;
+      let targetFloorIdx = 0;
+      for (let i = 1; i < floorLayers.length; i++) {
+        if (y >= floorLayers[i]!.elevationY - 0.3) {
+          targetFloorIdx = i;
+        }
+      }
+      if (targetFloorIdx >= 1) {
+        floorLayers[targetFloorIdx]!.contentGroup.add(mesh);
+      } else if (floorLayers[0] && floorLayers[0].contentGroup.parent !== null) {
+        floorLayers[0].contentGroup.add(mesh);
+      } else {
+        scene.add(mesh);
+      }
+      lightGroups[circuitId].pools.push({ mat, maxOpacity });
+    },
+    registerSwitchLedMaterial: (circuitId, mat) => {
+      roomSwitchLedMats.push({ circuitId, mat });
+    },
+    ...(options.yieldIfNeeded ? { yieldIfNeeded: options.yieldIfNeeded } : {}),
+  };
+
+  const tvArtTextures = createTVArtGalleryTextures();
+  const tvOffTexture = createTVOffTexture();
+
+  const indicatorMats = await options.registry.buildAllZonesAsync(ctx, {
+    ...(options.yieldIfNeeded ? { yieldIfNeeded: options.yieldIfNeeded } : {}),
+    ...(options.onProgress ? { onProgress: options.onProgress } : {}),
+  });
+
+  await options.yieldIfNeeded?.();
+  return finalizePropertySceneContent(
+    layers,
+    { ...options, skipInitialLodHierarchyIndex: true },
+    ctx,
+    variationRegistry,
+    lightGroups,
+    glowPoolGeometry,
+    bifoldPanels,
+    interactiveMeshes,
+    interactions,
+    roomSwitchLedMats,
+    indicatorMats,
+    tvArtTextures,
+    tvOffTexture
+  );
 }

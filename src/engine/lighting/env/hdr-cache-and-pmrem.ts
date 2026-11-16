@@ -209,8 +209,13 @@ export class HdrResourcePool {
     readonly bakeEquirectPmrem: (renderer: WebGPURenderer, equirect: THREE.Texture) => PmremTarget;
     readonly nextLruOrder: () => number;
     readonly isDisposed: () => boolean;
+    readonly maxItems?: number;
   }): { readonly count: number; readonly updatedActive: boolean; readonly lastRenderer?: WebGPURenderer } {
-    const batch = opts.queue.splice(0, opts.queue.length);
+    const takeCount =
+      opts.maxItems !== undefined && opts.maxItems > 0
+        ? Math.min(opts.queue.length, opts.maxItems)
+        : opts.queue.length;
+    const batch = opts.queue.splice(0, takeCount);
     let updatedActive = false;
     let lastRenderer: WebGPURenderer | undefined;
 

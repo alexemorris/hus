@@ -109,6 +109,10 @@ export interface SceneBuilderContext {
     circuitId: CircuitId,
     mat: THREE.MeshStandardMaterial
   ): void;
+  /** Cooperative ~16 ms frame budget yielder during async startup construction. */
+  yieldIfNeeded?(label?: string): Promise<void>;
+  /** Reports intra-zone sub-step progress (`0..1`) during `buildAsync`. */
+  reportZoneProgress?(label: string, subFraction01: number): Promise<void> | void;
 }
 
 export interface ZoneIndicatorMaterials {
@@ -130,4 +134,6 @@ export interface SceneZoneModule {
   readonly cameraPresets?: readonly CameraPresetDefinition[];
   readonly variations?: readonly (RoomVariationGroup | RoomVariationGroupInput)[];
   build(ctx: SceneBuilderContext): ZoneIndicatorMaterials;
+  /** Optional cooperative async builder yielding across rooms/sub-builders during startup. */
+  buildAsync?(ctx: SceneBuilderContext): Promise<ZoneIndicatorMaterials>;
 }

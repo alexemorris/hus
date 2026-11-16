@@ -8,7 +8,12 @@ import {
   TERRAIN_SCULPT_DEFAULT_STRENGTH_M,
   type TerrainSculptSnapshot,
 } from '../../core/geo/terrain-sculpt.ts';
-import { getLoadingScreen } from './loading.ts';
+import {
+  STARTUP_PHASE_RANGES,
+  StartupProgressMeter,
+  createFrameBudgetYielder,
+  getLoadingScreen,
+} from './loading.ts';
 import { mountHusShell } from './mount-shell.tsx';
 
 class FakeClassList {
@@ -991,6 +996,79 @@ describe('Self-contained <HusShell /> & dynamic loading screen (zero index.html 
       (globalThis as unknown as Record<string, unknown>).document = prevDoc;
       (globalThis as unknown as Record<string, unknown>).window = prevWin;
       (globalThis as unknown as Record<string, unknown>).HTMLElement = prevEl;
+    }
+  });
+});
+
+describe('StartupProgressMeter & frame-budget yielder', () => {
+  it('maps weighted phases monotonically across 0..100% and yields on >=16ms frame intervals', async () => {
+    const prevRaf = globalThis.requestAnimationFrame;
+    const prevPerf = globalThis.performance;
+    let fakeNow = 1000;
+    let rafCalls = 0;
+    (globalThis as unknown as { performance: { now: () => number } }).performance = {
+      now: () => fakeNow,
+    };
+    (globalThis as unknown as { requestAnimationFrame: (cb: FrameRequestCallback) => number }).requestAnimationFrame =
+      (cb) => {
+        rafCalls += 1;
+        fakeNow += 4;
+        cb(fakeNow);
+        return rafCalls;
+      };
+    try {
+      const recorded: Array<{ label: string; fraction: number }> = [];
+      let lastYieldMs = -Infinity;
+      const loading = {
+        async setProgress(label: string, fraction: number): Promise<void> {
+          recorded.push({ label, fraction });
+          if (fakeNow - lastYieldMs >= 16) {
+            await new Promise<void>((res) => globalThis.requestAnimationFrame(() => res()));
+            lastYieldMs = fakeNow;
+          }
+        },
+        fail(): void {},
+        finish(): void {},
+      };
+      const meter = new StartupProgressMeter(loading);
+
+      expect(STARTUP_PHASE_RANGES.preflight).toEqual({ start: 0, end: 0.06 });
+      expect(STARTUP_PHASE_RANGES.zones).toEqual({ start: 0.06, end: 0.48 });
+      expect(STARTUP_PHASE_RANGES.batching).toEqual({ start: 0.48, end: 0.66 });
+      expect(STARTUP_PHASE_RANGES.textures).toEqual({ start: 0.66, end: 0.8 });
+      expect(STARTUP_PHASE_RANGES.compile).toEqual({ start: 0.8, end: 0.96 });
+      expect(STARTUP_PHASE_RANGES.firstFrame).toEqual({ start: 0.96, end: 1 });
+
+      const fractions: number[] = [];
+      for (const [phase, step] of [
+        ['preflight', 0.5],
+        ['zones', 0.25],
+        ['zones', 0.1],
+        ['zones', 0.75],
+        ['batching', 0.5],
+        ['textures', 0.5],
+        ['compile', 0.5],
+        ['firstFrame', 1.0],
+      ] as const) {
+        fakeNow += 18;
+        await meter.advancePhase(phase, step, `Stage ${phase}`);
+        fractions.push(meter.getFraction());
+      }
+
+      for (let i = 1; i < fractions.length; i++) {
+        expect(fractions[i]!).toBeGreaterThanOrEqual(fractions[i - 1]!);
+      }
+      expect(fractions[fractions.length - 1]).toBe(1);
+      expect(rafCalls).toBeGreaterThanOrEqual(7);
+
+      const yielder = createFrameBudgetYielder(14);
+      expect(await yielder.yieldIfNeeded()).toBe(false);
+      fakeNow += 17;
+      expect(await yielder.yieldIfNeeded()).toBe(true);
+      expect(yielder.getYieldCount()).toBe(1);
+    } finally {
+      (globalThis as unknown as { requestAnimationFrame: typeof requestAnimationFrame }).requestAnimationFrame = prevRaf;
+      (globalThis as unknown as { performance: Performance }).performance = prevPerf;
     }
   });
 });

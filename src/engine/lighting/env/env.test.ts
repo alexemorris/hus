@@ -1427,3 +1427,39 @@ describe('HdrEnvironmentManager async cancellation & timer cleanup', () => {
     expect(quantGuard).toBeLessThan(0.002);
   });
 });
+
+describe('Startup active-only procedural bake & 1-at-a-time idle HDR drain', () => {
+  it('bakes only the active bucket upfront when onlyActiveBucket is true and drains remaining buckets one-at-a-time', () => {
+    const scene = new THREE.Scene();
+    const fakeRenderer = { isWebGPURenderer: true } as unknown as WebGPURenderer;
+    let pmremBakes = 0;
+    const mgr = new HdrEnvironmentManager({
+      scene,
+      renderer: fakeRenderer,
+      bakeEquirectPmrem: () => {
+        pmremBakes++;
+        const rt = new THREE.RenderTarget(2, 2);
+        (rt.texture as unknown as { isPMREMTexture: boolean }).isPMREMTexture = true;
+        return rt;
+      },
+      onApplyIntensities: () => {},
+    });
+
+    const sunDir = new THREE.Vector3(0.4, 0.7, 0.5).normalize();
+    const fogColor = new THREE.Color(0xbfd4e8);
+    mgr.bakeProceduralEnvironments(fakeRenderer, 'dusk', sunDir, fogColor, {
+      deferHdr: true,
+      onlyActiveBucket: true,
+    });
+    expect(pmremBakes).toBe(1);
+
+    expect(mgr.bakeNextProceduralBucketIfPending()).toBe(true);
+    expect(pmremBakes).toBe(2);
+    expect(mgr.bakeNextProceduralBucketIfPending()).toBe(true);
+    expect(pmremBakes).toBe(3);
+    expect(mgr.bakeNextProceduralBucketIfPending()).toBe(false);
+    expect(pmremBakes).toBe(3);
+
+    mgr.dispose();
+  });
+});

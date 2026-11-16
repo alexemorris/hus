@@ -53,7 +53,15 @@ import {
   stateFromPreset,
   type EnvLightingState,
 } from './env/env-state.ts';
-import { HdrEnvironmentManager, type PmremTarget } from './env/hdr-environment-manager.ts';
+import {
+  HdrEnvironmentManager,
+  MAX_CACHED_CELLS,
+  MOBILE_MAX_CACHED_CELLS,
+  getMaxHdrCachedCells,
+  startActivePreviewHdrPreflight,
+  type PmremTarget,
+  type PreflightedPreviewHdr,
+} from './env/hdr-environment-manager.ts';
 import { createSiteGround, type SiteGround } from './env/site-ground.ts';
 import { DEFAULT_SITE_HAZE_FOOTPRINT } from './env/site-haze-fog.ts';
 import { getCurrentSolarClockForLocation } from './env/solar-astronomy.ts';
@@ -63,6 +71,7 @@ import {
   setSunShadowPenumbraUniforms,
 } from './shader-light-culling.ts';
 
+export { MAX_CACHED_CELLS, MOBILE_MAX_CACHED_CELLS, getMaxHdrCachedCells, startActivePreviewHdrPreflight, type PreflightedPreviewHdr };
 export type { ShadowFrustumDiagnostics };
 
 /** Duration (ms) of the eased cross-fade between time-of-day presets. */
@@ -279,9 +288,17 @@ export class EnvironmentLighting {
     return this.hdrManager.getRequestedHdrCount();
   }
 
+  public setPreflightedPreviewHdr(preflight: PreflightedPreviewHdr | null): void {
+    this.hdrManager.setPreflightedPreviewHdr(preflight);
+  }
+
+  public getActiveHdrBucket(): TimeOfDay {
+    return this.solver.activeHdrBucket;
+  }
+
   public bakeProceduralEnvironments(
     renderer: WebGPURenderer | undefined = this.renderer,
-    options?: { readonly deferHdr?: boolean }
+    options?: { readonly deferHdr?: boolean; readonly onlyActiveBucket?: boolean }
   ): void {
     const baked = this.hdrManager.bakeProceduralEnvironments(
       renderer,
@@ -298,6 +315,22 @@ export class EnvironmentLighting {
     if (baked) {
       this.applyState();
     }
+  }
+
+  public bakeNextProceduralBucketIfPending(renderer?: WebGPURenderer): boolean {
+    return this.hdrManager.bakeNextProceduralBucketIfPending(renderer);
+  }
+
+  public hasPendingProceduralBuckets(): boolean {
+    return this.hdrManager.hasPendingProceduralBuckets();
+  }
+
+  public hasPendingHdrBakes(): boolean {
+    return this.hdrManager.hasPendingBakes();
+  }
+
+  public scheduleIdleBackgroundPrewarm(renderer?: WebGPURenderer): void {
+    this.hdrManager.scheduleIdleBackgroundPrewarm(renderer);
   }
 
   public startDeferredHdrUpgrade(): void {
@@ -320,7 +353,8 @@ export class EnvironmentLighting {
   }
 
   public async withEachEnvironmentBucketForCompile(
-    compileStep: (mode: TimeOfDay) => Promise<void>
+    compileStep: (mode: TimeOfDay) => Promise<void>,
+    modes?: readonly TimeOfDay[]
   ): Promise<void> {
     await this.hdrManager.withEachEnvironmentBucketForCompile(
       this.solver.activeHdrBucket,
@@ -328,17 +362,22 @@ export class EnvironmentLighting {
       this.state.fogColor,
       () => this.applyState(false),
       compileStep,
-      this.solver.getEnvironmentQuery(this.weather)
+      this.solver.getEnvironmentQuery(this.weather),
+      modes
     );
   }
 
-  public flushPendingHdrBakes(): boolean {
+  public flushPendingHdrBakes(options?: {
+    readonly maxItems?: number;
+    readonly allowNeighborPrewarm?: boolean;
+  }): boolean {
     return this.hdrManager.flushPendingHdrBakes(
       this.solver.activeHdrBucket,
       this.state.sunDirection,
       this.state.fogColor,
       this.shadowController.isInteractiveScrubShadow(),
-      this.solver.getEnvironmentQuery(this.weather)
+      this.solver.getEnvironmentQuery(this.weather),
+      options
     );
   }
 
@@ -903,7 +942,9 @@ export class EnvironmentLighting {
     const activelyScrubbing =
       typeof performance !== 'undefined' && performance.now() - this.lastSolarScrubMs < 200;
     const flushedHdr =
-      allowHdrBakeFlush && !activelyScrubbing ? this.flushPendingHdrBakes() : false;
+      allowHdrBakeFlush && !activelyScrubbing
+        ? this.flushPendingHdrBakes({ maxItems: 1, allowNeighborPrewarm: true })
+        : false;
     const wasHdrTransitioning = this.hdrManager.isHdrTransitioning();
     const hdrStillAnimating = wasHdrTransitioning
       ? this.hdrManager.tickTransition(this.hdrClockMs)

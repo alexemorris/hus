@@ -36,9 +36,19 @@ function faviconBaseRewritePlugin() {
     configResolved(config: { readonly base: string }) {
       resolvedBase = config.base || '/';
     },
-    transformIndexHtml(html: string) {
-      const normalizedBase = resolvedBase.endsWith('/') ? resolvedBase : `${resolvedBase}/`;
-      return html.replace('href="./favicon.svg"', `href="${normalizedBase}favicon.svg"`);
+    transformIndexHtml: {
+      order: 'post' as const,
+      handler(html: string) {
+        const normalizedBase = resolvedBase.endsWith('/') ? resolvedBase : `${resolvedBase}/`;
+        let out = html.replace('href="./favicon.svg"', `href="${normalizedBase}favicon.svg"`);
+        if (out.includes('id="hus-critical-loading"')) {
+          out = out.replace(
+            /<link rel="stylesheet"( crossorigin)? href="([^"]+)">/g,
+            '<link rel="preload" as="style"$1 href="$2"><link rel="stylesheet"$1 href="$2" media="print" data-hus-async-css onload="this.media=\'all\'">'
+          );
+        }
+        return out;
+      },
     },
   };
 }

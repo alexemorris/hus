@@ -1,3 +1,4 @@
+import './style.css';
 import { mountHouse, type HouseDefinition, type InboundKNXFrame, type TwinApi } from 'husjs';
 import type { KNXPropertyBusController, SmartHomeHub } from 'husjs/knx';
 import { getLoadingScreen } from 'husjs/ui';

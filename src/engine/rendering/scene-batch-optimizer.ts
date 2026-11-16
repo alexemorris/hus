@@ -37,7 +37,7 @@ import {
   batchContainerSubtree,
   batchRigidDynamicGroups,
 } from './batching/static-container-batcher.ts';
-import { accelerateStaticMeshRaycast, prebuildGeometryBvh } from './mesh-bvh.ts';
+import { accelerateStaticMeshRaycast } from './mesh-bvh.ts';
 
 export {
   ALWAYS_HOIST_LIGHT_FLAG,
@@ -225,17 +225,16 @@ export class SceneBatchOptimizer {
     this.lightController.consolidateAndHoistOnce();
     this.merger.canonicalizeUnmergedVertexLayouts(scene, this.store);
 
+    // Attach O(1) lazy-on-demand BVH raycast hook to unmerged static meshes (merged batches already
+    // attach SHARED_BVH_RAYCAST in accelerateMergedBatchRaycast; FlatTriangleBvh builds lazily only
+    // when a ray actually pierces that mesh's bounding sphere + local AABB!).
     scene.traverse((obj) => {
       if (!(obj instanceof THREE.Mesh) || obj.userData?.[SHADOW_PASS_HOOK_FLAG]) return;
-      if (obj.userData?.isBatchedStaticMesh) {
-        prebuildGeometryBvh(obj.geometry, 64);
-        return;
-      }
+      if (obj.userData?.isBatchedStaticMesh) return;
       if (!obj.userData?.isDynamicInteractionObject && !obj.userData?.isDynamicObject) {
         if (accelerateStaticMeshRaycast(obj, 64)) {
           this.store.registerBvhAcceleratedMesh(obj);
         }
-        prebuildGeometryBvh(obj.geometry, 64);
       }
     });
 
@@ -243,6 +242,191 @@ export class SceneBatchOptimizer {
     this.store.markBatched();
     this.lightController.applyManagedLightIntensities();
     onAfterBatchChange?.();
+  }
+
+  /**
+   * Cooperative async batching pass that yields every ~16 ms and reports proportional
+   * `0..1` progress across material deduplication, container batch merging, rigid dynamic
+   * group batching, and vertex layout canonicalization.
+   */
+  public async optimizeAsync(options?: {
+    readonly yieldIfNeeded?: (label?: string) => Promise<void>;
+    readonly onProgress?: (label: string, fraction01: number) => Promise<void> | void;
+    readonly skipInitialMatrixUpdate?: boolean;
+  }): Promise<void> {
+    if (!options?.yieldIfNeeded && !options?.onProgress) {
+      this.optimize();
+      return;
+    }
+    if (this.store.isBatched()) {
+      this.unbatchAll();
+    }
+    this.options.onBeforeBatchChange?.();
+
+    const {
+      layers,
+      lodController,
+      interactiveMeshes,
+      bifoldPanels,
+      lightGroups,
+      indicatorMats,
+      roomSwitchLedMats,
+      getDynamicObjects,
+      onAfterBatchChange,
+    } = this.options;
+    const { scene, firstFloorMeshGroup, groundFloorCeilingGroup, ceilingMeshGroup } = layers;
+    const hooks = this.batchHooks;
+
+    if (!options.skipInitialMatrixUpdate) {
+      scene.updateMatrixWorld(true);
+    }
+    lodController.clearRuntimeDistanceObjects();
+    this.store.clearRegisteredBatchMeshes();
+    this.store.snapshotSceneMeshes(scene);
+    lodController.indexBuiltSceneHierarchy([scene, firstFloorMeshGroup], {
+      deepBatchClassification: true,
+    });
+
+    if (!this.store.isExtraLodBound()) {
+      bindAdditionalInteriorLodGroups(layers, lodController, hooks);
+      this.store.markExtraLodBound();
+    }
+    await options.onProgress?.('Deduplicating PBR materials…', 0.05);
+    await options.yieldIfNeeded?.();
+
+    const extraInteractive = this.options.getExtraInteractiveMeshes?.() ?? [];
+    const interactiveSet = this.store.snapshotInteractiveMeshes(interactiveMeshes, extraInteractive);
+    const protectedObjects = collectProtectedObjects(
+      layers,
+      bifoldPanels,
+      getDynamicObjects,
+      hooks
+    );
+    const mutableMaterials = collectMutableMaterials(
+      layers,
+      lightGroups,
+      indicatorMats,
+      roomSwitchLedMats,
+      hooks
+    );
+
+    await this.deduplicator.deduplicateMaterialsAndCullSmallShadowsAsync(
+      scene,
+      mutableMaterials,
+      {
+        lodController,
+        store: this.store,
+      },
+      {
+        yieldIfNeeded: () => options.yieldIfNeeded?.() ?? Promise.resolve(),
+        onProgress: (frac) =>
+          options.onProgress?.('Deduplicating PBR materials…', 0.05 + frac * 0.35),
+      }
+    );
+
+    for (const child of ceilingMeshGroup.children) {
+      if (child.userData?.isRoomContainer && !child.visible) child.visible = true;
+    }
+    for (const child of groundFloorCeilingGroup.children) {
+      if (child.userData?.isRoomContainer && !child.visible) child.visible = true;
+    }
+
+    const { topContainers, allContainers } = collectVisibilityContainers(
+      scene,
+      layers,
+      protectedObjects,
+      hooks
+    );
+
+    const batchedOriginalMeshes = new Set<THREE.Object3D>();
+    const newInteractiveMeshes: THREE.Object3D[] = [];
+    const totalContainers = Math.max(1, allContainers.length);
+
+    for (let ci = 0; ci < allContainers.length; ci++) {
+      const container = allContainers[ci]!;
+      batchContainerSubtree(container, {
+        topContainers,
+        protectedObjects,
+        mutableMaterials,
+        interactiveSet,
+        batchedOriginalMeshes,
+        newInteractiveMeshes,
+        lodController,
+        indicatorMats,
+        batchHooks: hooks,
+        store: this.store,
+        merger: this.merger,
+      });
+      await options.onProgress?.(
+        'Merging static geometry batches…',
+        0.40 + ((ci + 1) / totalContainers) * 0.45
+      );
+      await options.yieldIfNeeded?.();
+    }
+
+    batchRigidDynamicGroups(scene, {
+      bifoldPanels,
+      indicatorMats,
+      batchHooks: hooks,
+      interactiveSet,
+      batchedOriginalMeshes,
+      newInteractiveMeshes,
+      mutableMaterials,
+      store: this.store,
+      merger: this.merger,
+    });
+    await options.onProgress?.('Consolidating lighting & vertex layouts…', 0.90);
+    await options.yieldIfNeeded?.();
+
+    const updatedInteractive: THREE.Object3D[] = [];
+    const updatedSet = new Set<THREE.Object3D>();
+    const candidateInteractive =
+      extraInteractive.length > 0
+        ? [...interactiveMeshes, ...extraInteractive]
+        : interactiveMeshes;
+    for (const obj of candidateInteractive) {
+      if (updatedSet.has(obj)) continue;
+      if (batchedOriginalMeshes.has(obj)) continue;
+      if (
+        obj instanceof THREE.Mesh &&
+        (obj.userData?.isInteractiveRaycastExcluded === true ||
+          hooks.isInteractiveRaycastExcluded?.(obj) === true)
+      ) {
+        continue;
+      }
+      updatedSet.add(obj);
+      updatedInteractive.push(obj);
+    }
+    for (const merged of newInteractiveMeshes) {
+      updatedInteractive.push(merged);
+    }
+    interactiveMeshes.length = 0;
+    interactiveMeshes.push(...updatedInteractive);
+
+    if (batchedOriginalMeshes.size > 0) {
+      lodController.removeBatchedObjects(batchedOriginalMeshes);
+    }
+
+    this.lightController.consolidateAndHoistOnce();
+    await this.merger.canonicalizeUnmergedVertexLayoutsAsync(scene, this.store, () =>
+      options.yieldIfNeeded?.() ?? Promise.resolve()
+    );
+
+    scene.traverse((obj) => {
+      if (!(obj instanceof THREE.Mesh) || obj.userData?.[SHADOW_PASS_HOOK_FLAG]) return;
+      if (obj.userData?.isBatchedStaticMesh) return;
+      if (!obj.userData?.isDynamicInteractionObject && !obj.userData?.isDynamicObject) {
+        if (accelerateStaticMeshRaycast(obj, 64)) {
+          this.store.registerBvhAcceleratedMesh(obj);
+        }
+      }
+    });
+
+    this.store.pruneEmptyGroupsPostOrder(scene, topContainers, protectedObjects);
+    this.store.markBatched();
+    this.lightController.applyManagedLightIntensities();
+    onAfterBatchChange?.();
+    await options.onProgress?.('Static geometry batched', 1);
   }
 
   public unbatchAll(): void {
