@@ -8,6 +8,8 @@ import type {
 import type { AudioEmitterHandle } from '../audio/spatial-emitters.ts';
 import type { CircuitId } from '../../core/types/knx.ts';
 import type { InteractiveUserData } from '../../core/types/scene.ts';
+import type { BifoldPanelRef } from '../viewer/scene-types.ts';
+import { BifoldDoorAnimator, type BifoldDoorAssemblyConfig } from './bifold-animator.ts';
 import { deriveStableIds, type StableIdKind, type StableIdSource } from './device-ids.ts';
 import {
   createBifoldCupboardPair,
@@ -15,30 +17,9 @@ import {
   stepBifoldCupboard,
   type BifoldCupboardState,
 } from './handlers/bifold-cupboards.ts';
-import {
-  createMotorizedCarGatePair,
-  playCarGateSound,
-  stepCarGates,
-  type MotorizedCarGatePairState,
-} from './handlers/car-gates.ts';
 import { EMPTY_DOOR_POLICY, type DoorPolicy } from './handlers/door-policy.ts';
 import type { AnimatedInteractable, FirstPersonPoseSample } from './handlers/animated-interactable.ts';
 import { describeFlagInteractable } from './handlers/flag-prompts.ts';
-/** Extensible custom interactable handler registered by a home or prop builder. */
-export interface CustomInteractionHandler {
-  readonly id: string;
-  readonly kind?: InteractableKind;
-  readonly targets: readonly THREE.Object3D[];
-  readonly cutsceneId?: string;
-  readonly label?: string;
-  getPromptLabel(): string;
-  trigger(): boolean;
-  cancel?(): void;
-  isActive?(): boolean;
-  getElapsedSec?(): number | null;
-  step?(dtSeconds: number): boolean | void;
-  collectDynamicObjects?(outSet: Set<THREE.Object3D>): void;
-}
 import { findDescendantCutawayWall, wrapInHingePivot } from './handlers/hinge-pivot.ts';
 import {
   applyHingedDoorPose,
@@ -52,7 +33,7 @@ import {
   playHingedDoorSound,
   type HingedDoorState,
 } from './handlers/hinged-doors.ts';
-import { GARAGE_DOOR_GROUP_ID, getPseudoDeviceUserData } from './handlers/pseudo-devices.ts';
+import { GARAGE_DOOR_GROUP_ID } from './handlers/pseudo-devices.ts';
 import {
   createSlidingDrawerState,
   playSlidingDrawerSound,
@@ -70,15 +51,41 @@ import {
   type SmartInteractionEntry,
 } from './handlers/smart-interactions.ts';
 import {
+  createSwingGatePair,
+  playSwingGateSound,
+  stepSwingGatePair,
+  type SwingGatePairConfig,
+  type SwingGatePairState,
+} from './handlers/swing-gates.ts';
+import {
   bargeNearbyWalkthroughDoors,
   bargeOpenWalkthroughDoor,
   type DoorBargeContext,
 } from './handlers/walkthrough-door-barge.ts';
 
+/** Extensible custom interactable handler registered by a home or prop builder. */
+export interface CustomInteractionHandler {
+  readonly id: string;
+  readonly kind?: InteractableKind;
+  readonly targets: readonly THREE.Object3D[];
+  readonly cutsceneId?: string;
+  readonly label?: string;
+  readonly aliases?: readonly string[];
+  getPromptLabel(): string;
+  trigger(): boolean;
+  cancel?(): void;
+  isActive?(): boolean;
+  getElapsedSec?(): number | null;
+  step?(dtSeconds: number): boolean | void;
+  collectDynamicObjects?(outSet: Set<THREE.Object3D>): void;
+}
+
 /** Kind of a registry-managed interactable, as reported by `listInteractables()`. */
 export type InteractableKind =
   | 'door'
   | 'garage-door'
+  | 'bifold-door'
+  | 'swing-gate'
   | 'drawer'
   | 'bifold-cupboard'
   | 'toggle'
@@ -92,15 +99,26 @@ export interface InteractableInfo {
   /** Build-order id written into mesh userData (still accepted everywhere). */
   readonly legacyId: string;
   readonly kind: InteractableKind;
-  /** Display label (animated props only). */
+  /** Display label (animated / custom / assembly props). */
   readonly label?: string;
-  /** Natural-language aliases (animated props only). */
+  /** Natural-language aliases (animated / custom / assembly props). */
   readonly aliases?: readonly string[];
 }
 
 interface ToggleCallbackEntry {
   readonly onToggle: () => void;
   readonly dynamicRoots: readonly THREE.Object3D[];
+  readonly label?: string;
+}
+
+interface BifoldAssemblyEntry {
+  readonly config: BifoldDoorAssemblyConfig;
+  readonly animator: BifoldDoorAnimator;
+}
+
+interface SwingGatePairEntry {
+  readonly config: SwingGatePairConfig;
+  readonly state: SwingGatePairState;
 }
 
 /**
@@ -108,11 +126,6 @@ interface ToggleCallbackEntry {
  * lookup by interactableId (legacy `door-N` or stable `door:<name>` ids), click handling,
  * describe/prompt text, the per-frame animation update and dynamic-object collection.
  * Device behaviour lives in `./handlers/*`; the registry only owns state and routing.
- *
- * NOTE: the snapshot tool fingerprints this object's own enumerable fields
- * (`tools/snapshot/property-scene-build.ts` → `interactionState`). The public-ish state fields
- * below therefore keep their historical names/shapes; runtime-only bookkeeping uses `#private`
- * fields, which the fingerprint does not see.
  */
 export class InteractionRegistry {
   private readonly interactiveMeshes: THREE.Object3D[];
@@ -120,14 +133,14 @@ export class InteractionRegistry {
   private readonly bifoldCupboards = new Map<string, BifoldCupboardState>();
   private readonly slidingDrawers = new Map<string, SlidingDrawerState>();
   private readonly toggleCallbacks = new Map<string, ToggleCallbackEntry>();
-  private carGatePair: MotorizedCarGatePairState | null = null;
   private nextId = 1;
   private readonly tmpHingeWorld = new THREE.Vector3();
 
   #doorPolicy: DoorPolicy = EMPTY_DOOR_POLICY;
   #stableIds: { byLegacy: Map<string, string>; byStable: Map<string, string> } | null = null;
   readonly #manualCloseMs = new Map<string, number>();
-  /** Runtime-only (`#private` keeps the snapshot fingerprint of this registry unchanged). */
+  readonly #bifoldAssemblies = new Map<string, BifoldAssemblyEntry>();
+  readonly #swingGatePairs = new Map<string, SwingGatePairEntry>();
   readonly #animated = new Map<string, AnimatedInteractable>();
   readonly #customInteractions = new Map<string, CustomInteractionHandler>();
   #unbatchSubtreeHandler: ((root: THREE.Object3D) => void) | null = null;
@@ -180,10 +193,6 @@ export class InteractionRegistry {
     return id;
   }
 
-  /**
-   * Installs the per-home door behaviour table (keyed by stable door ids), normally from
-   * `PropertySceneProfile.doorPolicy`.
-   */
   public setDoorPolicy(policy: DoorPolicy): void {
     this.#doorPolicy = policy;
     this.#stableIds = null;
@@ -222,7 +231,6 @@ export class InteractionRegistry {
     return this.#stableIds;
   }
 
-  /** Surfaces door-policy entries that no longer match a registered door (renamed/moved meshes). */
   #warnUnknownPolicyIds(byStable: ReadonlyMap<string, string>): void {
     if (this.hingedDoors.size === 0) return;
     const policy = this.#doorPolicy;
@@ -238,18 +246,15 @@ export class InteractionRegistry {
     }
   }
 
-  /** Maps a stable id (`door:<name>`) or legacy id (`door-N`) to the registry's legacy id. */
   public resolveInteractableId(id: string): string {
     if (!id.includes(':')) return id;
     return this.#ensureStableIds().byStable.get(id) ?? id;
   }
 
-  /** Stable id for a legacy id (or the id itself for fixed custom ids). */
   public getStableId(id: string): string {
     return this.#ensureStableIds().byLegacy.get(this.resolveInteractableId(id)) ?? id;
   }
 
-  /** Lists every registry-managed interactable with its stable and legacy ids. */
   public listInteractables(): readonly InteractableInfo[] {
     const { byLegacy } = this.#ensureStableIds();
     const out: InteractableInfo[] = [];
@@ -262,29 +267,46 @@ export class InteractionRegistry {
     for (const dr of this.slidingDrawers.values()) add(dr.id, 'drawer');
     for (const bf of this.bifoldCupboards.values()) add(bf.id, 'bifold-cupboard');
     for (const id of this.toggleCallbacks.keys()) add(id, 'toggle');
+    for (const { config } of this.#bifoldAssemblies.values()) {
+      out.push({
+        id: config.id,
+        legacyId: config.id,
+        kind: 'bifold-door',
+        label: config.label ?? config.id,
+        ...(config.aliases ? { aliases: config.aliases } : {}),
+      });
+    }
+    for (const { config } of this.#swingGatePairs.values()) {
+      out.push({
+        id: config.id,
+        legacyId: config.id,
+        kind: 'swing-gate',
+        label: config.label ?? config.id,
+        ...(config.aliases ? { aliases: config.aliases } : {}),
+      });
+    }
     for (const custom of this.#customInteractions.values()) {
       out.push({
         id: custom.id,
         legacyId: custom.id,
         kind: custom.kind ?? 'custom',
         label: custom.label ?? (custom.getPromptLabel() || custom.id),
+        ...(custom.aliases ? { aliases: custom.aliases } : {}),
       });
     }
     for (const device of this.#animated.values()) {
-      out.push({ id: device.id, legacyId: device.id, kind: 'animated', label: device.label, aliases: device.aliases });
+      out.push({
+        id: device.id,
+        legacyId: device.id,
+        kind: 'animated',
+        label: device.label,
+        aliases: device.aliases,
+      });
     }
     for (const entry of this.#smartEntries.values()) {
       out.push({ id: entry.id, legacyId: entry.id, kind: 'smart', label: entry.spec.label });
     }
     return out;
-  }
-
-  /**
-   * Synthetic userData for pseudo-device ids (`car-gates`, `kitchen-bifolds`, `frame-tv`) whose
-   * state lives outside the registry; the caller routes it like a mesh click.
-   */
-  public getPseudoDeviceUserData(id: string): InteractiveUserData | null {
-    return getPseudoDeviceUserData(id);
   }
 
   #stableIdOf(legacyId: string): string | undefined {
@@ -414,6 +436,26 @@ export class InteractionRegistry {
       });
     }
 
+    for (const [id, entry] of this.#bifoldAssemblies) {
+      if (!entry.config.panels.some((p) => isDescendant(p.group))) continue;
+      actions.push({
+        id,
+        label: `${entry.animator.isOpen() ? 'Close' : 'Open'} ${entry.config.label ?? 'Bi-Fold Doors'}`,
+        active: entry.animator.isOpen(),
+        kind: 'hinge',
+      });
+    }
+
+    for (const [id, entry] of this.#swingGatePairs) {
+      if (!isDescendant(entry.state.pivotA) && !isDescendant(entry.state.pivotB)) continue;
+      actions.push({
+        id,
+        label: `${entry.state.isOpen ? 'Close' : 'Open'} ${entry.config.label ?? 'Gates'}`,
+        active: entry.state.isOpen,
+        kind: 'hinge',
+      });
+    }
+
     for (const [id, drawer] of this.slidingDrawers) {
       if (!isDescendant(drawer.group)) continue;
       actions.push({
@@ -438,7 +480,7 @@ export class InteractionRegistry {
       if (!tc.dynamicRoots.some((r) => isDescendant(r))) continue;
       actions.push({
         id,
-        label: 'Toggle Mechanism',
+        label: tc.label ?? 'Toggle Mechanism',
         kind: 'toggle',
       });
     }
@@ -458,10 +500,6 @@ export class InteractionRegistry {
     return actions;
   }
 
-  /**
-   * Marks an Object3D and all its descendant Meshes with the given InteractiveUserData
-   * and registers them for raycasting.
-   */
   public registerClickableObject(root: THREE.Object3D, data: InteractiveUserData): void {
     root.userData = { ...root.userData, ...data };
     root.traverse((child) => {
@@ -474,21 +512,146 @@ export class InteractionRegistry {
     });
   }
 
-  /** Marks a light fixture mesh or group so clicking any part of it toggles the given KNX circuit. */
   public registerLightFixture(root: THREE.Object3D, circuitId: CircuitId): void {
     this.registerClickableObject(root, { circuitId });
   }
 
-  /** Marks a bifold door leaf or frame so clicking it toggles the 4-leaf concertina bifold doors. */
-  public registerBifoldDoor(root: THREE.Object3D): void {
-    this.registerClickableObject(root, { isBifoldDoor: true });
+  /**
+   * Registers a multi-leaf concertina bifold door assembly parameterized by id, panels, and track.
+   */
+  public registerBifoldDoorAssembly(config: BifoldDoorAssemblyConfig): BifoldDoorAnimator {
+    const animator = new BifoldDoorAnimator(config.panels, config.track);
+    for (const panel of config.panels) {
+      this.registerClickableObject(panel.group, { interactableId: config.id });
+      panel.group.userData = {
+        ...panel.group.userData,
+        isAnimatedDoor: true,
+        isDynamicBarrier: true,
+        isRigidDynamicGroup: true,
+      };
+    }
+    for (const target of config.clickableTargets ?? []) {
+      this.registerClickableObject(target, {
+        interactableId: config.id,
+        isAnimatedDoor: true,
+      });
+    }
+    if (config.isExteriorPortal !== false && config.panels.length > 0) {
+      this.#exteriorAcousticPortals.push(
+        () =>
+          animator.getAcousticPortalState(config.id) ?? {
+            id: config.id,
+            position: [config.track.anchorRightX, 1.1, config.track.trackZ],
+            areaM2: 1.0,
+            openness: 0,
+          }
+      );
+    }
+    this.#bifoldAssemblies.set(config.id, { config, animator });
+    return animator;
+  }
+
+  public getBifoldAssembly(id: string): BifoldDoorAnimator | undefined {
+    return this.#bifoldAssemblies.get(id)?.animator;
+  }
+
+  public isBifoldAssemblyOpen(id: string): boolean {
+    return this.#bifoldAssemblies.get(id)?.animator.isOpen() ?? false;
+  }
+
+  public setBifoldAssemblyOpen(id: string, isOpen: boolean): boolean {
+    const entry = this.#bifoldAssemblies.get(id);
+    if (!entry) return false;
+    for (const panel of entry.config.panels) {
+      this.#ensureUnbatched(panel.group);
+    }
+    entry.animator.setOpen(isOpen);
+    return true;
+  }
+
+  public toggleBifoldAssembly(id: string): boolean {
+    const entry = this.#bifoldAssemblies.get(id);
+    if (!entry) return false;
+    for (const panel of entry.config.panels) {
+      this.#ensureUnbatched(panel.group);
+    }
+    return entry.animator.toggle();
+  }
+
+  public getAllBifoldPanels(): readonly BifoldPanelRef[] {
+    const out: BifoldPanelRef[] = [];
+    for (const entry of this.#bifoldAssemblies.values()) {
+      out.push(...entry.config.panels);
+    }
+    return out;
   }
 
   /**
-   * Wraps `doorObj` (which must already have its local position set and be added to `parent`)
-   * in a hinge pivot group located at `doorObj.position + hingeOffsetInParent`, so clicking
-   * any mesh inside `doorObj` smoothly swings it open/closed around `axis`.
+   * Registers a generic paired swing-gate assembly (e.g. driveway, courtyard, or garden double gates).
    */
+  public registerSwingGatePair(config: SwingGatePairConfig): SwingGatePairState {
+    const state = createSwingGatePair(config);
+    this.registerClickableObject(state.pivotA, { interactableId: config.id, tradeCategory: 'external' });
+    this.registerClickableObject(state.pivotB, { interactableId: config.id, tradeCategory: 'external' });
+    for (const pivot of [state.pivotA, state.pivotB]) {
+      pivot.userData = {
+        ...pivot.userData,
+        isAnimatedDoor: true,
+        isExteriorGate: true,
+        isDynamicBarrier: true,
+        isRigidDynamicGroup: true,
+      };
+    }
+    for (const target of config.clickableTargets ?? []) {
+      this.registerClickableObject(target, {
+        interactableId: config.id,
+        isExteriorGate: true,
+        tradeCategory: 'external',
+      });
+    }
+    this.#swingGatePairs.set(config.id, { config, state });
+    return state;
+  }
+
+  public getSwingGatePair(id: string): SwingGatePairState | undefined {
+    return this.#swingGatePairs.get(id)?.state;
+  }
+
+  public setSwingGatePairToggleHandler(id: string, onToggle: (nextOpen: boolean) => void): void {
+    const entry = this.#swingGatePairs.get(id);
+    if (entry) {
+      this.#swingGatePairs.set(id, { ...entry, config: { ...entry.config, onToggle } });
+    }
+  }
+
+  public isSwingGatePairOpen(id: string): boolean {
+    return this.#swingGatePairs.get(id)?.state.isOpen ?? false;
+  }
+
+  public getSwingGatePairProgress(id: string): number {
+    return this.#swingGatePairs.get(id)?.state.progress ?? 0;
+  }
+
+  public setSwingGatePairOpen(id: string, isOpen: boolean): boolean {
+    const entry = this.#swingGatePairs.get(id);
+    if (!entry) return false;
+    if (entry.state.isOpen !== isOpen) {
+      this.#ensureUnbatched(entry.state.pivotA);
+      this.#ensureUnbatched(entry.state.pivotB);
+      entry.state.isOpen = isOpen;
+      playSwingGateSound(entry.state);
+    }
+    return true;
+  }
+
+  public toggleSwingGatePair(id: string): boolean {
+    const entry = this.#swingGatePairs.get(id);
+    if (!entry) return false;
+    const next = !entry.state.isOpen;
+    this.setSwingGatePairOpen(id, next);
+    return next;
+  }
+
   public registerHingedDoor(
     parent: THREE.Object3D,
     doorObj: THREE.Object3D,
@@ -509,10 +672,6 @@ export class InteractionRegistry {
     return pivot;
   }
 
-  /**
-   * Links two hinged door pivot groups (such as a pair of French double doors) so clicking,
-   * toggling, or barging either leaf opens and closes both leaves together as a synchronized pair.
-   */
   public linkDoorPair(doorPivotA: THREE.Object3D, doorPivotB: THREE.Object3D): void {
     const idA = (doorPivotA.userData as InteractiveUserData | undefined)?.interactableId;
     const idB = (doorPivotB.userData as InteractiveUserData | undefined)?.interactableId;
@@ -525,12 +684,6 @@ export class InteractionRegistry {
     }
   }
 
-  /**
-   * Registers a single-piece retractable up-and-over overhead garage door (`axis = 'x'`).
-   * As the panel tilts upward (`rotation.x` from `0` to `+openAngle`), the top roller pivot
-   * glides rearward (`+z`) along the horizontal overhead ceiling tracks by `overheadTrackZ * sin(rx)`,
-   * so the bottom edge rises straight up the doorway jambs without ever swinging inward into a parked car.
-   */
   public registerOverheadGarageDoor(
     parent: THREE.Object3D,
     doorObj: THREE.Object3D,
@@ -551,12 +704,6 @@ export class InteractionRegistry {
     return pivot;
   }
 
-
-
-  /**
-   * Registers a 2-leaf folding bi-fold cupboard door pair (such as the upper Pantry doors)
-   * so clicking either leaf folds both leaves together in a concertina motion.
-   */
   public registerBifoldCupboardPair(
     parent: THREE.Object3D,
     outerLeaf: THREE.Group,
@@ -567,14 +714,21 @@ export class InteractionRegistry {
   ): void {
     const id = this.allocateId('bifold-cupboard');
     const state = createBifoldCupboardPair(id, parent, outerLeaf, innerLeaf, sideSign, leafWidth, faceZ);
-    this.registerClickableObject(state.outerPivot, { interactableId: id });
-    this.registerClickableObject(innerLeaf, { interactableId: id });
-    state.outerPivot.userData = { ...state.outerPivot.userData, bifoldRole: 'outerPivot' };
-    innerLeaf.userData = { ...innerLeaf.userData, bifoldRole: 'innerLeaf' };
+    this.registerClickableObject(state.outerPivot, { interactableId: id, isJoineryDoor: true });
+    this.registerClickableObject(innerLeaf, { interactableId: id, isJoineryDoor: true });
+    state.outerPivot.userData = {
+      ...state.outerPivot.userData,
+      bifoldRole: 'outerPivot',
+      isRigidDynamicGroup: true,
+    };
+    innerLeaf.userData = {
+      ...innerLeaf.userData,
+      bifoldRole: 'innerLeaf',
+      isRigidDynamicGroup: true,
+    };
     this.bifoldCupboards.set(id, state);
   }
 
-  /** Registers a sliding pan drawer or warming drawer so clicking it smoothly slides it out/in. */
   public registerSlidingDrawer(drawerGroup: THREE.Group, slideDelta: THREE.Vector3): void {
     const id = this.allocateId('drawer');
     const state = createSlidingDrawerState(id, drawerGroup, slideDelta);
@@ -585,67 +739,27 @@ export class InteractionRegistry {
     drawerGroup.userData = {
       ...drawerGroup.userData,
       drawerRole: 'group',
+      isRigidDynamicGroup: true,
       ...(cutawayDesc ? { isCutawayWall: true, cutawayWall: cutawayDesc } : {}),
     };
     this.slidingDrawers.set(id, state);
   }
 
-  /**
-   * Registers a custom exterior acoustic portal provider (e.g. an operable sash window) whose live
-   * `AcousticPortalState` is appended to `getExteriorDoorAcousticPortals()`.
-   */
   public registerExteriorAcousticPortal(provider: () => AcousticPortalState): void {
     this.#exteriorAcousticPortals.push(provider);
   }
 
-
-  /**
-   * Registers the Motorized Dual-Leaf Front Car Entrance Gates so both leaves swing open/closed
-   * together slowly (~10.0 seconds) when clicked or controlled via the KNX bus.
-   */
-  public registerMotorizedCarGatePair(
-    parent: THREE.Object3D,
-    northLeaf: THREE.Object3D,
-    northHingeOffset: THREE.Vector3,
-    northOpenAngle: number,
-    southLeaf: THREE.Object3D,
-    southHingeOffset: THREE.Vector3,
-    southOpenAngle: number,
-    travelDurationSec = 10.0
-  ): void {
-    const state = createMotorizedCarGatePair(
-      parent,
-      northLeaf,
-      northHingeOffset,
-      northOpenAngle,
-      southLeaf,
-      southHingeOffset,
-      southOpenAngle,
-      travelDurationSec
-    );
-    this.registerClickableObject(state.northPivot, { isCarGate: true });
-    this.registerClickableObject(state.southPivot, { isCarGate: true });
-    state.northPivot.userData = { ...state.northPivot.userData, carGateRole: 'northPivot' };
-    state.southPivot.userData = { ...state.southPivot.userData, carGateRole: 'southPivot' };
-    this.carGatePair = state;
-  }
-
-  /** Registers an interactive prop with a custom click toggle callback (e.g. extending the dining table). */
   public registerToggleCallback(
     root: THREE.Object3D,
     onToggle: () => void,
-    dynamicRoots: readonly THREE.Object3D[] = [root]
+    dynamicRoots: readonly THREE.Object3D[] = [root],
+    label?: string
   ): void {
     const id = this.allocateId('toggle');
     this.registerClickableObject(root, { interactableId: id });
-    this.toggleCallbacks.set(id, { onToggle, dynamicRoots });
+    this.toggleCallbacks.set(id, { onToggle, dynamicRoots, ...(label ? { label } : {}) });
   }
 
-  /**
-   * Registers a custom interactable handler (owned by a home or prop builder).
-   * Click targets get `interactableId = handler.id`, and clicks, prompts, per-frame
-   * updates, cutscenes, and dynamic-object collection route to `handler`.
-   */
   public registerCustomInteraction(handler: CustomInteractionHandler): void {
     this.#customInteractions.set(handler.id, handler);
     for (const target of handler.targets) {
@@ -680,11 +794,6 @@ export class InteractionRegistry {
     return this.#customInteractions.get(id)?.cutsceneId;
   }
 
-  /**
-   * Registers a self-contained animated prop (see `AnimatedInteractable`): its click targets get
-   * `interactableId = device.id`, and clicks, prompts, per-frame steps and dynamic-object
-   * collection are routed to it.
-   */
   public registerAnimatedInteractable(device: AnimatedInteractable): string {
     for (const target of device.clickableTargets) {
       this.registerClickableObject(target, { interactableId: device.id });
@@ -726,25 +835,6 @@ export class InteractionRegistry {
     this.#ensureUnbatched(door.pivot);
   }
 
-  public setCarGatesOpen(isOpen: boolean): void {
-    if (this.carGatePair && this.carGatePair.isOpen !== isOpen) {
-      this.#ensureUnbatched(this.carGatePair.northPivot);
-      this.#ensureUnbatched(this.carGatePair.southPivot);
-      this.carGatePair.isOpen = isOpen;
-      playCarGateSound(this.carGatePair);
-    }
-  }
-
-  public isCarGatesOpen(): boolean {
-    return this.carGatePair?.isOpen ?? false;
-  }
-
-  public getCarGatesProgress(): number {
-    return this.carGatePair?.progress ?? 0;
-  }
-
-
-
   #closeConflictingDoors(openedId: string): void {
     const stable = this.#stableIdOf(openedId);
     const conflicts = stable === undefined ? undefined : this.#doorPolicy.conflicts[stable];
@@ -764,7 +854,6 @@ export class InteractionRegistry {
     }
   }
 
-  /** Common open/close bookkeeping: conflicts when opening, barge cooldown when closing. */
   #afterDoorTargetChanged(door: HingedDoorState, changed = true): void {
     door.onStateChange?.(door.isOpen);
     if (door.isOpen) {
@@ -774,7 +863,6 @@ export class InteractionRegistry {
     }
   }
 
-  /** Sets a door's open target (plus its linked partner leaf). */
   #setDoorTarget(door: HingedDoorState, isOpen: boolean, speed: number): void {
     this.#ensureUnbatchedDoor(door);
     const changed = door.isOpen !== isOpen;
@@ -790,7 +878,9 @@ export class InteractionRegistry {
       }
     }
 
-    const partnerChanged = door.partnerDoorId ? (this.hingedDoors.get(door.partnerDoorId)?.isOpen !== door.isOpen) : false;
+    const partnerChanged = door.partnerDoorId
+      ? this.hingedDoors.get(door.partnerDoorId)?.isOpen !== door.isOpen
+      : false;
     this.#afterDoorTargetChanged(door, changed);
     if (door.partnerDoorId) {
       const partner = this.hingedDoors.get(door.partnerDoorId);
@@ -804,7 +894,6 @@ export class InteractionRegistry {
     }
   }
 
-  /** `garage-door`: opens every overhead garage door if any is closed, otherwise closes them all. */
   #toggleGarageDoors(): boolean {
     const garageDoors = [...this.hingedDoors.values()].filter((d) => d.overheadTrackZ !== undefined);
     if (garageDoors.length === 0) return false;
@@ -815,16 +904,33 @@ export class InteractionRegistry {
     return true;
   }
 
-  /**
-   * Toggles the interactive prop with the given id (legacy `door-N`, stable `door:<name>`, or the
-   * `garage-door` group). Returns true if a prop was matched and toggled. Pseudo-device ids
-   * (`car-gates`, `kitchen-bifolds`, `frame-tv`) return false: see `getPseudoDeviceUserData`.
-   */
   public handleInteractableClick(interactableId: string): boolean {
     if (interactableId === GARAGE_DOOR_GROUP_ID) {
       return this.#toggleGarageDoors();
     }
     const id = this.resolveInteractableId(interactableId);
+
+    const bifoldAssembly = this.#bifoldAssemblies.get(interactableId) ?? this.#bifoldAssemblies.get(id);
+    if (bifoldAssembly) {
+      const nextOpen = !bifoldAssembly.animator.isOpen();
+      if (bifoldAssembly.config.onToggle) {
+        bifoldAssembly.config.onToggle(nextOpen);
+      } else {
+        this.setBifoldAssemblyOpen(bifoldAssembly.config.id, nextOpen);
+      }
+      return true;
+    }
+
+    const swingGate = this.#swingGatePairs.get(interactableId) ?? this.#swingGatePairs.get(id);
+    if (swingGate) {
+      const nextOpen = !swingGate.state.isOpen;
+      if (swingGate.config.onToggle) {
+        swingGate.config.onToggle(nextOpen);
+      } else {
+        this.setSwingGatePairOpen(swingGate.config.id, nextOpen);
+      }
+      return true;
+    }
 
     if (this.#customInteractions.has(interactableId)) {
       return this.triggerCustomInteraction(interactableId);
@@ -887,10 +993,8 @@ export class InteractionRegistry {
       } else {
         playSlidingDrawerSound(drawer);
       }
-
       return true;
     }
-
 
     const smartEntry = this.#smartEntries.get(id);
     if (smartEntry) {
@@ -918,7 +1022,6 @@ export class InteractionRegistry {
     return false;
   }
 
-  /** Opens/closes a hinged door (and its linked partner leaf) programmatically. */
   public setHingedDoorOpen(interactableId: string, isOpen: boolean): boolean {
     const door = this.hingedDoors.get(this.resolveInteractableId(interactableId));
     if (!door) return false;
@@ -926,15 +1029,17 @@ export class InteractionRegistry {
     return true;
   }
 
-  /**
-   * Returns true if `interactableId` is a walk-through room, exterior, courtyard, or stable door
-   * (rather than a cupboard, larder, or appliance door).
-   */
-  /**
-   * Returns true when a hinged door or overhead garage door (by stable or legacy id)
-   * is open or mid-animation (progress > 0.01). Used by PortalVisibilitySolver.
-   */
   public isInteractableOpenOrMoving(interactableId: string): boolean {
+    const bifoldAssembly = this.#bifoldAssemblies.get(interactableId);
+    if (bifoldAssembly) {
+      return (
+        bifoldAssembly.animator.isOpen() || bifoldAssembly.animator.getOpenProgress() > 0.01
+      );
+    }
+    const swingGate = this.#swingGatePairs.get(interactableId);
+    if (swingGate) {
+      return swingGate.state.isOpen || swingGate.state.progress > 0.01;
+    }
     const custom = this.#customInteractions.get(interactableId);
     if (custom) {
       return custom.isActive?.() ?? false;
@@ -949,7 +1054,6 @@ export class InteractionRegistry {
           Math.abs(door.pivot.rotation[door.axis]) > 0.015)
       );
     }
-
     return false;
   }
 
@@ -958,7 +1062,6 @@ export class InteractionRegistry {
     return door ? isWalkthroughDoorState(door, this.tmpHingeWorld) : false;
   }
 
-  /** See `bargeOpenWalkthroughDoor` in `handlers/walkthrough-door-barge.ts`. */
   public bargeOpenWalkthroughDoor(
     interactableId: string,
     isSprinting = false,
@@ -980,7 +1083,6 @@ export class InteractionRegistry {
     );
   }
 
-  /** See `bargeNearbyWalkthroughDoors` in `handlers/walkthrough-door-barge.ts`. */
   public bargeNearbyWalkthroughDoors(
     footX: number,
     footY: number,
@@ -1006,24 +1108,33 @@ export class InteractionRegistry {
     return getEffectiveDoorOpenAngle(door, getDefaultDoorOpenAngle(door, override));
   }
 
-  /**
-   * Returns a concise action prompt label for a looked-at interactive mesh
-   * (e.g. "Open Door", "Close Cupboard", "Open AGA Lid", "Toggle Light Switch").
-   */
-  public describeInteractable(mesh: THREE.Object3D, isBifoldsOpen = false): string {
+  public describeInteractable(mesh: THREE.Object3D): string {
     const data = mesh.userData as InteractiveUserData;
     const id = data.interactableId ?? this.getSmartInteractableIdForObject(mesh);
     if (id) {
+      const bifoldAssembly =
+        (data.interactableId ? this.#bifoldAssemblies.get(data.interactableId) : undefined) ??
+        this.#bifoldAssemblies.get(id);
+      if (bifoldAssembly) {
+        return `${bifoldAssembly.animator.isOpen() ? 'Close' : 'Open'} ${bifoldAssembly.config.label ?? 'Bi-Fold Doors'}`;
+      }
+      const swingGate =
+        (data.interactableId ? this.#swingGatePairs.get(data.interactableId) : undefined) ??
+        this.#swingGatePairs.get(id);
+      if (swingGate) {
+        return `${swingGate.state.isOpen ? 'Close' : 'Open'} ${swingGate.config.label ?? 'Gates'}`;
+      }
       const door = this.hingedDoors.get(id);
       if (door) {
         return describeHingedDoor(door, mesh, () => this.isWalkthroughDoor(id));
       }
       const bifoldCup = this.bifoldCupboards.get(id);
       if (bifoldCup) {
-        return `${bifoldCup.isOpen ? 'Close' : 'Open'} Pantry Bi-Fold Doors`;
+        return `${bifoldCup.isOpen ? 'Close' : 'Open'} Bi-Fold Doors`;
       }
       const custom =
-        (data.interactableId ? this.#customInteractions.get(data.interactableId) : undefined) ?? this.#customInteractions.get(id);
+        (data.interactableId ? this.#customInteractions.get(data.interactableId) : undefined) ??
+        this.#customInteractions.get(id);
       if (custom) {
         return custom.getPromptLabel();
       }
@@ -1031,8 +1142,9 @@ export class InteractionRegistry {
       if (drawer) {
         return `${drawer.isOpen ? 'Close' : 'Open'} Drawer`;
       }
-      if (this.toggleCallbacks.has(id)) {
-        return 'Extend / Retract Table';
+      const toggleCb = this.toggleCallbacks.get(id);
+      if (toggleCb) {
+        return toggleCb.label ?? data.interactionPromptLabel ?? 'Toggle Mechanism';
       }
       const animated = this.#animated.get(id);
       if (animated) {
@@ -1043,16 +1155,9 @@ export class InteractionRegistry {
         return describeSmartInteractionEntry(smartEntry);
       }
     }
-    return describeFlagInteractable(data, {
-      isBifoldsOpen,
-      isCarGatesOpen: this.isCarGatesOpen(),
-    });
+    return describeFlagInteractable(data);
   }
 
-  /**
-   * Collects all dynamic Object3Ds managed by the registry so static matrix
-   * freezing leaves their transforms dynamic.
-   */
   public collectDynamicObjects(outSet: Set<THREE.Object3D>): void {
     for (const tc of this.toggleCallbacks.values()) {
       for (const r of tc.dynamicRoots) {
@@ -1062,16 +1167,21 @@ export class InteractionRegistry {
     for (const door of this.hingedDoors.values()) {
       door.pivot.traverse((c) => outSet.add(c));
     }
+    for (const entry of this.#bifoldAssemblies.values()) {
+      for (const panel of entry.config.panels) {
+        panel.group.traverse((c) => outSet.add(c));
+      }
+    }
+    for (const entry of this.#swingGatePairs.values()) {
+      entry.state.pivotA.traverse((c) => outSet.add(c));
+      entry.state.pivotB.traverse((c) => outSet.add(c));
+    }
     for (const bf of this.bifoldCupboards.values()) {
       bf.outerPivot.traverse((c) => outSet.add(c));
       bf.innerLeaf.traverse((c) => outSet.add(c));
     }
     for (const dr of this.slidingDrawers.values()) {
       dr.group.traverse((c) => outSet.add(c));
-    }
-    if (this.carGatePair) {
-      this.carGatePair.northPivot.traverse((c) => outSet.add(c));
-      this.carGatePair.southPivot.traverse((c) => outSet.add(c));
     }
     for (const custom of this.#customInteractions.values()) {
       custom.collectDynamicObjects?.(outSet);
@@ -1086,20 +1196,20 @@ export class InteractionRegistry {
     }
   }
 
-  /**
-   * Collects only continuously-moving ambient loop objects (e.g. active stove flames/sparks)
-   * that must remain unbatched at boot; click-triggered doors, drawers, tables, and props
-   * stay merged in static batches and lazily unbatch on first interaction.
-   */
   public collectBootPinnedDynamicObjects(outSet: Set<THREE.Object3D>): void {
     for (const door of this.hingedDoors.values()) {
       if (isWalkthroughDoorState(door, this.tmpHingeWorld)) {
         door.pivot.traverse((c) => outSet.add(c));
       }
     }
-    if (this.carGatePair) {
-      this.carGatePair.northPivot.traverse((c) => outSet.add(c));
-      this.carGatePair.southPivot.traverse((c) => outSet.add(c));
+    for (const entry of this.#bifoldAssemblies.values()) {
+      for (const panel of entry.config.panels) {
+        panel.group.traverse((c) => outSet.add(c));
+      }
+    }
+    for (const entry of this.#swingGatePairs.values()) {
+      entry.state.pivotA.traverse((c) => outSet.add(c));
+      entry.state.pivotB.traverse((c) => outSet.add(c));
     }
     for (const device of this.#animated.values()) {
       if (!device.isAmbientLoop) continue;
@@ -1111,11 +1221,6 @@ export class InteractionRegistry {
     }
   }
 
-  /**
-   * Returns the active first-person camera/body pose sample if any registered
-   * `AnimatedInteractable` (e.g. gym treadmill run or bench press) is currently
-   * driving a first-person sequence.
-   */
   public getActiveFirstPersonPose(): FirstPersonPoseSample | null {
     for (const device of this.#animated.values()) {
       if (device.isFirstPersonActive?.()) {
@@ -1126,9 +1231,6 @@ export class InteractionRegistry {
     return null;
   }
 
-  /**
-   * Cancels any active first-person sequence on registered `AnimatedInteractable` devices.
-   */
   public cancelActiveFirstPerson(): boolean {
     let cancelled = false;
     for (const device of this.#animated.values()) {
@@ -1140,10 +1242,6 @@ export class InteractionRegistry {
     return cancelled;
   }
 
-  /**
-   * Checks if the player's feet `(footX, footY, footZ)` are inside the proximity trigger zone
-   * of any registered `AnimatedInteractable` (such as the gym treadmill or squat rack).
-   */
   public getProximityAnimatedInteractable(
     footX: number,
     footY: number,
@@ -1180,8 +1278,12 @@ export class InteractionRegistry {
   public update(dtSeconds: number): boolean {
     let anyChanged = false;
 
-    if (this.carGatePair && stepCarGates(this.carGatePair, dtSeconds)) {
-      anyChanged = true;
+    for (const entry of this.#bifoldAssemblies.values()) {
+      if (entry.animator.update(dtSeconds)) anyChanged = true;
+    }
+
+    for (const entry of this.#swingGatePairs.values()) {
+      if (stepSwingGatePair(entry.state, dtSeconds)) anyChanged = true;
     }
 
     for (const door of this.hingedDoors.values()) {
@@ -1195,7 +1297,6 @@ export class InteractionRegistry {
     for (const dr of this.slidingDrawers.values()) {
       if (stepSlidingDrawer(dr, dtSeconds)) anyChanged = true;
     }
-
 
     for (const custom of this.#customInteractions.values()) {
       if (custom.step?.(dtSeconds)) anyChanged = true;
@@ -1220,16 +1321,6 @@ export class InteractionRegistry {
     return anyChanged;
   }
 
-  /**
-   * Steps continuous ambient visual animations (such as flickering stove flames and embers)
-   * that request a frame render without invalidating shadow maps.
-   */
-
-  /**
-   * Discovers and caches openable hinged/overhead exterior doors by probing `0.85 m` along both
-   * sides of each doorway normal, returning live `0..1` `openness` without touching enumerable
-   * snapshot state.
-   */
   public getExteriorDoorAcousticPortals(
     isInteriorPoint: (x: number, y: number, z: number) => boolean
   ): readonly AcousticPortalState[] {

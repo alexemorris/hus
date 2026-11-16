@@ -66,7 +66,7 @@ export interface CorstonSocketPlacement {
   readonly connectedLamp?: ConnectedLampCordSpec;
   /**
    * Optional world-space waypoints `[x, y, z]` for a mains-powered appliance (such as the
-   * Roland GP-6-PE baby grand digital piano) plugged into a `floorBrassDouble` floor socket.
+   * digital baby grand piano) plugged into a `floorBrassDouble` floor socket.
    */
   readonly connectedApplianceCordWaypoints?: ReadonlyArray<readonly [number, number, number]>;
   /** Optional cutaway wall descriptor so the socket hides when its host wall is cut away. */
@@ -802,7 +802,7 @@ export function buildCorstonPowerSocket(
 
   ctx.scene.add(group);
 
-  // If this floor socket has a connected mains appliance cord (e.g. Roland GP-6-PE baby grand piano),
+  // If this floor socket has a connected mains appliance cord (e.g. baby grand piano),
   // route the continuous braided mains flex from the 13A floor plug up to the appliance's underbelly DC brick.
   if (
     placement.connectedApplianceCordWaypoints &&

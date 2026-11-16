@@ -36,7 +36,6 @@ import type { DoorPolicy } from '../engine/interaction/handlers/door-policy.ts';
 import { FocusController, type FocusRoom } from '../engine/rooms/focus-controller.ts';
 import type {
   BatchOptimizerHooks,
-  BifoldTrackConfig,
   CircuitFixtureAppearance,
   CutawayOptions,
   PortalSolverFactoryContext,
@@ -116,8 +115,8 @@ export interface HouseZonesConfig<TSecurity extends SecurityOverlay3D = Security
   readonly circuitMaxIntensity: Readonly<Record<string, number>>;
   readonly defaultFixtureAppearance?: CircuitFixtureAppearance;
   readonly fixtureAppearanceOverrides?: Readonly<Partial<Record<CircuitId, CircuitFixtureAppearance>>>;
+  readonly circuitIntensityMultipliers?: Readonly<Record<string, number>>;
   readonly switchLedRules?: readonly SwitchLedIndicatorRule[];
-  readonly bifoldTrack?: BifoldTrackConfig;
   readonly doorPolicy?: DoorPolicy;
   buildSecurityOverlay?: (ctx: SceneBuilderContext) => TSecurity;
   buildUfhOverlay?: (ctx: SceneBuilderContext) => UfhSystemOverlay3D;
@@ -129,21 +128,27 @@ export interface HousePortalsConfig {
   ) => ReturnType<NonNullable<PropertySceneProfile['createPortalVisibilitySolver']>>;
 }
 
-export interface HouseSmartHomeAddresses {
-  readonly gatePa?: string;
-  readonly kitchenScenePa?: string;
-  readonly courtyardSwitchPa?: string;
-  readonly utilitySwitchPa?: string;
-  readonly frameTvPa?: string;
-}
-
 export interface HouseSmartHomeConfig<TSecurity extends SecurityOverlay3D = SecurityOverlay3D> {
   readonly knxProject?: KnxProject;
   readonly presenceHoldTimeSec?: number;
   readonly unifiCameras?: readonly CctvCameraEntityState[];
   readonly unifiAccessPoints?: readonly AccessPointEntityState[];
-  readonly addresses?: HouseSmartHomeAddresses;
+  readonly automationRules?: import('../integrations/smart-home-hub.ts').SmartHomeAutomationRules;
   readonly initialSceneRecall?: { readonly sceneNumber: number; readonly sourcePa?: string };
+  onObjectInteraction?: (
+    userData: InteractiveUserData,
+    details:
+      | {
+          readonly pressDurationMs: number;
+          readonly worldPosition?: { readonly x: number; readonly y: number; readonly z: number };
+        }
+      | undefined,
+    context: {
+      readonly scene: PropertyScene<TSecurity>;
+      readonly knx: KNXPropertyBusController;
+      readonly hub: SmartHomeHub;
+    }
+  ) => boolean | void;
   syncSecurity3D?: (
     scene: PropertyScene<TSecurity>,
     cameras: readonly CctvCameraEntityState[],
@@ -222,13 +227,6 @@ function isTerrainSurfaceSampler(
     typeof value.sampleTerrainY === 'function'
   );
 }
-
-const DEFAULT_BIFOLD_TRACK: BifoldTrackConfig = {
-  anchorRightX: 0,
-  trackZ: 0,
-  leafWidth: 0.85,
-  maxFoldAngle: 1.4,
-};
 
 const EMPTY_SECURITY_OVERLAY: SecurityOverlay3D = {
   syncCameras: () => undefined,
@@ -398,8 +396,10 @@ export function defineHouse<TSecurity extends SecurityOverlay3D = SecurityOverla
         coneOpacity: 0.2,
       },
       fixtureAppearanceOverrides: config.zones.fixtureAppearanceOverrides ?? {},
+      ...(config.zones.circuitIntensityMultipliers
+        ? { circuitIntensityMultipliers: config.zones.circuitIntensityMultipliers }
+        : {}),
       switchLedRules: config.zones.switchLedRules ?? [],
-      bifoldTrack: config.zones.bifoldTrack ?? DEFAULT_BIFOLD_TRACK,
       ...(config.zones.doorPolicy ? { doorPolicy: config.zones.doorPolicy } : {}),
       buildSecurityOverlay,
       ...(config.zones.buildUfhOverlay ? { buildUfhOverlay: config.zones.buildUfhOverlay } : {}),
@@ -438,9 +438,7 @@ export interface MountHouseRuntimeContext<TSecurity extends SecurityOverlay3D = 
     isInterior(zoneId: RoomZoneId): boolean;
     readonly focus: FocusController;
   };
-  readonly gatePa?: string;
-  readonly kitchenScenePa?: string;
-  readonly courtyardSwitchPa?: string;
+  readonly hub?: SmartHomeHub;
   readonly onWalkthroughPresence?: (pos: Vec3Tuple, zoneId: RoomZoneId | null) => void;
 }
 
@@ -539,8 +537,8 @@ function createEmptyKnxProject(
   house: HouseDefinition<SecurityOverlay3D>,
   electrical?: CircuitBus
 ): KnxProject {
-  const defaultFloorId = (house.floors[0]?.id ?? "ground") as "ground";
-  const defaultZoneId = (house.rooms.manifest[0]?.zoneId ?? "kitchen") as RoomZoneId;
+  const defaultFloorId = house.floors[0]?.id ?? "ground";
+  const defaultZoneId = (house.rooms.manifest[0]?.zoneId ?? "default") as RoomZoneId;
   const manifestByCircuit = new Map<string, { label: string; zoneId: RoomZoneId; floorId: string; dimmable: boolean }>();
   for (const room of house.rooms.manifest) {
     for (const light of room.lights) {
@@ -570,10 +568,10 @@ function createEmptyKnxProject(
       name: spec?.name ?? meta?.label ?? id,
       shortName: spec?.shortName ?? spec?.name ?? meta?.label ?? id,
       location: house.name,
-      buildingId: (spec?.buildingId ?? "mainHouse") as "mainHouse",
-      floorId: (spec?.floorId ?? meta?.floorId ?? defaultFloorId) as "ground",
+      buildingId: spec?.buildingId ?? "building",
+      floorId: spec?.floorId ?? meta?.floorId ?? defaultFloorId,
       zoneId: (spec?.zoneId ?? meta?.zoneId ?? defaultZoneId) as RoomZoneId,
-      actuatorPa: "1.1.20",
+      actuatorPa: "1.1.10",
       gaSwitch: `1/1/${idx + 1}`,
       gaValue: `1/2/${idx + 1}`,
       gaStatus: `1/3/${idx + 1}`,
@@ -625,24 +623,13 @@ function createEmptyKnxProject(
     centralPa: {
       ipInterface: "1.1.1",
       aiBridge: "1.1.2",
-      kitchenSwitchGroup: "1.1.10",
-      kitchenPresence: "1.1.30",
-      utilityPresence: "1.1.31",
-      utilitySwitch: "1.1.11",
-      courtyardSwitch: "1.1.14",
-      kitchenActuator: "1.1.20",
-      carGates: "1.1.22",
+      centralActuator: "1.1.10",
     },
     centralGa: {
       masterOff: "0/0/1",
       centralScene: "1/0/1",
       masterFull: "0/0/2",
-      kitchenPresence: "3/1/1",
       ambientLux: "3/0/1",
-      utilityPresence: "3/1/2",
-      tvArt: "4/0/3",
-      carGatesCommand: "5/0/1",
-      carGatesPosition: "5/0/2",
     },
     defaultPresenceHoldTimeSec: 120,
     groupAddresses: [],
@@ -733,12 +720,6 @@ export async function mountHouse<TSecurity extends SecurityOverlay3D = SecurityO
   await progress.advancePhase('preflight', 0.85, 'Connecting to the smart-home bus…');
 
   const smartHome = house.smartHome;
-  const addresses = smartHome?.addresses ?? {};
-  const gatePa = addresses.gatePa ?? '1.1.22';
-  const courtyardSwitchPa = addresses.courtyardSwitchPa ?? '1.1.14';
-  const kitchenScenePa = addresses.kitchenScenePa ?? '1.1.10';
-  const utilitySwitchPa = addresses.utilitySwitchPa ?? '1.1.11';
-  const frameTvPa = addresses.frameTvPa ?? '1.1.12';
 
   const liveGatewayUrl =
     typeof window !== 'undefined'
@@ -778,7 +759,8 @@ export async function mountHouse<TSecurity extends SecurityOverlay3D = SecurityO
   const hub = new SmartHomeHub(
     knx,
     new UniFiProtectController(smartHome?.unifiCameras ?? []),
-    new UniFiAccessController(smartHome?.unifiAccessPoints ?? [])
+    new UniFiAccessController(smartHome?.unifiAccessPoints ?? []),
+    smartHome?.automationRules
   );
   const annotations = new SceneAnnotationStore();
 
@@ -884,34 +866,31 @@ export async function mountHouse<TSecurity extends SecurityOverlay3D = SecurityO
         { immediate: true }
       );
       syncConventionalToKnx();
+    } else if (
+      smartHome?.onObjectInteraction &&
+      smartHome.onObjectInteraction(userData, details, { scene, knx, hub }) === true
+    ) {
+      return;
     } else if (userData.isKNXSwitch) {
       playCorstonSwitchSound('switch', details?.worldPosition);
-      knx.handleSwitchShortPress(userData.switchDirection ?? 'up', userData.switchLocation);
-    } else if (userData.isCourtyardSwitch) {
-      playCorstonSwitchSound('switch', details?.worldPosition);
-      knx.handleCourtyardSwitchShortPress(
-        userData.switchDirection ?? 'up',
-        userData.switchPa ?? courtyardSwitchPa
-      );
-    } else if (userData.isUtilitySwitch) {
-      playCorstonSwitchSound('switch', details?.worldPosition);
-      knx.handleUtilitySwitchToggle(userData.switchPa ?? utilitySwitchPa);
-    } else if (userData.isKitchenMotionSensor) {
-      playCorstonSwitchSound('switch', details?.worldPosition);
-      knx.toggleKitchenMotion();
-    } else if (userData.isUtilityMotionSensor) {
-      playCorstonSwitchSound('switch', details?.worldPosition);
-      knx.toggleUtilityMotion();
+      const targetZone =
+        (userData.switchPa
+          ? knx.getPushButtons().find((b) => b.pa === userData.switchPa)?.gangs[
+              (userData.switchGang ?? 1) - 1
+            ]?.zoneId
+          : undefined) ?? knx.getZones()[0]?.id;
+      if (targetZone) {
+        knx.handleZoneSwitchGesture(
+          targetZone,
+          userData.switchDirection ?? 'up',
+          details?.pressDurationMs ?? 0,
+          userData.switchPa,
+          userData.switchLocation
+        );
+      }
     } else if (userData.roomMotionSensorId) {
       playCorstonSwitchSound('switch', details?.worldPosition);
       knx.toggleRoomMotion(userData.roomMotionSensorId);
-    } else if (userData.isFrameTV) {
-      playCorstonSwitchSound('switch', details?.worldPosition);
-      knx.cycleTvArt(true, frameTvPa);
-    } else if (userData.isBifoldDoor) {
-      scene.toggleBifolds();
-    } else if (userData.isCarGate) {
-      knx.toggleCarGates(gatePa);
     } else if (userData.isUniFiCamera) {
       hub.protect.toggleAllFrustums();
     } else if (userData.isUniFiAccessReader && userData.accessEntityId) {
@@ -1016,11 +995,9 @@ export async function mountHouse<TSecurity extends SecurityOverlay3D = SecurityO
   const runtime = createRuntime({
     scene,
     knx,
+    hub,
     annotations,
     home: homeData,
-    gatePa,
-    kitchenScenePa,
-    courtyardSwitchPa,
     onWalkthroughPresence: (pos) => {
       presenceBridge.update(pos);
     },
@@ -1039,7 +1016,7 @@ export async function mountHouse<TSecurity extends SecurityOverlay3D = SecurityO
   if (smartHome?.initialSceneRecall) {
     knx.recallScene(
       smartHome.initialSceneRecall.sceneNumber,
-      smartHome.initialSceneRecall.sourcePa ?? kitchenScenePa
+      smartHome.initialSceneRecall.sourcePa
     );
     knx.stepDimming(10);
     scene.applyKNXLightLevels(knx.getLiveLevels());

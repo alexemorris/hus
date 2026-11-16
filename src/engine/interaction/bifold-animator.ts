@@ -7,8 +7,22 @@ import { playBifoldSound } from './handlers/bifold-cupboards.ts';
 const tmpBifoldBounds = new THREE.Box3();
 const tmpPanelBounds = new THREE.Box3();
 
+export interface BifoldDoorAssemblyConfig {
+  readonly id: string;
+  readonly panels: readonly BifoldPanelRef[];
+  readonly track: BifoldTrackConfig;
+  readonly label?: string;
+  readonly aliases?: readonly string[];
+  /** Additional static frame/handle meshes that should also trigger this assembly when clicked. */
+  readonly clickableTargets?: readonly THREE.Object3D[];
+  /** Whether this assembly opens between interior and exterior for acoustic occlusion (default true). */
+  readonly isExteriorPortal?: boolean;
+  /** Optional override hook invoked on click/trigger instead of local toggle. */
+  readonly onToggle?: (nextOpen: boolean) => void;
+}
+
 /**
- * Animates a concertina bifold door set between closed (0) and open (1).
+ * Animates a concertina bifold door assembly between closed (0) and open (1).
  */
 export class BifoldDoorAnimator {
   private readonly panels: readonly BifoldPanelRef[];
@@ -41,7 +55,7 @@ export class BifoldDoorAnimator {
     return this.currentOpen;
   }
 
-  public getAcousticPortalState(id = 'bifolds'): AcousticPortalState | null {
+  public getAcousticPortalState(id = 'bifold-door'): AcousticPortalState | null {
     if (this.panels.length === 0) return null;
     if (!this.cachedPortalGeometry) {
       tmpBifoldBounds.makeEmpty();
@@ -82,10 +96,15 @@ export class BifoldDoorAnimator {
     };
   }
 
-  public toggle(): boolean {
-    this.open = !this.open;
+  public setOpen(nextOpen: boolean): boolean {
+    if (this.open === nextOpen) return this.open;
+    this.open = nextOpen;
     playBifoldSound(this.panels[0]?.group, this.open);
     return this.open;
+  }
+
+  public toggle(): boolean {
+    return this.setOpen(!this.open);
   }
 
   /** Advances the fold animation. Returns true if any leaf moved. */
@@ -99,7 +118,6 @@ export class BifoldDoorAnimator {
     } else {
       this.currentOpen = Math.max(0, this.currentOpen - step);
     }
-    // Smooth cubic ease-in-out for natural bifold track glide
     const t = this.currentOpen;
     const smoothT = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
     const theta = smoothT * this.track.maxFoldAngle;
@@ -108,7 +126,7 @@ export class BifoldDoorAnimator {
     const { anchorRightX, trackZ, leafWidth } = this.track;
 
     for (const leaf of this.panels) {
-      const k = leaf.openX; // index from right post (0..n-1)
+      const k = leaf.openX;
       leaf.group.position.x = anchorRightX - (k + 0.5) * leafWidth * cosTheta;
       leaf.group.position.z = trackZ + 0.5 * leafWidth * sinTheta;
       leaf.group.rotation.y = leaf.dir * theta;

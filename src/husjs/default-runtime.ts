@@ -13,6 +13,7 @@ import type { FloorViewMode, TimeOfDay, Vec3Tuple } from '../core/types/scene.ts
 import type { RoomZoneId } from '../core/types/topology.ts';
 import type {
   TwinApi,
+  TwinCustomDeviceControl,
   TwinFloorInfo,
   TwinLightingLayer,
   TwinLightingZone,
@@ -66,7 +67,7 @@ function inferLayerKind(
 ): LightingLayerKind {
   if (c.kind) return c.kind;
   const t = `${c.id} ${c.name} ${c.shortName}`.toLowerCase();
-  if (/festoon|lamp ?post|external|balcony|courtyard|garden/.test(t)) return 'exterior';
+  if (/festoon|lamp ?post|external|exterior|balcony|terrace|garden/.test(t)) return 'exterior';
   if (/lamps?5a|5v lamp|5a lamp|\blamps?\b/.test(t)) return 'lamps';
   if (/picture/.test(t)) return 'picture';
   if (/pendant/.test(t)) return 'pendants';
@@ -78,7 +79,7 @@ function inferLayerKind(
   if (/batten|high ?bay|bays/.test(t)) return 'battens';
   if (/downlight/.test(t)) return 'downlights';
   if (/spot/.test(t)) return 'spots';
-  if (/fairy|halo|ring|feature|pool table/.test(t)) return 'feature';
+  if (/fairy|halo|ring|feature/.test(t)) return 'feature';
   if (/led|strip/.test(t)) return 'strip';
   return 'downlights';
 }
@@ -300,9 +301,7 @@ export function createDefaultHouseRuntime<TSecurity extends SecurityOverlay3D = 
   ctx: MountHouseRuntimeContext<TSecurity>
 ): MountHouseRuntimeHandle {
   const { scene, knx, annotations, home } = ctx;
-  const gatePa = ctx.gatePa ?? '1.1.22';
-  const kitchenScenePa = ctx.kitchenScenePa ?? '1.1.10';
-  const courtyardSwitchPa = ctx.courtyardSwitchPa ?? '1.1.14';
+  const uiSourcePa = knx.getProject().centralPa.centralSwitch ?? knx.getProject().centralPa.aiBridge;
 
   const knownCircuits = new Set<string>(knx.getCircuits().map((c) => c.id));
   const isKnownCircuit = (id: string): id is CircuitId => knownCircuits.has(id);
@@ -337,9 +336,16 @@ export function createDefaultHouseRuntime<TSecurity extends SecurityOverlay3D = 
   };
 
   const syncDevicesFromKnx = (): void => {
-    scene.setCarGatesOpen(knx.isCarGatesOpen());
-    scene.setTVArtState(knx.isTvArtModeActive(), knx.getTvArtIndex());
-    scene.setMotionSensorStates(knx.getKitchenMotionDetected(), knx.getUtilityMotionDetected());
+    const sensorStates: Record<string, boolean> = {};
+    for (const detector of knx.getPresenceDetectors()) {
+      sensorStates[detector.pa] = knx.getPresenceState(detector.pa).detected;
+      sensorStates[detector.zoneId] =
+        Boolean(sensorStates[detector.zoneId]) || knx.getPresenceState(detector.pa).detected;
+    }
+    scene.setSensorLedStates(sensorStates);
+    for (const cover of knx.getCovers()) {
+      scene.getInteractions().setSwingGatePairOpen(cover.id, knx.isCoverOpen(cover.id));
+    }
   };
 
   disposers.push(
@@ -422,7 +428,7 @@ export function createDefaultHouseRuntime<TSecurity extends SecurityOverlay3D = 
     getManifest: (zoneId) => home.getManifest(zoneId),
     getLevelScenes: (zoneId) => home.getLevelScenes(zoneId),
     roomLabel,
-    uiSourcePa: kitchenScenePa,
+    uiSourcePa,
   });
 
   const zones: TwinZoneLightingApi = {
@@ -542,7 +548,7 @@ export function createDefaultHouseRuntime<TSecurity extends SecurityOverlay3D = 
           if ((live[c.id] ?? 0) > 0) knx.setCircuitLevel(c.id, 0);
         }
       },
-      recallScene: (sceneNumber, pa = kitchenScenePa) => {
+      recallScene: (sceneNumber, pa = uiSourcePa) => {
         playCorstonSwitchSound('scene');
         knx.recallScene(sceneNumber, pa);
       },
@@ -592,23 +598,47 @@ export function createDefaultHouseRuntime<TSecurity extends SecurityOverlay3D = 
           deviceListeners.delete(listener);
         };
       },
-      isGatesOpen: () => knx.isCarGatesOpen(),
-      isGatesMoving: () => knx.isCarGatesMoving(),
-      getGatesStatusLabel: () => knx.getCarGatesStatusLabel(),
-      toggleGates: () => knx.toggleCarGates(gatePa),
-      isBifoldsOpen: () => scene.isBifoldsOpen(),
-      toggleBifolds: () => scene.toggleBifolds(),
-      isTvArtMode: () => knx.isTvArtModeActive(),
-      getTvArtTitle: () => knx.getTvArtTitle(),
-      cycleTvArt: () => {
-        playCorstonSwitchSound('switch');
-        knx.cycleTvArt(true, '1.1.12');
+      customDevices: (): readonly TwinCustomDeviceControl[] => {
+        const list: TwinCustomDeviceControl[] = [];
+        for (const cover of knx.getCovers()) {
+          const open = knx.isCoverOpen(cover.id);
+          const label = cover.shortName ?? cover.name;
+          list.push({
+            id: cover.id,
+            label,
+            statusLabel: knx.getCoverStatusLabel(cover.id),
+            actionLabel: open ? 'Close' : 'Open',
+            active: open,
+            icon: 'gate',
+            showInWholeHouse: true,
+            activeToast: `${label} opening`,
+            inactiveToast: `${label} closing`,
+          });
+        }
+        for (const media of knx.getMediaEndpoints()) {
+          const active = knx.isMediaEndpointActive(media.id);
+          list.push({
+            id: media.id,
+            label: media.name,
+            statusLabel: active ? knx.getMediaEndpointItem(media.id) : 'Standby',
+            actionLabel: 'Next',
+            active,
+          });
+        }
+        return list;
       },
-      isCourtyardLightOn: () => knx.isCourtyardLightOn(),
-      getCourtyardModeLabel: () => knx.getCourtyardModeLabel(),
-      pressCourtyardSwitch: () => {
-        playCorstonSwitchSound('switch');
-        knx.handleCourtyardSwitchShortPress('up', courtyardSwitchPa);
+      triggerCustomDevice: (id: string): boolean => {
+        const cover = knx.getCovers().find((c) => c.id === id);
+        if (cover) {
+          return knx.toggleCover(cover.id, cover.pa);
+        }
+        const media = knx.getMediaEndpoints().find((m) => m.id === id);
+        if (media) {
+          playCorstonSwitchSound('switch');
+          knx.cycleMediaEndpoint(media.id, true, media.pa);
+          return true;
+        }
+        return scene.handleInteractableClick(id);
       },
       hasUfh: () => ufh !== null,
       ufhZones: () => (ufh ? ufh.getZones().map(toUfhZone) : []),

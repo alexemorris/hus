@@ -109,7 +109,7 @@ function circuit(id: CircuitId, channel: number): CircuitConfig {
     name: id,
     shortName: id,
     location: id,
-    buildingId: 'mainHouse',
+    buildingId: 'house',
     floorId: 'ground',
     zoneId: 'hall',
     actuatorPa: '1.1.20',
@@ -129,7 +129,6 @@ function makeProject(circuitIds: readonly CircuitId[]): KnxProject {
     buildings: {
       mainHouse: { id: 'mainHouse', name: 'House', knxArea: 1, description: '' },
       annex: { id: 'annex', name: 'Annex', knxArea: 2, description: '' },
-      courtyardGrounds: { id: 'courtyardGrounds', name: 'Grounds', knxArea: 1, description: '' },
     },
     floors: [],
     rooms: [],
@@ -165,23 +164,13 @@ function makeProject(circuitIds: readonly CircuitId[]): KnxProject {
       masterOff: '1/0/0',
       centralScene: '1/0/1',
       masterFull: '1/0/2',
-      kitchenPresence: '1/4/1',
       ambientLux: '1/4/2',
-      utilityPresence: '1/4/3',
-      tvArt: '1/4/4',
-      carGatesCommand: '1/5/1',
-      carGatesPosition: '1/5/2',
     },
     centralPa: {
       ipInterface: '1.1.1',
       aiBridge: '1.1.2',
-      kitchenSwitchGroup: '1.1.10',
-      kitchenPresence: '1.1.12',
-      utilityPresence: '1.1.13',
-      utilitySwitch: '1.1.11',
-      courtyardSwitch: '1.1.14',
-      kitchenActuator: '1.1.20',
-      carGates: '1.1.22',
+      centralActuator: '1.1.20',
+      centralSwitch: '1.1.10',
     },
     defaultPresenceHoldTimeSec: 60,
     groupAddresses: [],
@@ -193,7 +182,7 @@ const CAMERA: CctvCameraEntityState = {
   name: 'Yard camera',
   shortName: 'Yard cam',
   protocol: 'unifi-protect',
-  buildingId: 'mainHouse',
+  buildingId: 'house',
   floorId: 'ground',
   zoneId: 'hall',
   hardwareAddress: '00:11:22:33:44:55',
@@ -212,7 +201,7 @@ const SIDE_GATE: AccessPointEntityState = {
   name: 'Side gate reader',
   shortName: 'Side gate',
   protocol: 'unifi-access',
-  buildingId: 'mainHouse',
+  buildingId: 'house',
   floorId: 'ground',
   zoneId: 'hall',
   hardwareAddress: '66:77:88:99:AA:BB',
@@ -272,16 +261,11 @@ function makeHarness(circuitIds: readonly CircuitId[], withUnifi = true): Harnes
     },
     devices: {
       onChanged: listen(deviceListeners),
-      isGatesOpen: () => false,
-      getGatesStatusLabel: () => 'Closed',
-      toggleGates: vi.fn(() => true),
-      isBifoldsOpen: () => false,
-      toggleBifolds: vi.fn(() => true),
-      isTvArtMode: () => false,
-      getTvArtTitle: () => '',
-      cycleTvArt: vi.fn(),
-      getCourtyardModeLabel: () => 'Off',
-      pressCourtyardSwitch: vi.fn(),
+      customDevices: () => [
+        { id: 'front-gates', label: 'Front gates', statusLabel: 'Closed', actionLabel: 'Open', active: false },
+        { id: 'patio-doors', label: 'Patio doors', statusLabel: 'Closed', actionLabel: 'Open', active: false },
+      ],
+      triggerCustomDevice: vi.fn(() => true),
       hasUfh: () => true,
       ufhZones: () => [{ id: 'ufh-hall', name: 'Hall loop', shortName: 'Hall', roomZones: ['hall'], heatingOn: false, targetTempC: 21 }],
       toggleUfhZone: vi.fn(() => true),
@@ -470,11 +454,9 @@ describe('<DevDrawerPanel /> self-contained Preact dev HUD', () => {
     button(root, 'Hall switch: short press up').props.onClick();
     expect(api.lighting.pressZoneSwitch).toHaveBeenCalledWith('hall', 'up');
     button(root, 'Front gates: Open').props.onClick();
-    expect(api.devices.toggleGates).toHaveBeenCalledTimes(1);
-    button(root, 'Bifolds: Open').props.onClick();
-    expect(api.devices.toggleBifolds).toHaveBeenCalledTimes(1);
-    button(root, 'Frame TV art: Next art').props.onClick();
-    expect(api.devices.cycleTvArt).toHaveBeenCalledTimes(1);
+    expect(api.devices.triggerCustomDevice).toHaveBeenCalledWith('front-gates');
+    button(root, 'Patio doors: Open').props.onClick();
+    expect(api.devices.triggerCustomDevice).toHaveBeenCalledWith('patio-doors');
     button(root, 'Hall PIR: Clear').props.onClick();
     expect(api.lighting.toggleRoomMotion).toHaveBeenCalledWith('hallPir');
 

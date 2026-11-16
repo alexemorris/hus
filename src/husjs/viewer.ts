@@ -37,7 +37,17 @@ export { SceneAnnotationStore } from '../engine/annotation/annotation-system.ts'
 export { audioEngine, AudioEngine, soundEngine, SoundEngine } from '../engine/audio/sound-engine.ts';
 export { SoundscapeController } from '../engine/audio/soundscape-controller.ts';
 export * from '../engine/audio/acoustic-occlusion.ts';
-export { BifoldDoorAnimator } from '../engine/interaction/bifold-animator.ts';
+export {
+  BifoldDoorAnimator,
+  type BifoldDoorAssemblyConfig,
+} from '../engine/interaction/bifold-animator.ts';
+export {
+  createSwingGatePair,
+  playSwingGateSound,
+  stepSwingGatePair,
+  type SwingGatePairConfig,
+  type SwingGatePairState,
+} from '../engine/interaction/handlers/swing-gates.ts';
 export type {
   AnimatedInteractable,
   FirstPersonPoseSample,

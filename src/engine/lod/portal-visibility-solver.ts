@@ -43,7 +43,7 @@ export interface PortalVisibilityConfig {
   readonly rooms: readonly RoomZoneLodRegistration[];
   readonly exteriorPortals: readonly ExteriorWindowPortal[];
   readonly interiorPortals: readonly InteriorRoomPortal[];
-  /** Optional point-exclusion predicate for L-shaped room bounds (e.g. upperLanding courtyard notch). */
+  /** Optional point-exclusion predicate for L-shaped room bounds (e.g. an L-shaped landing notch). */
   readonly isPointExcludedFromRoom?: (
     zoneId: RoomZoneId,
     wx: number,

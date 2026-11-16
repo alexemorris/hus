@@ -103,7 +103,6 @@ function createThreeStoreyProfile(
     defaultFixtureAppearance: { emissiveMax: 1, coneOpacity: 0.35 },
     fixtureAppearanceOverrides: {},
     switchLedRules: [],
-    bifoldTrack: { anchorRightX: 2, trackZ: 0, leafWidth: 0.8, maxFoldAngle: Math.PI / 2 },
     buildSecurityOverlay: () => ({
       syncCameras: () => {},
       syncAccessPoints: () => {},
@@ -426,7 +425,6 @@ describe('N-Storey Floor Ergonomics & Cutaway Engine', () => {
       indicatorMats: content.indicatorMats,
       roomSwitchLedMats: content.roomSwitchLedMats,
       interactiveMeshes: content.interactiveMeshes,
-      bifoldPanels: content.bifoldPanels,
       getDynamicObjects: () => new Set(),
     });
     optimizer.optimize();

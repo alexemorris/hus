@@ -11,6 +11,7 @@ import {
   buildInteractiveKey,
   isBatchableMesh,
   isBatchableMultiMaterialMesh,
+  isNonBatchableMaterial,
 } from './scene-batch-classification.ts';
 
 /** Per-room / 10m x 10m XZ spatial cell size for frustum culling & front-to-back hardware Early-Z. */
@@ -215,11 +216,7 @@ export function batchContainerSubtree(
       u.isClimbableLadder !== undefined ||
       u.isKNXSwitch !== undefined ||
       u.isKnxTempSensor !== undefined ||
-      u.isCourtyardSwitch !== undefined ||
-      u.isUtilitySwitch !== undefined ||
-      u.isKitchenMotionSensor !== undefined ||
-      u.isUtilityMotionSensor !== undefined ||
-      u.isFrameTV !== undefined ||
+      u.interactionPromptLabel !== undefined ||
       u.isUniFiCamera !== undefined ||
       u.isUniFiAccessReader !== undefined
     ) {
@@ -320,12 +317,8 @@ export function batchContainerSubtree(
             Boolean(nextUserData.presenceDetectorPa) ||
             Boolean(nextUserData.roomMotionSensorId) ||
             Boolean(nextUserData.isKNXSwitch) ||
-            Boolean(nextUserData.isCourtyardSwitch) ||
-            Boolean(nextUserData.isUtilitySwitch) ||
-            Boolean(nextUserData.isKitchenMotionSensor) ||
-            Boolean(nextUserData.isUtilityMotionSensor) ||
+            Boolean(nextUserData.interactionPromptLabel) ||
             Boolean(nextUserData.isClimbableLadder) ||
-            Boolean(nextUserData.isFrameTV) ||
             Boolean(nextUserData.isUniFiCamera) ||
             Boolean(nextUserData.isUniFiAccessReader) ||
             Boolean(nextUserData.accessEntityId);
@@ -894,9 +887,8 @@ export function batchRigidDynamicGroups(
     if (
       u?.drawerRole === 'group' ||
       u?.doorRole === 'pivot' ||
-      typeof u?.isCarGate === 'boolean' ||
-      u?.northPivot === true ||
-      u?.southPivot === true ||
+      u?.isAnimatedDoor === true ||
+      u?.isExteriorGate === true ||
       u?.bifoldRole === 'outerPivot' ||
       u?.bifoldRole === 'innerLeaf' ||
       u?.isRigidDynamicGroup === true ||
@@ -905,9 +897,7 @@ export function batchRigidDynamicGroups(
       rigidRootsSet.add(obj);
     } else if (
       typeof obj.name === 'string' &&
-      (obj.name.includes('splitGate.leaf') ||
-        obj.name.includes('.doorPivot') ||
-        obj.name.endsWith('.domeLid.pivot'))
+      (obj.name.includes('.doorPivot') || obj.name.endsWith('.domeLid.pivot'))
     ) {
       rigidRootsSet.add(obj);
     }
@@ -970,8 +960,8 @@ export function batchRigidDynamicGroups(
         u.interactableId !== undefined ||
         u.circuitId !== undefined ||
         u.applianceId !== undefined ||
-        u.isBifoldDoor !== undefined ||
-        u.isCarGate !== undefined
+        u.isAnimatedDoor !== undefined ||
+        u.isExteriorGate !== undefined
       ) {
         nextUserData = { ...inheritedUserData, ...u };
       }
@@ -987,22 +977,13 @@ export function batchRigidDynamicGroups(
           const isInt =
             interactiveSet.has(node) ||
             Boolean(nextUserData.interactableId) ||
-            Boolean(nextUserData.isBifoldDoor) ||
-            Boolean(nextUserData.isCarGate);
+            Boolean(nextUserData.isAnimatedDoor) ||
+            Boolean(nextUserData.isExteriorGate);
           const intKey = buildInteractiveKey(nextUserData, isInt);
 
           if (!Array.isArray(node.material) && node.material) {
             const mat = node.material;
-            if (
-              !mat.transparent &&
-              mat !== indicatorMats?.tvScreenMat &&
-              !Boolean(
-                (mat.userData as Record<string, unknown> | undefined)?.isDynamicScreenMaterial
-              ) &&
-              !Boolean(
-                (mat.userData as Record<string, unknown> | undefined)?.isDynamicEmissiveMaterial
-              )
-            ) {
+            if (!mat.transparent && !isNonBatchableMaterial(mat, indicatorMats)) {
               const key = `${mat.uuid}|${intKey}`;
               let list = buckets.get(key);
               if (!list) {
@@ -1029,18 +1010,7 @@ export function batchRigidDynamicGroups(
             for (let gIdx = 0; gIdx < groups.length; gIdx++) {
               const grp = groups[gIdx]!;
               const m = mats[grp.materialIndex ?? 0];
-              if (
-                !m ||
-                grp.count <= 0 ||
-                m.transparent ||
-                m === indicatorMats?.tvScreenMat ||
-                Boolean(
-                  (m.userData as Record<string, unknown> | undefined)?.isDynamicScreenMaterial
-                ) ||
-                Boolean(
-                  (m.userData as Record<string, unknown> | undefined)?.isDynamicEmissiveMaterial
-                )
-              ) {
+              if (!m || grp.count <= 0 || m.transparent || isNonBatchableMaterial(m, indicatorMats)) {
                 allValid = false;
                 break;
               }

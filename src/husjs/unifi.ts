@@ -6,4 +6,4 @@ export {
   UniFiAccessController,
   type UniFiAccessListener,
 } from '../integrations/unifi/access/adapter.ts';
-export { SmartHomeHub } from '../integrations/smart-home-hub.ts';
+export { SmartHomeHub, type SmartHomeAutomationRules } from '../integrations/smart-home-hub.ts';

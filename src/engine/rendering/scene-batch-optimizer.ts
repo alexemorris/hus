@@ -56,7 +56,7 @@ export interface SceneBatchOptimizerOptions {
   readonly lodController: RoomLodController;
   readonly interactiveMeshes: THREE.Object3D[];
   readonly getExtraInteractiveMeshes?: () => readonly THREE.Object3D[];
-  readonly bifoldPanels: readonly BifoldPanelRef[];
+  readonly bifoldPanels?: readonly BifoldPanelRef[];
   readonly lightGroups: LightGroupMap;
   readonly indicatorMats: ZoneIndicatorMaterials;
   readonly roomSwitchLedMats: readonly RoomSwitchLedBinding[];
@@ -105,7 +105,7 @@ export class SceneBatchOptimizer {
       layers,
       lodController,
       interactiveMeshes,
-      bifoldPanels,
+      bifoldPanels = [],
       lightGroups,
       indicatorMats,
       roomSwitchLedMats,
@@ -132,7 +132,7 @@ export class SceneBatchOptimizer {
     const interactiveSet = this.store.snapshotInteractiveMeshes(interactiveMeshes, extraInteractive);
     const protectedObjects = collectProtectedObjects(
       layers,
-      bifoldPanels,
+      bifoldPanels ?? [],
       getDynamicObjects,
       hooks
     );
@@ -183,7 +183,7 @@ export class SceneBatchOptimizer {
     }
 
     batchRigidDynamicGroups(scene, {
-      bifoldPanels,
+      bifoldPanels: bifoldPanels ?? [],
       indicatorMats,
       batchHooks: hooks,
       interactiveSet,
@@ -298,7 +298,7 @@ export class SceneBatchOptimizer {
     const interactiveSet = this.store.snapshotInteractiveMeshes(interactiveMeshes, extraInteractive);
     const protectedObjects = collectProtectedObjects(
       layers,
-      bifoldPanels,
+      bifoldPanels ?? [],
       getDynamicObjects,
       hooks
     );
@@ -365,7 +365,7 @@ export class SceneBatchOptimizer {
     }
 
     batchRigidDynamicGroups(scene, {
-      bifoldPanels,
+      bifoldPanels: bifoldPanels ?? [],
       indicatorMats,
       batchHooks: hooks,
       interactiveSet,

@@ -1049,7 +1049,6 @@ export class EnvironmentLighting {
   public updateAmbientAudio(
     dtSeconds: number,
     isInterior: boolean,
-    bifoldsOpen: boolean,
     occlusion?: AcousticOcclusionState
   ): void {
     const coupling = this.weather.getAtmosphereCoupling();
@@ -1057,7 +1056,7 @@ export class EnvironmentLighting {
       dtSeconds,
       this.currentMinutes / 60,
       isInterior,
-      bifoldsOpen,
+      false,
       coupling.audio,
       occlusion
     );

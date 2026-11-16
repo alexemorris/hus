@@ -98,9 +98,9 @@ export function buildCellEnvPresetConfig(
 /**
  * Canonical UK (`Europe/London`) dates & hours backing the quick `Day`, `Dusk`, and `Night`
  * presets for temperate UK latitudes (Europe/London):
- * - `day`:   21 Jun (Summer Solstice) 10:21 BST — raking SE sun (~45.4° altitude, ~127° SE onto the `-X` frontage & `+Z` courtyard)
- * - `dusk`:  21 Jun 19:24 BST — warm golden-hour sun (~17.6° WNW over Paddock `+X` & Walled Garden)
- * - `night`: 02 Jan 23:00 GMT — crisp Full Moon night (~63.6° SSE illuminating west frontage & courtyard)
+ * - `day`:   21 Jun (Summer Solstice) 10:21 BST — raking morning sun (~45.4° altitude, ~127° SE)
+ * - `dusk`:  21 Jun 19:24 BST — warm golden-hour sun (~17.6° WNW)
+ * - `night`: 02 Jan 23:00 GMT — crisp Full Moon night (~63.6° SSE)
  */
 export const CANONICAL_SOLAR_PRESETS: Readonly<Record<TimeOfDay, Required<SolarDateTimeInput>>> = {
   day: { civilHour: 10.35, dayOfYear: 172, year: 2026 },
@@ -122,7 +122,7 @@ export const ENV_PRESETS: Readonly<Record<TimeOfDay, EnvPresetConfig>> = {
     groundBounce: 0x2c381e,
     sunOrbColor: 0xfff8e8,
     sunOrbPeak: 7.5,
-    // Generous sky IBL + hemisphere fill so daytime shadows in the courtyard and rooms read as
+    // Generous sky IBL + hemisphere fill so daytime shadows across exteriors and rooms read as
     // open sunlit daylight rather than dark gloom.
     envIntensity: 1.18,
     bgIntensity: 1.15,
@@ -132,8 +132,8 @@ export const ENV_PRESETS: Readonly<Record<TimeOfDay, EnvPresetConfig>> = {
     zenithDarkening: 0,
     envGroundBounceLift: 0.06,
     daylightGiStrength: 0.76,
-    // High overhead summer midday sun (~74.3° elevation) so roof shadows are short (~1.7m)
-    // and the entire courtyard, driveway, patio, pergola, and lawns are bathed in direct sunlight.
+    // High overhead summer midday sun (~74.3° elevation) so roof shadows remain compact (~1.7m)
+    // and exterior grounds and terraces receive direct daylight.
     sunDirection: [0.18, 0.96, -0.20],
     // ~5800 K daylight.
     sunColor: 0xfff4e8,
@@ -166,7 +166,7 @@ export const ENV_PRESETS: Readonly<Record<TimeOfDay, EnvPresetConfig>> = {
     hdrMaxClampEnv: 4.2,
     hdrMaxClampBg: 16.0,
     zenithDarkening: 0.16,
-    // Curated front-lit golden-hour sun (+Z SE ~+30.5° -> [59.84, 43.23, 52.53]) so warm rays reach into the courtyard and across the patio.
+    // Curated front-lit golden-hour sun (+Z SE ~+30.5°) casting warm low-angle rays across exterior terraces.
     sunDirection: [0.72, 0.48, 0.50],
     // ~3100 K golden hour.
     sunColor: 0xffbe7a,

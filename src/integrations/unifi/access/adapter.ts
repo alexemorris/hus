@@ -13,8 +13,8 @@ export type UniFiAccessListener = (
 /**
  * UniFi Access Protocol Adapter.
  *
- * Models UniFi Access Gate Hub / G2 Reader Pro & Door Hub state and credential events,
- * bridging with the KNX TP1 bus (`GA 1/5/1`) via `SmartHomeHub`.
+ * Models UniFi Access Gate Hub / Reader Pro & Door Hub state and credential events,
+ * bridging with motorized KNX cover/gate actuators via `SmartHomeHub`.
  */
 export class UniFiAccessController {
   private readonly accessPoints: AccessPointEntityState[];
@@ -45,12 +45,7 @@ export class UniFiAccessController {
     return this.accessPoints;
   }
 
-  public syncGateStateFromKnx(isOpen: boolean, isMoving: boolean): void {
-    const idx = this.accessPoints.findIndex((p) => p.targetEntry === 'carGates');
-    if (idx < 0) return;
-    const current = this.accessPoints[idx];
-    if (!current) return;
-
+  public syncEntryState(targetEntry: string, isOpen: boolean, isMoving: boolean): void {
     const doorPosition: AccessPointEntityState['doorPosition'] = isMoving
       ? 'moving'
       : isOpen
@@ -58,12 +53,20 @@ export class UniFiAccessController {
         : 'closed';
     const isLocked = !isOpen && !isMoving;
 
-    if (current.doorPosition !== doorPosition || current.isLocked !== isLocked) {
-      this.accessPoints[idx] = {
-        ...current,
-        isLocked,
-        doorPosition,
-      };
+    let changed = false;
+    for (let i = 0; i < this.accessPoints.length; i++) {
+      const current = this.accessPoints[i];
+      if (!current || current.targetEntry !== targetEntry) continue;
+      if (current.doorPosition !== doorPosition || current.isLocked !== isLocked) {
+        this.accessPoints[i] = {
+          ...current,
+          isLocked,
+          doorPosition,
+        };
+        changed = true;
+      }
+    }
+    if (changed) {
       this.notify();
     }
   }

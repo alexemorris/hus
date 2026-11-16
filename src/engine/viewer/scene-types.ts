@@ -1,8 +1,8 @@
-import type { RoomVariationGroup, RoomVariationGroupInput, VariationRegistry } from "../variations/room-variation-controller.ts";
-/**
- * three.js-dependent scene-building types (moved out of src/core so core stays
- * renderer-free). Pure data types live in core/types/scene.ts.
- */
+import type {
+  RoomVariationGroup,
+  RoomVariationGroupInput,
+  VariationRegistry,
+} from '../variations/room-variation-controller.ts';
 import type * as THREE from 'three';
 import type { CircuitId } from '../../core/types/knx.ts';
 import type { FloorViewMode } from '../../core/types/scene.ts';
@@ -88,7 +88,6 @@ export interface SceneBuilderContext {
   floor?(floorId: string): FloorBuilderScope;
   readonly ceilingCutaway: boolean;
   readonly cutawayWallGroups: CutawayWallGroups;
-  readonly bifoldPanels: BifoldPanelRef[];
   readonly interactiveMeshes: THREE.Object3D[];
   readonly interactions: SceneInteractionManager;
   readonly lightGroups: LightGroupMap;
@@ -115,13 +114,16 @@ export interface SceneBuilderContext {
   reportZoneProgress?(label: string, subFraction01: number): Promise<void> | void;
 }
 
+/**
+ * Data-driven indicator material maps returned by zone builders:
+ * - `switchLedMats`: keyed by switch indicator id (matched by `SwitchLedIndicatorRule.material`)
+ * - `sensorLedMats`: keyed by presence detector PA or motion sensor id
+ * - `displayMats`: keyed by media/display endpoint id (automatically protected from static batching)
+ */
 export interface ZoneIndicatorMaterials {
-  readonly wallSwitchLedMat?: THREE.MeshStandardMaterial;
-  readonly courtyardSwitchLedMat?: THREE.MeshStandardMaterial;
-  readonly utilitySwitchLedMat?: THREE.MeshStandardMaterial;
-  readonly kitchenSensorLedMat?: THREE.MeshStandardMaterial;
-  readonly utilitySensorLedMat?: THREE.MeshStandardMaterial;
-  readonly tvScreenMat?: THREE.MeshStandardMaterial;
+  readonly switchLedMats?: Readonly<Record<string, THREE.MeshStandardMaterial>>;
+  readonly sensorLedMats?: Readonly<Record<string, THREE.MeshStandardMaterial>>;
+  readonly displayMats?: Readonly<Record<string, THREE.MeshStandardMaterial>>;
 }
 
 export interface SceneZoneModule {

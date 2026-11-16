@@ -1,6 +1,6 @@
 import { batch } from '@preact/signals';
 import type { SeasonSelection } from '../../core/types/environment-hdri.ts';
-import type { TwinApi, TwinGraphicsStats, TwinUfhZone } from '../../core/types/twin-api.ts';
+import type { TwinApi, TwinCustomDeviceControl, TwinGraphicsStats, TwinUfhZone } from '../../core/types/twin-api.ts';
 import type { TerrainSculptMode } from '../../core/geo/terrain-sculpt.ts';
 import {
   assetInspectMode,
@@ -580,10 +580,12 @@ export class ShellController {
     showToast('All lights off');
   }
 
-  /** Whole-house evening mood: kitchen "Lounge" scene + each room's middle preset. */
+  /** Whole-house evening mood: central evening scene (if configured) + each room's middle preset. */
   public eveningScene(): void {
     const { lighting, rooms } = this.api;
-    lighting.recallScene(2);
+    if (lighting.scenes().length > 0) {
+      lighting.recallScene(2);
+    }
     const zones = new Set<RoomZoneId>();
     for (const c of lighting.circuits()) zones.add(c.zoneId);
     for (const zoneId of zones) {
@@ -594,13 +596,16 @@ export class ShellController {
     showToast('Evening scene');
   }
 
-  public toggleGates(): void {
-    const opening = this.api.devices.toggleGates();
-    showToast(opening ? 'Gates opening' : 'Gates closing');
+  public getWholeHouseDevices(): readonly TwinCustomDeviceControl[] {
+    return (this.api.devices.customDevices?.() ?? []).filter((d) => d.showInWholeHouse);
   }
 
-  public isGateOpenOrOpening(): boolean {
-    return this.api.devices.isGatesOpen();
+  public triggerCustomDevice(device: TwinCustomDeviceControl): void {
+    const active = this.api.devices.triggerCustomDevice?.(device.id) ?? false;
+    const toast = active
+      ? (device.activeToast ?? `${device.label} active`)
+      : (device.inactiveToast ?? `${device.label} updated`);
+    showToast(toast);
   }
 
   public setTimeOfDay(tod: TimeOfDay): void {

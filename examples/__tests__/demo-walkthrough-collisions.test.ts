@@ -162,7 +162,7 @@ function buildPostBatchWalkthroughRig(house: Pick<typeof simpleHouse, 'createSce
       const extra = interactions?.getSmartClickableMeshes() ?? [];
       return extra.length > 0 ? [...base, ...extra] : base;
     },
-    describeInteractable: (mesh) => interactions.describeInteractable(mesh, false),
+    describeInteractable: (mesh) => interactions.describeInteractable(mesh),
     onInteractWithMesh: (mesh) => {
       const rawId = mesh.userData?.interactableId;
       const id = typeof rawId === 'string' ? interactions.resolveInteractableId(rawId) : null;
@@ -185,7 +185,6 @@ function buildPostBatchWalkthroughRig(house: Pick<typeof simpleHouse, 'createSce
     layers,
     lodController,
     interactiveMeshes: content.interactiveMeshes,
-    bifoldPanels: content.bifoldPanels,
     lightGroups: content.lightGroups,
     indicatorMats: {} as ConstructorParameters<typeof SceneBatchOptimizer>[0]['indicatorMats'],
     roomSwitchLedMats: content.roomSwitchLedMats ?? [],

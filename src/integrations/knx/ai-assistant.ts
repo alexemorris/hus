@@ -1,17 +1,21 @@
 import type { CircuitId, ScenePreset, ZoneLightingMode } from '../../core/types/knx.ts';
 import type { TimeOfDay } from '../../core/types/scene.ts';
 import type { RoomZoneId } from '../../core/types/topology.ts';
-import { type KNXPropertyBusController, TV_ARTWORKS } from './emulator.ts';
+import type { KNXPropertyBusController } from './emulator.ts';
 import { createKnxNameResolver, tokeniseKnxName, type KnxNameResolver } from './name-resolver.ts';
-import type { KnxLightingZone, KnxProject } from './project.ts';
+import type {
+  KnxCoverChannelConfig,
+  KnxLightingZone,
+  KnxMediaEndpointConfig,
+  KnxPresenceDetectorDevice,
+  KnxProject,
+} from './project.ts';
 
 /**
  * Natural-language KNX assistant (the "AI bridge" device on the bus).
  *
- * Everything the model sees — tool schema, circuit / zone / scene lists, live state — is generated
- * from the {@link KnxProject}, so new fittings, circuits and zones need no changes here. When the
- * Vertex proxy is unreachable an offline parser built on {@link createKnxNameResolver} handles the
- * common commands ("barn downlights 40%", "office off", "kitchen night mode").
+ * Everything the model sees — tool schema, circuit / zone / scene / cover / media lists,
+ * live state, and prompt examples — is generated dynamically from the active {@link KnxProject}.
  */
 
 /** Zone-level actuator objects (scene / night / full / off) the assistant drives. */
@@ -28,43 +32,39 @@ export type KnxAssistantBus = Pick<
   KNXPropertyBusController,
   | 'recallScene'
   | 'setCircuitLevel'
-  | 'handleSwitchLongPressHoldUp'
-  | 'handleSwitchLongPressHoldDown'
+  | 'handleMasterFull'
+  | 'handleMasterOff'
   | 'saveCurrentLevelsToActiveScene'
   | 'getScenes'
   | 'getActiveSceneIndex'
-  | 'setTvArtIndex'
-  | 'cycleTvArt'
-  | 'getTvArtTitle'
-  | 'getTvArtIndex'
-  | 'isTvArtModeActive'
-  | 'setCarGatesOpen'
-  | 'getCarGatesStatusLabel'
   | 'getAmbientLux'
   | 'setAmbientLux'
-  | 'getKitchenMotionDetected'
-  | 'getUtilityMotionDetected'
-  | 'setKitchenMotionDetected'
-  | 'setUtilityMotionDetected'
 > &
   KnxAssistantZoneBus & {
     getTargetLevels(): Readonly<Partial<Record<CircuitId, number>>>;
+    getPresenceState?(pa: string): { readonly detected: boolean };
+    setPresence?(pa: string, detected: boolean): void;
+    isCoverOpen?(id: string): boolean;
+    getCoverStatusLabel?(id: string): string;
+    setCoverOpen?(id: string, open: boolean, emitBus?: boolean, sourcePa?: string): boolean;
+    isMediaEndpointActive?(id: string): boolean;
+    getMediaEndpointItem?(id: string): string;
+    cycleMediaEndpoint?(id: string, emitBus?: boolean, sourcePa?: string): void;
+    setMediaEndpointIndex?(id: string, index: number, emitBus?: boolean, sourcePa?: string): void;
   };
 
-/** A non-KNX scene device the assistant can trigger by name (e.g. an animated prop or scene sequence). */
+/** A non-KNX scene device the assistant can trigger by name (e.g. a folding door or animated prop). */
 export interface KnxAssistantDevice {
   /** Interactable id passed to {@link KnxAssistantEnvironment.triggerDevice}. */
   readonly id: string;
   readonly name: string;
-  /** Phrases that trigger it ("play pool", "rack the balls"). */
+  /** Phrases that trigger it. */
   readonly aliases: readonly string[];
 }
 
-/** Non-KNX simulator state the assistant may change (sky preset, bifold doors, scene devices). */
+/** Non-KNX simulator state the assistant may change (sky preset, scene devices). */
 export interface KnxAssistantEnvironment {
   setTimeOfDay(timeOfDay: TimeOfDay): void;
-  isBifoldsOpen(): boolean;
-  toggleBifolds(): void;
   /** Scene devices with natural-language aliases (read lazily: they register as the scene builds). */
   listDevices?(): readonly KnxAssistantDevice[];
   /** Triggers a device's action (click equivalent). Returns false if it ignored the request. */
@@ -75,7 +75,11 @@ export interface KnxAssistantEnvironment {
 export type KnxAssistantProject = Pick<
   KnxProject,
   'name' | 'circuits' | 'zones' | 'rooms' | 'centralScenes' | 'centralPa'
->;
+> & {
+  readonly presenceDetectors?: readonly KnxPresenceDetectorDevice[];
+  readonly covers?: readonly KnxCoverChannelConfig[];
+  readonly mediaEndpoints?: readonly KnxMediaEndpointConfig[];
+};
 
 export interface KNXToolParameterProperty {
   readonly type: 'NUMBER' | 'INTEGER' | 'STRING' | 'BOOLEAN' | 'ARRAY' | 'OBJECT';
@@ -136,17 +140,23 @@ export type KNXToolCall =
       readonly args: { readonly sceneNumber?: number };
     }
   | {
-      readonly name: 'control_tv_art';
-      readonly args: { readonly action: 'next' | 'select'; readonly artNumber?: number };
+      readonly name: 'control_cover';
+      readonly args: { readonly cover: string; readonly open: boolean; readonly reason?: string };
+    }
+  | {
+      readonly name: 'control_media_endpoint';
+      readonly args: {
+        readonly endpoint: string;
+        readonly action: 'next' | 'select';
+        readonly itemNumber?: number;
+        readonly reason?: string;
+      };
     }
   | {
       readonly name: 'set_environment';
       readonly args: {
         readonly timeOfDay?: TimeOfDay;
-        readonly kitchenMotion?: boolean;
-        readonly utilityMotion?: boolean;
-        readonly bifoldsOpen?: boolean;
-        readonly carGatesOpen?: boolean;
+        readonly presence?: Readonly<Record<string, boolean>>;
       };
     }
   | {
@@ -189,7 +199,7 @@ const DEFAULT_RELATIVE_STEP_PCT = 20;
 /** Ambient lux reported by the presence/lux sensor for each sky preset. */
 const TIME_OF_DAY_LUX: Readonly<Record<TimeOfDay, number>> = { day: 480, dusk: 38, night: 5 };
 
-/** Mood words → words that appear in legacy central scene names. */
+/** Generic mood words mapped to common architectural lighting scene labels. */
 const CENTRAL_SCENE_SYNONYMS: Readonly<Record<string, string>> = {
   romantic: 'wine',
   intimate: 'wine',
@@ -238,7 +248,14 @@ function parseZoneMode(raw: unknown): ZoneModeCommand | null {
   return null;
 }
 
-/** Builds the Gemini function declarations for a project. */
+function buildDynamicExamples(project: KnxAssistantProject): string {
+  const sampleCircuit = project.circuits[0]?.shortName.toLowerCase() ?? 'pendants';
+  const sampleZoneA = project.zones[0]?.name.toLowerCase() ?? 'living room';
+  const sampleZoneB = project.zones[1]?.name.toLowerCase() ?? 'hallway';
+  return `"${sampleCircuit} to 40%", "${sampleZoneB} off", "${sampleZoneA} night mode"`;
+}
+
+/** Builds the Gemini function declarations dynamically for a project. */
 export function buildKnxAiTools(project: KnxAssistantProject): KNXFunctionDeclaration[] {
   const roomName = new Map(project.rooms.map((r) => [r.id, r.name]));
   const zoneIds = project.zones.map((z) => z.id);
@@ -329,7 +346,7 @@ export function buildKnxAiTools(project: KnxAssistantProject): KNXFunctionDeclar
     tools.push(
       {
         name: 'recall_scene',
-        description: `Recall a scene from the central (kitchen open-plan) actuator scene table: ${centralDesc}.`,
+        description: `Recall a scene from the central actuator scene table: ${centralDesc}.`,
         parameters: {
           type: 'OBJECT',
           properties: {
@@ -352,51 +369,98 @@ export function buildKnxAiTools(project: KnxAssistantProject): KNXFunctionDeclar
     );
   }
 
-  tools.push(
-    {
-      name: 'set_master_state',
-      description: 'Whole-house master objects: "all_full" = every circuit 100 %, "off" = master off (night-walk dim where occupied).',
+  tools.push({
+    name: 'set_master_state',
+    description: 'Whole-property master objects: "all_full" = every circuit 100 %, "off" = master off (night-walk dim where occupied).',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        mode: { type: 'STRING', enum: ['all_full', 'off'], description: 'Master mode.' },
+        reason,
+      },
+      required: ['mode'],
+    },
+  });
+
+  const covers = project.covers ?? [];
+  if (covers.length > 0) {
+    const coverDesc = covers.map((c) => `${c.id} (${c.name})`).join(', ');
+    tools.push({
+      name: 'control_cover',
+      description: `Open or close a motorized cover, blind, or gate channel: ${coverDesc}.`,
       parameters: {
         type: 'OBJECT',
         properties: {
-          mode: { type: 'STRING', enum: ['all_full', 'off'], description: 'Master mode.' },
+          cover: { type: 'STRING', enum: covers.map((c) => c.id), description: 'Cover channel id.' },
+          open: { type: 'BOOLEAN', description: 'True to open, false to close.' },
           reason,
         },
-        required: ['mode'],
+        required: ['cover', 'open'],
       },
-    },
-    {
-      name: 'control_tv_art',
-      description: `Cycle or select the Frame TV artwork: ${TV_ARTWORKS.map((t, i) => `${i + 1}=${t}`).join(', ')}.`,
+    });
+  }
+
+  const mediaEndpoints = project.mediaEndpoints ?? [];
+  if (mediaEndpoints.length > 0) {
+    const mediaDesc = mediaEndpoints
+      .map((m) => `${m.id} (${m.name}): ${m.items.map((it, i) => `${i + 1}=${it}`).join(', ')}`)
+      .join('; ');
+    tools.push({
+      name: 'control_media_endpoint',
+      description: `Cycle or select an item on a configured media / display endpoint: ${mediaDesc}.`,
       parameters: {
         type: 'OBJECT',
         properties: {
-          action: { type: 'STRING', enum: ['next', 'select'], description: '"next" cycles, "select" uses artNumber.' },
-          artNumber: { type: 'INTEGER', description: `1-${TV_ARTWORKS.length}.` },
-        },
-        required: ['action'],
-      },
-    },
-    {
-      name: 'set_environment',
-      description:
-        'Simulator environment: time of day (ambient lux), kitchen / utility presence, bifold doors, motorised car gates.',
-      parameters: {
-        type: 'OBJECT',
-        properties: {
-          timeOfDay: {
+          endpoint: {
             type: 'STRING',
-            enum: ['day', 'dusk', 'night'],
-            description: `day (${TIME_OF_DAY_LUX.day} lx), dusk (${TIME_OF_DAY_LUX.dusk} lx) or night (${TIME_OF_DAY_LUX.night} lx).`,
+            enum: mediaEndpoints.map((m) => m.id),
+            description: 'Media endpoint id.',
           },
-          kitchenMotion: { type: 'BOOLEAN', description: 'Kitchen presence detector state.' },
-          utilityMotion: { type: 'BOOLEAN', description: 'Utility presence detector state.' },
-          bifoldsOpen: { type: 'BOOLEAN', description: 'Open (true) or close (false) the bifold doors.' },
-          carGatesOpen: { type: 'BOOLEAN', description: 'Open (true) or close (false) the car gates.' },
+          action: {
+            type: 'STRING',
+            enum: ['next', 'select'],
+            description: '"next" cycles, "select" uses itemNumber.',
+          },
+          itemNumber: { type: 'INTEGER', description: '1-based item index.' },
+          reason,
         },
+        required: ['endpoint', 'action'],
       },
+    });
+  }
+
+  const presenceProps: Record<string, KNXToolParameterProperty> = {};
+  for (const d of project.presenceDetectors ?? []) {
+    presenceProps[d.pa] = {
+      type: 'BOOLEAN',
+      description: `${d.name} (${d.zoneId}) presence state.`,
+    };
+  }
+
+  const envProps: Record<string, KNXToolParameterProperty> = {
+    timeOfDay: {
+      type: 'STRING',
+      enum: ['day', 'dusk', 'night'],
+      description: `day (${TIME_OF_DAY_LUX.day} lx), dusk (${TIME_OF_DAY_LUX.dusk} lx) or night (${TIME_OF_DAY_LUX.night} lx).`,
     },
-  );
+  };
+  if (Object.keys(presenceProps).length > 0) {
+    envProps.presence = {
+      type: 'OBJECT',
+      description: 'Map of presence detector PA → occupied boolean.',
+      properties: presenceProps,
+    };
+  }
+
+  tools.push({
+    name: 'set_environment',
+    description: 'Simulator environment: time of day (ambient lux) and optional presence detector states.',
+    parameters: {
+      type: 'OBJECT',
+      properties: envProps,
+    },
+  });
+
   return tools;
 }
 
@@ -496,6 +560,73 @@ export class KNXAIAssistant {
     return best;
   }
 
+  private resolveCover(raw: unknown): KnxCoverChannelConfig | null {
+    if (typeof raw !== 'string') return null;
+    const q = raw.trim().toLowerCase();
+    if (!q) return null;
+    return (
+      (this.project.covers ?? []).find(
+        (c) =>
+          c.id === raw ||
+          c.name.toLowerCase() === q ||
+          c.shortName?.toLowerCase() === q ||
+          (c.aliases ?? []).some((a) => a.toLowerCase() === q)
+      ) ?? null
+    );
+  }
+
+  private matchCoverInPrompt(lower: string): KnxCoverChannelConfig | null {
+    for (const c of this.project.covers ?? []) {
+      const phrases = [c.name, ...(c.shortName ? [c.shortName] : []), ...(c.aliases ?? [])];
+      for (const phrase of phrases) {
+        const p = phrase.trim().toLowerCase();
+        if (!p) continue;
+        const escaped = p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+        if (new RegExp(`(?:^|\\b)${escaped}(?:\\b|$)`).test(lower)) {
+          return c;
+        }
+      }
+    }
+    return null;
+  }
+
+  private resolveMediaEndpoint(raw: unknown): KnxMediaEndpointConfig | null {
+    if (typeof raw !== 'string') return null;
+    const q = raw.trim().toLowerCase();
+    if (!q) return null;
+    return (
+      (this.project.mediaEndpoints ?? []).find(
+        (m) =>
+          m.id === raw ||
+          m.name.toLowerCase() === q ||
+          (m.aliases ?? []).some((a) => a.toLowerCase() === q)
+      ) ?? null
+    );
+  }
+
+  private matchMediaEndpointInPrompt(
+    prompt: string,
+    lower: string
+  ): { readonly endpoint: KnxMediaEndpointConfig; readonly itemIndex: number } | null {
+    const queryTokens = new Set(tokeniseKnxName(prompt));
+    for (const endpoint of this.project.mediaEndpoints ?? []) {
+      const phrases = [endpoint.name, ...(endpoint.aliases ?? [])];
+      const matchesAlias = phrases.some((phrase) => {
+        const p = phrase.trim().toLowerCase();
+        if (!p) return false;
+        const escaped = p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+        return new RegExp(`(?:^|\\b)${escaped}(?:\\b|$)`).test(lower);
+      });
+      const itemIndex = endpoint.items.findIndex((title) =>
+        tokeniseKnxName(title).some((t) => queryTokens.has(t) && t.length > 3)
+      );
+      if (matchesAlias || itemIndex >= 0) {
+        return { endpoint, itemIndex };
+      }
+    }
+    return null;
+  }
+
   public getResolver(): KnxNameResolver {
     return this.resolver;
   }
@@ -527,7 +658,7 @@ export class KNXAIAssistant {
     ];
     for (const z of this.project.zones) {
       const aliases = z.aliases && z.aliases.length > 0 ? ` (aka ${z.aliases.join(', ')})` : '';
-      const scenes = z.usesCentralSceneTable
+      const scenes = z.usesCentralSceneTable && z.scenes.length === 0
         ? 'central scene table (recall_scene)'
         : z.scenes.map((s, i) => `${i + 1} "${s.label}"`).join(', ') || 'no scenes';
       lines.push(`- ${z.id} "${z.name}"${aliases}: ${scenes} — ${this.describeZoneState(z)}`);
@@ -548,20 +679,30 @@ export class KNXAIAssistant {
         `Active central scene: ${active ? `${active.number} "${active.name}"` : idx === 99 ? 'All full' : 'none / custom'}`,
       );
     }
+    lines.push('', 'ENVIRONMENT:', `- Ambient light ${this.bus.getAmbientLux()} lx`);
+    if (this.bus.getPresenceState && (this.project.presenceDetectors?.length ?? 0) > 0) {
+      for (const d of this.project.presenceDetectors ?? []) {
+        const occupied = this.bus.getPresenceState(d.pa).detected;
+        lines.push(`- ${d.name} (${d.pa}): ${occupied ? 'occupied' : 'vacant'}`);
+      }
+    }
+    for (const cover of this.project.covers ?? []) {
+      const status = this.bus.getCoverStatusLabel?.(cover.id) ?? 'unknown';
+      lines.push(`- ${cover.name} (${cover.id}): ${status}`);
+    }
+    for (const media of this.project.mediaEndpoints ?? []) {
+      const active = this.bus.isMediaEndpointActive?.(media.id) ?? false;
+      const item = this.bus.getMediaEndpointItem?.(media.id) ?? '';
+      lines.push(`- ${media.name} (${media.id}): ${active ? `"${item}"` : 'standby'}`);
+    }
     lines.push(
       '',
-      'ENVIRONMENT:',
-      `- Ambient light ${this.bus.getAmbientLux()} lx`,
-      `- Kitchen presence: ${this.bus.getKitchenMotionDetected() ? 'occupied' : 'vacant'}; utility presence: ${this.bus.getUtilityMotionDetected() ? 'occupied' : 'vacant'}`,
-      `- Frame TV: ${this.bus.isTvArtModeActive() ? `Art mode "${this.bus.getTvArtTitle()}"` : 'standby'}`,
-      `- Bifold doors: ${this.env.isBifoldsOpen() ? 'open' : 'closed'}; car gates: ${this.bus.getCarGatesStatusLabel()}`,
-      '',
       'INSTRUCTIONS:',
-      '1. Always call one or more tools to fulfil the request.',
-      '2. For a whole room prefer recall_zone_scene (named moods) or set_zone_mode (full / night / off).',
-      '3. For specific fittings use set_circuit_levels (absolute) or adjust_circuit_levels (relative).',
-      '4. Switched-only circuits accept just 0 or 100.',
-      '5. Populate `reason` with one short sentence.',
+      'Always call one or more tools to fulfil the request.',
+      'For a whole room prefer recall_zone_scene (named moods) or set_zone_mode (full / night / off).',
+      'For specific fittings use set_circuit_levels (absolute) or adjust_circuit_levels (relative).',
+      'Switched-only circuits accept just 0 or 100.',
+      'Populate `reason` with one short sentence.',
     );
     return lines.join('\n');
   }
@@ -577,8 +718,7 @@ export class KNXAIAssistant {
         prompt: '',
         modelUsed: this.selectedModel,
         executedCalls: [],
-        reply:
-          'Ready. Ask naturally (e.g. "barn downlights to 40%", "office off", "make the kitchen cosy and put the nocturne on the TV").',
+        reply: `Ready. Ask naturally (e.g. ${buildDynamicExamples(this.project)}).`,
       };
     }
 
@@ -761,32 +901,47 @@ export class KNXAIAssistant {
         return { name: 'save_scene_preset', args: sceneNumber === null ? {} : { sceneNumber } };
       }
 
-      case 'control_tv_art': {
-        const num = toNumber(rawArgs.artNumber);
-        const artNumber = num !== null && num >= 1 && num <= TV_ARTWORKS.length ? Math.round(num) : undefined;
-        const action = rawArgs.action === 'select' || artNumber !== undefined ? 'select' : 'next';
-        return { name: 'control_tv_art', args: { action, ...(artNumber !== undefined ? { artNumber } : {}) } };
+      case 'control_cover': {
+        const cover = this.resolveCover(rawArgs.cover ?? rawArgs.id) ?? (this.project.covers ?? [])[0] ?? null;
+        if (!cover || typeof rawArgs.open !== 'boolean') return null;
+        return { name: 'control_cover', args: { cover: cover.id, open: rawArgs.open, ...reasonArg } };
+      }
+
+      case 'control_media_endpoint': {
+        const endpoint =
+          this.resolveMediaEndpoint(rawArgs.endpoint ?? rawArgs.id) ??
+          (this.project.mediaEndpoints ?? [])[0] ??
+          null;
+        if (!endpoint) return null;
+        const num = toNumber(rawArgs.itemNumber);
+        const itemNumber =
+          num !== null && num >= 1 && num <= endpoint.items.length ? Math.round(num) : undefined;
+        const action = rawArgs.action === 'select' || itemNumber !== undefined ? 'select' : 'next';
+        return {
+          name: 'control_media_endpoint',
+          args: {
+            endpoint: endpoint.id,
+            action,
+            ...(itemNumber !== undefined ? { itemNumber } : {}),
+            ...reasonArg,
+          },
+        };
       }
 
       case 'set_environment': {
         const tod = rawArgs.timeOfDay;
-        const bool = (v: unknown): boolean | undefined => (typeof v === 'boolean' ? v : undefined);
         const args: {
           timeOfDay?: TimeOfDay;
-          kitchenMotion?: boolean;
-          utilityMotion?: boolean;
-          bifoldsOpen?: boolean;
-          carGatesOpen?: boolean;
+          presence?: Readonly<Record<string, boolean>>;
         } = {};
         if (tod === 'day' || tod === 'dusk' || tod === 'night') args.timeOfDay = tod;
-        const km = bool(rawArgs.kitchenMotion);
-        if (km !== undefined) args.kitchenMotion = km;
-        const um = bool(rawArgs.utilityMotion);
-        if (um !== undefined) args.utilityMotion = um;
-        const bo = bool(rawArgs.bifoldsOpen);
-        if (bo !== undefined) args.bifoldsOpen = bo;
-        const cg = bool(rawArgs.carGatesOpen);
-        if (cg !== undefined) args.carGatesOpen = cg;
+        if (isRecord(rawArgs.presence)) {
+          const presence: Record<string, boolean> = {};
+          for (const [k, v] of Object.entries(rawArgs.presence)) {
+            if (typeof v === 'boolean') presence[k] = v;
+          }
+          if (Object.keys(presence).length > 0) args.presence = presence;
+        }
         return { name: 'set_environment', args };
       }
 
@@ -853,10 +1008,10 @@ export class KNXAIAssistant {
 
       case 'set_master_state': {
         if (call.args.mode === 'all_full') {
-          this.bus.handleSwitchLongPressHoldUp(ASSISTANT_LOCATION, pa);
+          this.bus.handleMasterFull(ASSISTANT_LOCATION, pa);
           return 'All lights → 100% Full';
         }
-        this.bus.handleSwitchLongPressHoldDown(ASSISTANT_LOCATION, pa);
+        this.bus.handleMasterOff(ASSISTANT_LOCATION, pa);
         return 'Master off (night-walk dim where occupied)';
       }
 
@@ -872,38 +1027,40 @@ export class KNXAIAssistant {
         return `Stored ${saved ? `${saved.code} (${saved.name})` : 'Scene'}`;
       }
 
-      case 'control_tv_art': {
-        if (call.args.action === 'select' && call.args.artNumber !== undefined) {
-          this.bus.setTvArtIndex(call.args.artNumber - 1, true, pa);
+      case 'control_cover': {
+        const cover = this.resolveCover(call.args.cover);
+        const label = cover?.shortName ?? cover?.name ?? call.args.cover;
+        this.bus.setCoverOpen?.(call.args.cover, call.args.open, true, pa);
+        this.onEnvironmentChanged?.();
+        return `${label} → ${call.args.open ? 'Opening' : 'Closing'}`;
+      }
+
+      case 'control_media_endpoint': {
+        const endpoint = this.resolveMediaEndpoint(call.args.endpoint);
+        const label = endpoint?.name ?? call.args.endpoint;
+        if (call.args.action === 'select' && call.args.itemNumber !== undefined) {
+          this.bus.setMediaEndpointIndex?.(call.args.endpoint, call.args.itemNumber - 1, true, pa);
         } else {
-          this.bus.cycleTvArt(true, pa);
+          this.bus.cycleMediaEndpoint?.(call.args.endpoint, true, pa);
         }
-        return `TV Art → "${this.bus.getTvArtTitle()}"`;
+        this.onEnvironmentChanged?.();
+        const item = this.bus.getMediaEndpointItem?.(call.args.endpoint) ?? '';
+        return item ? `${label} → "${item}"` : `${label} → updated`;
       }
 
       case 'set_environment': {
         const notes: string[] = [];
-        const { timeOfDay, kitchenMotion, utilityMotion, bifoldsOpen, carGatesOpen } = call.args;
+        const { timeOfDay, presence } = call.args;
         if (timeOfDay) {
           this.env.setTimeOfDay(timeOfDay);
           this.bus.setAmbientLux(TIME_OF_DAY_LUX[timeOfDay], true);
           notes.push(`Time → ${timeOfDay.toUpperCase()} (${TIME_OF_DAY_LUX[timeOfDay]} lx)`);
         }
-        if (kitchenMotion !== undefined) {
-          this.bus.setKitchenMotionDetected(kitchenMotion);
-          notes.push(`Kitchen PIR → ${kitchenMotion ? 'Motion' : 'Vacant'}`);
-        }
-        if (utilityMotion !== undefined) {
-          this.bus.setUtilityMotionDetected(utilityMotion);
-          notes.push(`Utility PIR → ${utilityMotion ? 'Motion' : 'Vacant'}`);
-        }
-        if (bifoldsOpen !== undefined) {
-          if (this.env.isBifoldsOpen() !== bifoldsOpen) this.env.toggleBifolds();
-          notes.push(`Bifolds → ${bifoldsOpen ? 'Open' : 'Closed'}`);
-        }
-        if (carGatesOpen !== undefined) {
-          this.bus.setCarGatesOpen(carGatesOpen, true, pa);
-          notes.push(`Car gates → ${carGatesOpen ? 'Opening' : 'Closing'}`);
+        if (presence && this.bus.setPresence) {
+          for (const [detectorPa, detected] of Object.entries(presence)) {
+            this.bus.setPresence(detectorPa, detected);
+            notes.push(`PIR ${detectorPa} → ${detected ? 'Motion' : 'Vacant'}`);
+          }
         }
         this.onEnvironmentChanged?.();
         return notes.join(', ');
@@ -913,6 +1070,7 @@ export class KNXAIAssistant {
         const device = this.resolveDevice(call.args.device);
         const name = device?.name ?? call.args.device;
         const ok = this.env.triggerDevice?.(call.args.device) ?? false;
+        this.onEnvironmentChanged?.();
         return ok ? `${name} → triggered` : `${name} is busy`;
       }
     }
@@ -924,31 +1082,40 @@ export class KNXAIAssistant {
     const has = (re: RegExp): boolean => re.test(lower);
     const calls: KNXToolCall[] = [];
 
+    const cover = this.matchCoverInPrompt(lower);
+    if (cover) {
+      calls.push({
+        name: 'control_cover',
+        args: { cover: cover.id, open: !has(/\b(?:close|shut|lock)\b/) },
+      });
+      return calls;
+    }
+
+    const mediaMatch = this.matchMediaEndpointInPrompt(prompt, lower);
+    if (mediaMatch) {
+      calls.push({
+        name: 'control_media_endpoint',
+        args:
+          mediaMatch.itemIndex >= 0
+            ? {
+                endpoint: mediaMatch.endpoint.id,
+                action: 'select',
+                itemNumber: mediaMatch.itemIndex + 1,
+              }
+            : { endpoint: mediaMatch.endpoint.id, action: 'next' },
+      });
+      return calls;
+    }
+
     const device = this.matchDeviceInPrompt(lower);
     if (device) {
       calls.push({ name: 'trigger_device', args: { device: device.id } });
       return calls;
     }
-    if (has(/\b(?:gate|gates|driveway)\b/)) {
-      calls.push({ name: 'set_environment', args: { carGatesOpen: !has(/\b(?:close|shut|lock)\b/) } });
-      return calls;
-    }
-    if (has(/\b(?:bifold|bifolds)\b/) && has(/\b(?:open|close|shut)\b/)) {
-      calls.push({ name: 'set_environment', args: { bifoldsOpen: !has(/\b(?:close|shut)\b/) } });
-      return calls;
-    }
-    if (has(/\b(?:tv|telly|artwork|painting|art)\b/)) {
-      const queryTokens = new Set(tokeniseKnxName(prompt));
-      const artIdx = TV_ARTWORKS.findIndex((title) => tokeniseKnxName(title).some((t) => queryTokens.has(t) && t.length > 3));
-      calls.push({
-        name: 'control_tv_art',
-        args: artIdx >= 0 ? { action: 'select', artNumber: artIdx + 1 } : { action: 'next' },
-      });
-      return calls;
-    }
+
     const tod = /\b(?:make it|set (?:it |the time )?to|switch to|time to)\s+(day|daytime|dusk|sunset|night|nighttime)\b/.exec(lower);
     if (tod) {
-      const t = tod[1];
+      const t = tod[1] ?? 'dusk';
       calls.push({
         name: 'set_environment',
         args: { timeOfDay: t.startsWith('day') ? 'day' : t === 'dusk' || t === 'sunset' ? 'dusk' : 'night' },
@@ -1036,12 +1203,10 @@ export class KNXAIAssistant {
       executedCalls,
       reply:
         summaries.join(' · ') ||
-        'Offline: I couldn’t match that to a room, light or scene — try "kitchen full", "office off" or "barn downlights 40%".',
+        `Offline: I couldn’t match that to a room, light or scene — try ${buildDynamicExamples(this.project)}.`,
     };
   }
 }
-
-export { TV_ARTWORKS };
 
 interface SpeechRecognitionAlternativeLike {
   readonly transcript: string;

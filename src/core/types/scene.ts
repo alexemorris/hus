@@ -3,10 +3,6 @@ import type { RoomZoneId } from './topology.ts';
 
 export type TimeOfDay = 'day' | 'dusk' | 'night';
 
-/**
- * Active floor focus: a floor id (`'ground'`, `'first'`, or any house-defined floor id) or
- * `'all'` for every floor at once.
- */
 /** One storey of a property, lowest first. */
 export interface FloorDefinition {
   readonly id: string;
@@ -22,36 +18,31 @@ export interface FloorDefinition {
 
 export type FloorViewMode = 'ground' | 'first' | 'all' | (string & {});
 
-export type CameraPresetName =
-  | 'overview'
-  | 'isometric'
-  | 'island'
-  | 'sitting'
-  | 'bifolds'
-  | 'familyRoom'
-  | 'familySnug'
-  | 'hall'
-  | 'livingRoom'
-  | 'sittingRoom'
-  | 'upstairs'
-  | 'courtyardGates'
-  | 'top';
+/** Camera preset identifier (`'overview'`, `'isometric'`, `'top'`, or any home-defined preset id). */
+export type CameraPresetName = 'overview' | 'isometric' | 'top' | (string & {});
+
+export type TradeCategoryId =
+  | 'structure'
+  | 'envelope'
+  | 'joinery'
+  | 'electrical'
+  | 'plumbing'
+  | 'heating'
+  | 'smart'
+  | 'furniture'
+  | 'external'
+  | 'vehicle';
 
 export interface InteractiveUserData {
   readonly isKNXSwitch?: boolean;
-  readonly isCourtyardSwitch?: boolean;
-  readonly isUtilitySwitch?: boolean;
-  readonly isKitchenMotionSensor?: boolean;
-  readonly isUtilityMotionSensor?: boolean;
   readonly roomMotionSensorId?: RoomMotionSensorId;
-  readonly isFrameTV?: boolean;
-  readonly isBifoldDoor?: boolean;
-  readonly isCarGate?: boolean;
   readonly isUniFiCamera?: boolean;
   readonly cameraEntityId?: string;
   readonly isUniFiAccessReader?: boolean;
   readonly accessEntityId?: string;
   readonly interactableId?: string;
+  /** Explicit hover/crosshair prompt label for custom or delegated devices. */
+  readonly interactionPromptLabel?: string;
   readonly switchLocation?: string;
   readonly switchDirection?: 'up' | 'down';
   readonly switchPa?: string;
@@ -61,14 +52,26 @@ export interface InteractiveUserData {
   readonly presenceDetectorPa?: string;
   readonly sensorGa?: string;
   readonly zoneId?: RoomZoneId;
-  readonly circuitId?: CircuitId | (string & {});
+  readonly circuitId?: CircuitId;
   readonly electricalSwitchId?: string;
   readonly electricalDimmerId?: string;
-  readonly ufhZoneId?: 'ufhZone1' | 'ufhZone2' | 'ufhZone3' | 'ufhZone4';
+  readonly ufhZoneId?: string;
   readonly isKnxTempSensor?: boolean;
   readonly isClimbableLadder?: boolean;
   readonly isCustomInteraction?: boolean;
   readonly zoneSceneSwitchZoneId?: RoomZoneId;
+  /** Generic rendering / batching / LOD / walkthrough / trade traits. */
+  readonly isAnimatedDoor?: boolean;
+  readonly isExteriorGate?: boolean;
+  readonly isDynamicBarrier?: boolean;
+  readonly isWalkableStep?: boolean;
+  readonly isDynamicInteractionObject?: boolean;
+  readonly isDynamicObject?: boolean;
+  readonly isRigidDynamicGroup?: boolean;
+  readonly lodImportance?: 'shell' | 'standard' | 'hero';
+  readonly tradeCategory?: TradeCategoryId;
+  readonly isAppliance?: boolean;
+  readonly isJoineryDoor?: boolean;
 }
 
 export interface CutawayWallDescriptor {

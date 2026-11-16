@@ -2,7 +2,6 @@ import type * as THREE from 'three';
 import type { AccessPointEntityState, CctvCameraEntityState } from '../../../core/entities.ts';
 import type { CircuitLevels } from '../../../core/types/knx.ts';
 import type { InteractiveUserData, TimeOfDay } from '../../../core/types/scene.ts';
-import { BifoldDoorAnimator } from '../../interaction/bifold-animator.ts';
 import type { SceneInteractionManager } from '../../interaction/interaction-manager.ts';
 import { CircuitLightingController } from '../../lighting/circuit-lighting.ts';
 import { Emitter } from '../../util/emitter.ts';
@@ -21,9 +20,9 @@ export interface DeviceServiceHost<TSecurity extends SecurityOverlay3D> {
   readonly invalidator: RenderInvalidator;
   /** Enters walkthrough if needed and starts a registered cutscene. */
   startCutscene?(cutsceneId: string): void;
-  /** Enters walkthrough if needed when a first-person workout interactable starts. */
+  /** Enters walkthrough if needed when a first-person interactable starts. */
   startFirstPersonInteractable?(interactableId: string): void;
-  /** Home / integration click hook; KNX-backed pseudo-devices route through it. */
+  /** Home / integration click hook. */
   onObjectInteraction(data: InteractiveUserData): void;
 }
 
@@ -33,15 +32,14 @@ const DOOR_SHADOW_THROTTLE_WALKING_MS = 90;
 const WALK_DOOR_SHADOW_SETTLE_MS = 250;
 
 /**
- * 3D device state: KNX-driven fixtures (circuit lighting, switch LEDs, Frame TV,
- * motion sensors), bifolds, car gates, doors and other interactables, UFH and
- * security overlays.
+ * 3D device state: KNX-driven fixtures (circuit lighting, switch/sensor LEDs),
+ * interactive assemblies (doors, bifold assemblies, swing gates, drawers, custom devices),
+ * UFH and security overlays.
  */
 export class DeviceService<TSecurity extends SecurityOverlay3D = SecurityOverlay3D> {
-  /** Fires after user-driven device changes (bifolds, gates, interactables). */
+  /** Fires after user-driven device changes. */
   public readonly changed = new Emitter<[]>();
   public readonly circuitLighting: CircuitLightingController;
-  public readonly bifolds: BifoldDoorAnimator;
   public readonly interactions: SceneInteractionManager;
   private readonly host: DeviceServiceHost<TSecurity>;
   private lastDoorShadowUpdateMs = 0;
@@ -62,40 +60,25 @@ export class DeviceService<TSecurity extends SecurityOverlay3D = SecurityOverlay
       switchLedRules: profile.switchLedRules,
       defaultFixtureAppearance: profile.defaultFixtureAppearance,
       fixtureAppearanceOverrides: profile.fixtureAppearanceOverrides,
-      tvArtTextures: content.tvArtTextures,
-      tvOffTexture: content.tvOffTexture,
+      ...(profile.circuitIntensityMultipliers
+        ? { circuitIntensityMultipliers: profile.circuitIntensityMultipliers }
+        : {}),
       lodRegistrations: profile.lodRegistrations,
     });
-    this.bifolds = new BifoldDoorAnimator(content.bifoldPanels, profile.bifoldTrack);
     content.ufhSystem?.subscribe(() => host.invalidator.requestRender());
   }
 
-  /** Adds every animated object (bifolds, doors, gates) so it keeps matrix auto-update. */
+  /** Adds every animated object (doors, bifold assemblies, swing gates, drawers) so it keeps matrix auto-update. */
   public collectDynamicObjects(target: Set<THREE.Object3D>): void {
-    for (const panel of this.bifolds.getPanels()) {
-      panel.group.traverse((child) => target.add(child));
-    }
     this.interactions.collectDynamicObjects(target);
   }
 
-  /** Adds only boot-active animated objects (bifolds + ambient flame loops) excluded from initial static batching. */
+  /** Adds only boot-active animated objects excluded from initial static batching. */
   public collectBatchExcludedObjects(target: Set<THREE.Object3D>): void {
-    for (const panel of this.bifolds.getPanels()) {
-      panel.group.traverse((child) => target.add(child));
-    }
     this.interactions.collectBootPinnedDynamicObjects(target);
   }
 
   public handleInteractable(interactableId: string): boolean {
-    // KNX-backed pseudo-devices (car-gates, kitchen-bifolds, frame-tv) take the same
-    // path as a 3D click so the bus stays the source of truth.
-    const pseudo = this.interactions.getPseudoDeviceUserData(interactableId);
-    if (pseudo) {
-      this.host.onObjectInteraction(pseudo);
-      this.host.invalidator.requestRender();
-      this.changed.emit();
-      return true;
-    }
     const handled = this.interactions.handleInteractableClick(interactableId);
     if (handled) {
       const cutsceneId = this.interactions.getCustomInteractionCutsceneId(interactableId);
@@ -120,50 +103,16 @@ export class DeviceService<TSecurity extends SecurityOverlay3D = SecurityOverlay
     this.host.invalidator.requestRender();
   }
 
-  public setMotionSensorStates(kitchenMotion: boolean, utilityMotion: boolean): void {
-    this.circuitLighting.setMotionSensorStates(kitchenMotion, utilityMotion);
-    this.host.invalidator.requestRender();
-  }
-
-  public setTVArtState(artModeOn: boolean, artIndex: number): void {
-    if (this.circuitLighting.setTVArtState(artModeOn, artIndex)) {
+  public setSensorLedState(sensorId: string, detected: boolean): void {
+    if (this.circuitLighting.setSensorLedState(sensorId, detected)) {
       this.host.invalidator.requestRender();
     }
   }
 
-  public isBifoldsOpen(): boolean {
-    return this.bifolds.isOpen();
-  }
-
-  public toggleBifolds(): boolean {
-    const open = this.bifolds.toggle();
-    this.host.invalidator.requestRender();
-    this.changed.emit();
-    return open;
-  }
-
-  public isCarGatesOpen(): boolean {
-    return this.interactions.isCarGatesOpen();
-  }
-
-  /** Mirrors the KNX gate state (no change event: the bus already announced it). */
-  public setCarGatesOpen(isOpen: boolean): void {
-    if (this.interactions.isCarGatesOpen() !== isOpen) {
-      this.interactions.setCarGatesOpen(isOpen);
+  public setSensorLedStates(states: Readonly<Record<string, boolean>>): void {
+    if (this.circuitLighting.setSensorLedStates(states)) {
       this.host.invalidator.requestRender();
     }
-  }
-
-  public toggleCarGates(): boolean {
-    const next = !this.interactions.isCarGatesOpen();
-    this.interactions.setCarGatesOpen(next);
-    this.host.invalidator.requestRender();
-    this.changed.emit();
-    return next;
-  }
-
-  public getCarGatesProgress(): number {
-    return this.interactions.getCarGatesProgress();
   }
 
   public syncSecurity(
@@ -213,16 +162,11 @@ export class DeviceService<TSecurity extends SecurityOverlay3D = SecurityOverlay
     this.host.invalidator.requestRender();
   }
 
-  /**
-   * Steps bifold / door / gate animations and throttles shadow-map refreshes
-   * while they move. `walkingCameraMoved` slows the throttle during walkthrough
-   * motion.
-   */
   public hasActiveAnimations(): boolean {
     return this.activeAnimations;
   }
 
-  /** True ONLY while bifold or hinged/portal doors are moving (or finishing their final frame), excluding ambient loops. */
+  /** True ONLY while portal/hinged/bifold doors or gates are moving (or finishing their final frame), excluding ambient loops. */
   public hasPortalOrDoorAnimations(): boolean {
     return this.portalOrDoorAnimations;
   }
@@ -232,11 +176,10 @@ export class DeviceService<TSecurity extends SecurityOverlay3D = SecurityOverlay
     walkingCameraMoved: boolean,
     isWalkthroughActive = false
   ): void {
-    const bifoldMoving = this.bifolds.update(dtSeconds);
     const doorMoving = this.interactions.update(dtSeconds);
     const ambientMoving = this.interactions.stepAmbient(dtSeconds);
     const wasAnimatingDoors = this.doorsWereAnimating;
-    this.portalOrDoorAnimations = bifoldMoving || doorMoving || wasAnimatingDoors;
+    this.portalOrDoorAnimations = doorMoving || wasAnimatingDoors;
     this.activeAnimations = this.portalOrDoorAnimations || ambientMoving;
 
     const now = performance.now();
@@ -245,15 +188,11 @@ export class DeviceService<TSecurity extends SecurityOverlay3D = SecurityOverlay
     }
 
     const { invalidator } = this.host;
-    const suppressMidWalkDoorShadows =
-      (isWalkthroughActive || walkingCameraMoved) && !bifoldMoving;
+    const suppressMidWalkDoorShadows = isWalkthroughActive || walkingCameraMoved;
 
-    if (bifoldMoving || doorMoving) {
+    if (doorMoving) {
       this.doorsWereAnimating = true;
       if (suppressMidWalkDoorShadows) {
-        this.pendingWalkDoorShadowFlush = true;
-      } else if (bifoldMoving && (isWalkthroughActive || walkingCameraMoved)) {
-        // Exterior bifolds while walking: defer single shadow bake until motion settles
         this.pendingWalkDoorShadowFlush = true;
       } else {
         const throttleMs = walkingCameraMoved
@@ -281,7 +220,6 @@ export class DeviceService<TSecurity extends SecurityOverlay3D = SecurityOverlay
 
     if (
       this.pendingWalkDoorShadowFlush &&
-      !bifoldMoving &&
       !doorMoving &&
       !walkingCameraMoved &&
       now - this.lastWalkingMotionMs >= WALK_DOOR_SHADOW_SETTLE_MS

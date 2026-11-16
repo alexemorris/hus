@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { LightGroupMap, BifoldPanelRef, ZoneIndicatorMaterials } from '../scene-types.ts';
+import type { LightGroupMap, ZoneIndicatorMaterials } from '../scene-types.ts';
 import type { RoomLodController } from '../../lod/lod-manager.ts';
 import { SceneBatchOptimizer } from '../../rendering/scene-batch-optimizer.ts';
 import type { TradeViewController } from '../../trade-views/index.ts';
@@ -18,7 +18,6 @@ export interface StaticSceneServiceHost {
   /** Shared, live array of clickable device meshes — passed by reference. */
   readonly interactiveMeshes: THREE.Object3D[];
   readonly getExtraInteractiveMeshes?: () => readonly THREE.Object3D[];
-  readonly bifoldPanels: readonly BifoldPanelRef[];
   readonly tradeViews: TradeViewController;
   readonly cutaways: CutawayController;
   /** Objects that move at runtime and must keep matrix auto-update. */
@@ -30,9 +29,6 @@ export interface StaticSceneServiceHost {
 /** Shadow casters smaller than this world radius are not worth a shadow (m). */
 const MIN_SHADOW_CASTER_RADIUS_M = 0.25;
 const MAX_ANISOTROPY = 8;
-/** Unbatched interior soft-furnishing / fitting casters safe to skip during active sun scrubbing. */
-const SCRUB_DEFERRABLE_UNBATCHED_RE =
-  /\.(kingCastIronBed\.footThrow|deepPileBathMat\.tuftedPile|beanbag\.|heritageReededMirror\.reededBrassFrame|diningTable\.extendedTabletop)$/;
 
 /**
  * Static-scene optimisation: draw-call batching (`SceneBatchOptimizer`) and
@@ -54,7 +50,6 @@ export class StaticSceneService {
       roomSwitchLedMats: host.roomSwitchLedMats,
       interactiveMeshes: host.interactiveMeshes,
       ...(host.getExtraInteractiveMeshes ? { getExtraInteractiveMeshes: host.getExtraInteractiveMeshes } : {}),
-      bifoldPanels: host.bifoldPanels,
       getDynamicObjects: () => {
         const dynamicObjects = new Set<THREE.Object3D>();
         if (host.collectBatchExcludedObjects) {
@@ -132,7 +127,7 @@ export class StaticSceneService {
         }
         if (
           obj.castShadow &&
-          (u?.lodTier === 1 || SCRUB_DEFERRABLE_UNBATCHED_RE.test(obj.name))
+          (u?.lodTier === 1 || u?.isScrubDeferrableCaster === true)
         ) {
           nextScrubDeferrable.push(obj);
           if (this.interactiveScrubCastersSuppressed) {

@@ -58,8 +58,6 @@ export {
 export {
   createHawaiiArtworkTexture,
   createRadialGlowTexture,
-  createTVArtGalleryTextures,
-  createTVOffTexture,
   createWovenWoolCarpetTextures,
 } from './furnishing-and-art-textures.ts';
 

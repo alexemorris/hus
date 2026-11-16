@@ -402,7 +402,7 @@ export class RoomLodController {
     // Never classify dynamic cutaway wall segments, architectural shell groups, windows, doors, floors, skirtings, or stairs as LOD1/LOD2 furniture
     const isBuiltInJoineryOrFixtureName =
       typeof obj.name === 'string' &&
-      /wardrobe|cupboard|bookcase|windowseat|vanity|sanitaryware|showerenclosure|showerniche|thermostaticshower|copperboatbath|bathtub|fireplace|entrancedoor|pocketdoor|bifold/i.test(
+      /wardrobe|cupboard|bookcase|windowseat|vanity|sanitaryware|showerenclosure|showerniche|thermostaticshower|freestandingbath|bathtub|fireplace|entrancedoor|pocketdoor|bifold/i.test(
         obj.name
       ) &&
       !/cushion|pillow|throw|towel|book\b|bottle|vase|jar|mug|plate|shoe|hanger|shirt|coat|dress|folded/i.test(
@@ -461,12 +461,15 @@ export class RoomLodController {
 
     const maxDim = Math.max(size.x, size.y, size.z);
     const minHorizontalDim = Math.min(size.x, size.z);
+    const hasExplicitFurnitureImportance =
+      obj.userData?.lodImportance === 'standard' || obj.userData?.lodImportance === 'hero';
     const isArchitecturalSubstructureName =
+      !hasExplicitFurnitureImportance &&
       typeof obj.name === 'string' &&
       /wall|ceiling|roof|window|sill|lintel|beam|joist|rafter|purlin|truss|brick|plaster|cladding|fascia|soffit|gutter|downpipe|casement|glazing|mullion|frame|threshold|plinth|doorheader/i.test(
         obj.name
       ) &&
-      !/sideboard|cabinet|shelf|shelving|sofa|bed|table|island|piano|roland|simulator|pooltable|stove|radiator|curtain|rug|tv|mirror|picture|art|lamp|chandelier|pendant/i.test(
+      !/sideboard|cabinet|shelf|shelving|sofa|bed|table|island|piano|instrument|arcade|billiards|stove|radiator|curtain|rug|tv|mirror|picture|art|lamp|chandelier|pendant/i.test(
         obj.name
       );
 
@@ -589,9 +592,9 @@ export class RoomLodController {
         if (
           u?.isArchitecturalShell ||
           u?.isCutawayWall ||
-          u?.isCourtyardSwitch ||
-          u?.isBifoldDoor ||
-          u?.isCarGate ||
+          u?.isAnimatedDoor ||
+          u?.isExteriorGate ||
+          u?.isDynamicBarrier ||
           u?.isUniFiCamera ||
           u?.isUniFiAccessReader ||
           u?.isFittingFx ||
@@ -613,13 +616,12 @@ export class RoomLodController {
         u?.isKNXSwitch ||
         u?.switchPa ||
         u?.isKnxTempSensor ||
-        u?.isCourtyardSwitch ||
-        u?.isUtilitySwitch ||
-        u?.isKitchenMotionSensor ||
-        u?.isUtilityMotionSensor ||
+        u?.zoneSceneSwitchZoneId ||
+        u?.presenceDetectorPa ||
         u?.roomMotionSensorId ||
-        u?.isBifoldDoor ||
-        u?.isCarGate ||
+        u?.isAnimatedDoor ||
+        u?.isExteriorGate ||
+        u?.isDynamicBarrier ||
         u?.isUniFiCamera ||
         u?.isUniFiAccessReader ||
         u?.circuitId !== undefined ||

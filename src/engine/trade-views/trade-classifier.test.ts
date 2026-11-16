@@ -27,7 +27,7 @@ describe('classifyName', () => {
     ['hall.corstonSocket.southWall', [], 'electrical'],
     ['knxWiringCenter', [], 'smart'],
     ['showerRoom.wall', [], 'structure'],
-    ['courtyard.wall', [], 'external'],
+    ['terrace.wall', [], 'external'],
     ['pipe', ['radiator'], 'heating'],
     ['cable', ['pendant'], 'lighting'],
     ['ufhLoop3', [], 'heating'],
@@ -45,7 +45,7 @@ describe('classifyName', () => {
   it('uses semantic userData flags (own first, then ancestors)', () => {
     expect(classifyName('mesh', [], { isKNXSwitch: true })).toBe('smart');
     expect(classifyName('mesh', [], { ufhZoneId: 'kitchen' })).toBe('heating');
-    expect(classifyName('mesh', [], {}, [{}, { isCarGate: true }])).toBe('external');
+    expect(classifyName('mesh', [], {}, [{}, { isExteriorGate: true }])).toBe('external');
   });
 
   it('keeps KNX-switched sockets electrical', () => {

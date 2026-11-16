@@ -29,21 +29,21 @@ describe('SceneBatchOptimizer', () => {
     const { scene, interactiveMeshes, optimizer } = makeOptimizerHarness();
     const brickMat = new THREE.MeshStandardMaterial({ color: 0x8b4513 });
     const wallGroup = new THREE.Group();
-    wallGroup.name = 'outbuildings.groundShell';
+    wallGroup.name = 'workshop.groundShell';
     scene.add(wallGroup);
 
     const wallA = new THREE.Mesh(
       new THREE.BoxGeometry(2, 2.4, 0.25),
       [brickMat, brickMat, brickMat, brickMat, brickMat, brickMat]
     );
-    wallA.name = 'outbuildings.groundShell.brickWall.A';
+    wallA.name = 'workshop.groundShell.brickWall.A';
     wallA.position.set(-2, 1.2, 0);
 
     const wallB = new THREE.Mesh(
       new THREE.BoxGeometry(2, 2.4, 0.25),
       [brickMat, brickMat, brickMat, brickMat, brickMat, brickMat]
     );
-    wallB.name = 'outbuildings.groundShell.brickWall.B';
+    wallB.name = 'workshop.groundShell.brickWall.B';
     wallB.position.set(2, 1.2, 0);
 
     wallGroup.add(wallA, wallB);
@@ -98,23 +98,23 @@ describe('SceneBatchOptimizer', () => {
     const oakMat = new THREE.MeshStandardMaterial({ color: 0x996633 });
 
     const gateLeaf = new THREE.Group();
-    gateLeaf.name = 'courtyard.splitGate.leaf.north';
-    gateLeaf.userData.northPivot = true;
+    gateLeaf.name = 'driveway.swingGate.leaf.north';
+    gateLeaf.userData.isExteriorGate = true;
     gateLeaf.position.set(4, 0, -2);
     gateLeaf.rotation.y = Math.PI / 6;
     scene.add(gateLeaf);
 
     const stileA = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.8, 0.05), oakMat);
-    stileA.name = 'courtyard.splitGate.leaf.stileA';
+    stileA.name = 'driveway.swingGate.leaf.stileA';
     stileA.position.set(-0.5, 0.9, 0);
     const stileB = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.8, 0.05), oakMat);
-    stileB.name = 'courtyard.splitGate.leaf.stileB';
+    stileB.name = 'driveway.swingGate.leaf.stileB';
     stileB.position.set(0.5, 0.9, 0);
     gateLeaf.add(stileA, stileB);
 
     // Nested child handle lever that rotates independently relative to gateLeaf
     const handlePivot = new THREE.Group();
-    handlePivot.name = 'courtyard.splitGate.doorPivot.latch';
+    handlePivot.name = 'driveway.swingGate.doorPivot.latch';
     handlePivot.position.set(0.45, 1.0, 0.04);
     const latchA = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.12), oakMat);
     const latchB = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.03, 0.03), oakMat);
@@ -158,7 +158,7 @@ describe('SceneBatchOptimizer', () => {
     const mat = new THREE.MeshStandardMaterial({ color: 0x557744 });
 
     const ivyLeaf = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.01), mat);
-    ivyLeaf.name = 'courtyard.climbingIvy.leaf.1';
+    ivyLeaf.name = 'garden.climbingIvy.leaf.1';
     ivyLeaf.castShadow = true;
 
     const cabinetCheek = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.85, 0.6), mat);
@@ -506,9 +506,9 @@ describe('SceneBatchOptimizer', () => {
 
     const mainBedSlab = buildFloorSlabMesh('mainBedroom.floorSlab', -6, 0, 4.0, 4.0, carpetMat, true);
     const bed3Slab = buildFloorSlabMesh('bedroom3.floorSlab', -11, 0, 4.0, 3.6, carpetMat, true);
-    const landingPolySlab = buildFloorSlabMesh('upperLanding.floorSlab', -2, 0, 3.0, 3.0, carpetMat, false);
-    const bathSlabA = buildFloorSlabMesh('familyBathroom.floorSlab.A', -6, 5, 3.2, 3.0, limestoneMat, true);
-    const bathSlabB = buildFloorSlabMesh('familyBathroom.floorSlab.B', -10, 5, 2.8, 3.0, limestoneMat, true);
+    const landingPolySlab = buildFloorSlabMesh('firstLanding.floorSlab', -2, 0, 3.0, 3.0, carpetMat, false);
+    const bathSlabA = buildFloorSlabMesh('primaryBathroom.floorSlab.A', -6, 5, 3.2, 3.0, limestoneMat, true);
+    const bathSlabB = buildFloorSlabMesh('primaryBathroom.floorSlab.B', -10, 5, 2.8, 3.0, limestoneMat, true);
     firstGroup.add(mainBedSlab, bed3Slab, landingPolySlab, bathSlabA, bathSlabB);
     scene.updateMatrixWorld(true);
 

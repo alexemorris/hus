@@ -156,17 +156,13 @@ export class PropertyScene<
   public isWalkthroughMode(): boolean { return this.walkthrough.isActive(); }
   public toggleWalkthroughMode(spawnId?: string): boolean { return this.setWalkthroughMode(!this.walkthrough.isActive(), spawnId); }
 
+  public getInteractions(): import('../interaction/interaction-registry.ts').InteractionRegistry { return this.content.interactions; }
   public handleInteractableClick(interactableId: string): boolean { return this.devices.handleInteractable(interactableId); }
   public onDeviceStateChanged(cb: () => void): Unsubscribe { return this.devices.changed.add(cb); }
   public applyKNXLightLevels(levels: Readonly<CircuitLevels>, continuousFade = false): void { this.devices.applyLightLevels(levels, continuousFade); }
-  public setMotionSensorStates(kitchen: boolean, utility: boolean): void { this.devices.setMotionSensorStates(kitchen, utility); }
-  public setTVArtState(artModeOn: boolean, artIndex: number): void { this.devices.setTVArtState(artModeOn, artIndex); }
-  public isBifoldsOpen(): boolean { return this.devices.isBifoldsOpen(); }
-  public toggleBifolds(): boolean { return this.devices.toggleBifolds(); }
-  public isCarGatesOpen(): boolean { return this.devices.isCarGatesOpen(); }
-  public setCarGatesOpen(isOpen: boolean): void { this.devices.setCarGatesOpen(isOpen); }
-  public toggleCarGates(): boolean { return this.devices.toggleCarGates(); }
-  public getCarGatesProgress(): number { return this.devices.getCarGatesProgress(); }
+  public setSensorLedState(sensorId: string, detected: boolean): void { this.devices.setSensorLedState(sensorId, detected); }
+  public setSensorLedStates(states: Readonly<Record<string, boolean>>): void { this.devices.setSensorLedStates(states); }
+  public getDisplayMaterial(id: string): THREE.MeshStandardMaterial | undefined { return this.content.indicatorMats.displayMats?.[id]; }
   public getUfhSystem(): UfhSystemOverlay3D | null { return this.devices.getUfhSystem(); }
   public isUfhLayerVisible(): boolean { return this.devices.isUfhLayerVisible(); }
   public setUfhLayerVisible(visible: boolean): void { this.devices.setUfhLayerVisible(visible); }

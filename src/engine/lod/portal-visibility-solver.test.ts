@@ -30,7 +30,7 @@ const TEST_ROOMS: readonly RoomZoneLodRegistration[] = [
     bounds: { minX: -23, maxX: -19, minY: 2.7, maxY: 5.4, minZ: -3, maxZ: 2 },
   },
   {
-    zoneId: 'outbuildingGym',
+    zoneId: 'gardenStudio',
     shortName: 'Gym',
     floorId: 'ground',
     bounds: { minX: -20, maxX: -16, minY: 0, maxY: 2.7, minZ: 15, maxZ: 20 },
@@ -75,7 +75,7 @@ describe('PortalVisibilitySolver', () => {
         },
         {
           id: 'gym-north-glazed-screen',
-          roomZoneId: 'outbuildingGym',
+          roomZoneId: 'gardenStudio',
           minX: -19.5,
           maxX: -16.5,
           minY: 0.1,
@@ -166,7 +166,7 @@ describe('PortalVisibilitySolver', () => {
     const walkCamToGym = makeCamera([-0.5, 1.6, 1.2], [-18.0, 1.2, 16.0]);
     solver.solveVisibleInteriorRooms(walkCamToGym, 'all');
     expect(solver.isRoomVisible('kitchen')).toBe(true);
-    expect(solver.isRoomVisible('outbuildingGym')).toBe(true);
+    expect(solver.isRoomVisible('gardenStudio')).toBe(true);
   });
 
   it('integrates with RoomLodController without dirtying shadow maps and yields portal-culled LOD1 casters for shadow passes', () => {

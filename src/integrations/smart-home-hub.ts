@@ -3,7 +3,9 @@ import { UniFiAccessController } from './unifi/access/adapter.ts';
 import { UniFiProtectController } from './unifi/protect/adapter.ts';
 import type {
   AccessCredentialMethod,
+  AccessPointEntityState,
   BinarySensorEntityState,
+  CctvCameraEntityState,
   GateCoverEntityState,
   LightEntityState,
   NumericSensorEntityState,
@@ -13,41 +15,55 @@ import type {
   SmartHomeHubListener,
 } from '../core/entities.ts';
 
+export interface SmartHomeAutomationRules {
+  /** Optional home hook invoked when an access-control point unlocks or locks. */
+  readonly onAccessUnlock?: (
+    entry: AccessPointEntityState,
+    shouldOpen: boolean,
+    hub: SmartHomeHub
+  ) => void;
+  /** Optional home hook invoked when a CCTV camera emits a smart detection. */
+  readonly onCameraDetection?: (
+    camera: CctvCameraEntityState,
+    detection: SmartDetectionType,
+    hub: SmartHomeHub
+  ) => void;
+}
+
 /**
  * Multi-Protocol Smart Home Hub.
  *
  * Unifies:
- * 1. **KNX TP1 / cEMI Bus (`1.1.x` / `1.2.x`)** — lighting scenes, dimmers, PIR/Lux sensors, motorized gate controller
- * 2. **UniFi Protect CCTV (`192.168.10.2x`)** — 3D camera frustums, LPR & Smart Detections
- * 3. **UniFi Access (`192.168.10.3x`)** — G2 Reader Pro gate intercom & door access hubs
- *
- * Also executes cross-protocol Smart Home automations:
- * - **UniFi Access Gate Grant → KNX Gate Actuator (`1/5/1`) + Courtyard Night Welcome**
- * - **UniFi Protect Vehicle LPR / Person Detection → KNX Security Lighting Trigger**
+ * - KNX TP1 / cEMI Bus — lighting scenes, dimmers, PIR/Lux sensors, motorized cover/gate channels
+ * - UniFi Protect CCTV — 3D camera frustums & Smart Detections
+ * - UniFi Access — reader intercoms & door/gate access hubs
  */
 export class SmartHomeHub {
   public readonly knx: KNXPropertyBusController;
   public readonly protect: UniFiProtectController;
   public readonly access: UniFiAccessController;
+  private readonly rules: SmartHomeAutomationRules;
 
   private readonly listeners = new Set<SmartHomeHubListener>();
   private readonly unifiedEventLog: SmartHomeBusEvent[] = [];
-  private isSyncingGateState = false;
+  private isSyncingEntryState = false;
 
   public constructor(
     knx: KNXPropertyBusController,
     protect = new UniFiProtectController(),
-    access = new UniFiAccessController()
+    access = new UniFiAccessController(),
+    rules: SmartHomeAutomationRules = {}
   ) {
     this.knx = knx;
     this.protect = protect;
     this.access = access;
+    this.rules = rules;
 
     this.bindCrossProtocolSubscriptions();
   }
 
   private bindCrossProtocolSubscriptions(): void {
-    // Mirror KNX bus events and gate state into UniFi Access.
+    // Mirror KNX bus events and cover/gate states into UniFi Access.
     this.knx.subscribe((ev) => {
       if (ev.type === 'telegram') {
         const tg = ev.telegram;
@@ -63,40 +79,44 @@ export class SmartHomeHub {
         this.recordBusEvent(busEvent);
         this.notify({ type: 'busEvent', busEvent });
       } else if (ev.type === 'stateChange') {
-        if (!this.isSyncingGateState) {
-          this.isSyncingGateState = true;
-          this.access.syncGateStateFromKnx(
-            this.knx.isCarGatesOpen(),
-            this.knx.isCarGatesMoving()
-          );
-          this.isSyncingGateState = false;
+        if (!this.isSyncingEntryState) {
+          this.isSyncingEntryState = true;
+          for (const cover of this.knx.getCovers()) {
+            const entryId = cover.targetEntry ?? cover.id;
+            this.access.syncEntryState(
+              entryId,
+              this.knx.isCoverOpen(cover.id),
+              this.knx.isCoverMoving(cover.id)
+            );
+          }
+          this.isSyncingEntryState = false;
         }
         this.notify({ type: 'entityChanged' });
       }
     });
 
-    // Bridge UniFi Access credential events to the KNX gate controller.
+    // Bridge UniFi Access credential events to any matching KNX cover channel and home rules.
     this.access.subscribe((_points, busEvent, unlockedEntry) => {
       if (busEvent) {
         this.recordBusEvent(busEvent);
         this.notify({ type: 'busEvent', busEvent });
       }
 
-      if (unlockedEntry && unlockedEntry.targetEntry === 'carGates' && !this.isSyncingGateState) {
-        this.isSyncingGateState = true;
+      if (unlockedEntry && !this.isSyncingEntryState) {
+        this.isSyncingEntryState = true;
         const shouldOpen = !unlockedEntry.isLocked;
-        this.knx.setCarGatesOpen(shouldOpen, true, '1.1.22');
-
-        // Cross-protocol automation: if opening gates at Dusk/Night (< 100 lx), turn on Courtyard Lamp Post & Festoons
-        if (
-          shouldOpen &&
-          this.knx.isBelowLuxThreshold() &&
-          !this.knx.isCourtyardLightOn()
-        ) {
-          this.knx.setCircuitLevel('courtyardFestoons', 40, true, '1.1.2');
-          this.knx.setCircuitLevel('reclaimedLampPost', 60, true, '1.1.2');
+        const matchingCover = this.knx
+          .getCovers()
+          .find(
+            (c) =>
+              c.targetEntry === unlockedEntry.targetEntry ||
+              c.id === unlockedEntry.targetEntry
+          );
+        if (matchingCover) {
+          this.knx.setCoverOpen(matchingCover.id, shouldOpen, true, matchingCover.pa);
         }
-        this.isSyncingGateState = false;
+        this.rules.onAccessUnlock?.(unlockedEntry, shouldOpen, this);
+        this.isSyncingEntryState = false;
       }
 
       this.notify({ type: 'entityChanged' });
@@ -141,7 +161,7 @@ export class SmartHomeHub {
 
   /**
    * Simulates a UniFi Protect Smart Detection (`person` | `vehicle` | `none`) on a camera,
-   * and executes cross-protocol KNX security/welcome actions when appropriate.
+   * and executes any home-configured cross-protocol automation rules.
    */
   public triggerCameraSmartDetection(
     cameraEntityId: string,
@@ -149,25 +169,7 @@ export class SmartHomeHub {
   ): void {
     const updated = this.protect.triggerSmartDetection(cameraEntityId, detection);
     if (!updated) return;
-
-    // If Driveway AI Pro detects a known Vehicle (LPR match), trigger UniFi Access Gate Unlock -> KNX 1/5/1
-    if (
-      cameraEntityId === 'camera.unifi_driveway_gate' &&
-      detection === 'vehicle' &&
-      !this.knx.isCarGatesOpen()
-    ) {
-      this.access.triggerUnlockEvent(
-        'access.front_split_gate_intercom',
-        'License Plate (LPR)'
-      );
-    } else if (
-      detection === 'person' &&
-      this.knx.isBelowLuxThreshold() &&
-      !this.knx.isCourtyardLightOn()
-    ) {
-      // Night security automation: bring up Reclaimed Courtyard Lamp Post to 60%
-      this.knx.setCircuitLevel('reclaimedLampPost', 60, true, '1.1.2');
-    }
+    this.rules.onCameraDetection?.(updated, detection, this);
   }
 
   public triggerAccessUnlock(
@@ -203,6 +205,10 @@ export class SmartHomeHub {
     });
 
     const project = this.knx.getProject();
+    const defaultBuildingId =
+      project.rooms[0]?.buildingId ?? Object.keys(project.buildings)[0] ?? 'default';
+    const defaultFloorId = project.rooms[0]?.floorId ?? project.floors[0]?.id ?? 'ground';
+    const defaultZoneId = project.rooms[0]?.id ?? 'exterior';
     const roomById = new Map(project.rooms.map((r) => [r.id, r]));
     const detectors = this.knx.getPresenceDetectors();
 
@@ -214,8 +220,8 @@ export class SmartHomeHub {
         name: detector.name,
         shortName: detector.name,
         protocol: 'knx',
-        buildingId: room?.buildingId ?? 'mainHouse',
-        floorId: room?.floorId ?? 'ground',
+        buildingId: room?.buildingId ?? defaultBuildingId,
+        floorId: room?.floorId ?? defaultFloorId,
         zoneId: detector.zoneId,
         hardwareAddress: `${detector.pa} · ${detector.gaPresence}`,
         kind: 'binarySensor',
@@ -224,9 +230,10 @@ export class SmartHomeHub {
       };
     });
 
-    const primaryZoneId = detectors[0]?.zoneId ?? project.rooms[0]?.id ?? 'exterior';
+    const primaryZoneId = detectors[0]?.zoneId ?? defaultZoneId;
     const primaryRoom = roomById.get(primaryZoneId);
-    const primaryLuxPa = detectors[0]?.pa ?? project.centralPa.ipInterface;
+    const primaryLuxPa =
+      project.centralPa.ambientLuxSensor ?? detectors[0]?.pa ?? project.centralPa.ipInterface;
     const sensorEntities: Array<BinarySensorEntityState | NumericSensorEntityState> = [
       ...occupancyEntities,
       {
@@ -234,8 +241,8 @@ export class SmartHomeHub {
         name: 'Ambient Illuminance Sensor',
         shortName: 'Ambient Lux',
         protocol: 'knx',
-        buildingId: primaryRoom?.buildingId ?? 'mainHouse',
-        floorId: primaryRoom?.floorId ?? 'ground',
+        buildingId: primaryRoom?.buildingId ?? defaultBuildingId,
+        floorId: primaryRoom?.floorId ?? defaultFloorId,
         zoneId: primaryZoneId,
         hardwareAddress: `${primaryLuxPa} · ${project.centralGa.ambientLux}`,
         kind: 'numericSensor',
@@ -245,26 +252,26 @@ export class SmartHomeHub {
       },
     ];
 
-    const gateEntity: GateCoverEntityState = {
-      entityId: 'cover.knx_front_car_gates',
-      name: 'Motorized Dual-Leaf Front Car Entrance Gates',
-      shortName: 'Front Car Gates',
+    const coverEntities: GateCoverEntityState[] = this.knx.getCovers().map((cover) => ({
+      entityId: cover.entityId ?? `cover.knx_${cover.id.replace(/[^a-zA-Z0-9]+/g, '_')}`,
+      name: cover.name,
+      shortName: cover.shortName ?? cover.name,
       protocol: 'knx',
-      buildingId: 'courtyardGrounds',
-      floorId: 'exterior',
-      zoneId: 'courtyard',
-      hardwareAddress: '1.1.22 · 1/5/1',
+      buildingId: cover.buildingId ?? defaultBuildingId,
+      floorId: cover.floorId ?? 'exterior',
+      zoneId: cover.zoneId ?? defaultZoneId,
+      hardwareAddress: `${cover.pa} · ${cover.gaCommand}`,
       kind: 'gate',
-      isOpen: this.knx.isCarGatesOpen(),
-      isMoving: this.knx.isCarGatesMoving(),
-      positionPct: Math.round(this.knx.getCarGatesProgress() * 100),
-      travelDurationSec: KNXPropertyBusController.CAR_GATE_TRAVEL_SEC,
-    };
+      isOpen: this.knx.isCoverOpen(cover.id),
+      isMoving: this.knx.isCoverMoving(cover.id),
+      positionPct: Math.round(this.knx.getCoverProgress(cover.id) * 100),
+      travelDurationSec: cover.travelDurationSec,
+    }));
 
     return [
       ...lightEntities,
       ...sensorEntities,
-      gateEntity,
+      ...coverEntities,
       ...this.protect.getCameras(),
       ...this.access.getAccessPoints(),
     ];

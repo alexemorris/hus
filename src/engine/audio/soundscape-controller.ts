@@ -7,7 +7,7 @@ import type {
 } from '../../core/types/acoustics.ts';
 import { normalizeSoundscapeDescriptor } from '../../core/types/acoustics.ts';
 import type { TimeOfDay } from '../../core/types/scene.ts';
-import { computeLegacyAcousticOcclusion } from './acoustic-occlusion.ts';
+import { computeFallbackAcousticOcclusion } from './acoustic-occlusion.ts';
 import { AudioEngine, audioEngine } from './sound-engine.ts';
 
 export interface AmbientWeatherAudioState {
@@ -192,7 +192,7 @@ export class SoundscapeController {
     _dtSeconds: number,
     timeOfDay: TimeOfDay | number,
     isInterior: boolean,
-    bifoldsOpen: boolean,
+    portalOpen = false,
     weather: AmbientWeatherAudioState = DEFAULT_WEATHER_AUDIO,
     occlusion?: AcousticOcclusionState
   ): void {
@@ -208,7 +208,7 @@ export class SoundscapeController {
       this.engine.getAcousticOcclusion().isInterior !== isInterior
     ) {
       this.engine.applyAcousticOcclusion(
-        computeLegacyAcousticOcclusion(isInterior, bifoldsOpen)
+        computeFallbackAcousticOcclusion(isInterior, portalOpen)
       );
     }
 

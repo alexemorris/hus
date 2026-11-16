@@ -270,7 +270,6 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
         return extra.length > 0 ? [...base, ...extra] : base;
       },
       getInteractions: () => this.devices.interactions,
-      isBifoldsOpen: () => this.devices.isBifoldsOpen(),
       onInteractWithMesh: (mesh) => this.input.triggerInteractiveObject(mesh),
       onDoorBarged: () => {
         this.cutaways.invalidateLodCache();
@@ -363,7 +362,6 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
           sceneRoot: scene,
           lodRegistrations: profile.lodRegistrations,
           interactions: this.devices.interactions,
-          bifolds: this.devices.bifolds,
         })
       );
     }
@@ -401,7 +399,6 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
       roomSwitchLedMats: content.roomSwitchLedMats,
       interactiveMeshes: content.interactiveMeshes,
       getExtraInteractiveMeshes: () => this.devices.interactions.getSmartClickableMeshes(),
-      bifoldPanels: content.bifoldPanels,
       tradeViews: this.trades.controller,
       cutaways: this.cutaways,
       collectDynamicObjects: (target) => {
@@ -859,10 +856,6 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
     const isInterior = currentRoom !== null && !this.lodController.isExteriorZone(currentRoom);
     const activeCam = rig.getActiveCamera();
     this.exteriorPortalsScratch.length = 0;
-    const bifoldPortal = this.devices.bifolds.getAcousticPortalState();
-    if (bifoldPortal) {
-      this.exteriorPortalsScratch.push(bifoldPortal);
-    }
     const doorPortals = this.devices.interactions.getExteriorDoorAcousticPortals(
       this.isInteriorAcousticPoint
     );
@@ -919,7 +912,6 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
     this.environment.updateAmbientAudio(
       clampedAudioDt,
       isInterior,
-      this.devices.isBifoldsOpen(),
       occlusion
     );
     for (let i = 0; i < this.audioEmitters.length; i++) {
@@ -1729,11 +1721,6 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
         retainTextureCanvas(mat[key]);
       }
     };
-
-    retainTextureCanvas(this.content.tvOffTexture);
-    for (const tex of this.content.tvArtTextures) {
-      retainTextureCanvas(tex);
-    }
 
     const batchOpt = this.staticScene.batchOptimizer;
     const mutableMaterials = batchOpt.getMutableMaterials();

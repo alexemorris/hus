@@ -187,7 +187,7 @@ function tokenizeIdentifierWords(name: string): string {
 }
 
 const JOINERY_OR_FURNITURE_WORD_RE =
-  /\b(island|cabinets?|drawers?|doors?|tables?|desks?|bench|benches|sofas?|chairs?|ottomans?|beds?|wardrobes?|dressers?|sideboards?|bookcases?|shelf|shelves|mantels?|mantles?|hearths?|beams?|bressummers?|joists?|rafters?|newels?|handrails?|balustrades?|treads?|risers?|steps?|thresholds?|aga|fridges?|ovens?|washers?|dryers?|sinks?|vanity|vanities|baths?|bathtubs?|radiators?|tvs?|speakers?|subwoofers?|consoles?|clocks?|frames?|art|artworks?|mirrors?|plinths?|worktops?|counters?|countertops?|sills?|cills?|window Boards?|mullions?|transoms?|casements?|sash|sashes|stiles?|rails?|panels?|architraves?|skirtings?|dados?|cornices?|pelmets?|shutters?|pilasters?|columns?|posts?|surrounds?|cheeks?|hobs?|corbels?|lintel Stones?|quoins?|copings?|pier Caps?|gate Piers?|portico Piers?|porticos?|stoves?|firebox|sconces?|lamps?|planters?)\b/i;
+  /\b(island|cabinets?|drawers?|doors?|tables?|desks?|bench|benches|sofas?|chairs?|ottomans?|beds?|wardrobes?|dressers?|sideboards?|bookcases?|shelf|shelves|mantels?|mantles?|hearths?|beams?|bressummers?|joists?|rafters?|newels?|handrails?|balustrades?|treads?|risers?|steps?|thresholds?|cookers?|ranges?|fridges?|ovens?|washers?|dryers?|sinks?|vanity|vanities|baths?|bathtubs?|radiators?|tvs?|speakers?|subwoofers?|consoles?|clocks?|frames?|art|artworks?|mirrors?|plinths?|worktops?|counters?|countertops?|sills?|cills?|window Boards?|mullions?|transoms?|casements?|sash|sashes|stiles?|rails?|panels?|architraves?|skirtings?|dados?|cornices?|pelmets?|shutters?|pilasters?|columns?|posts?|surrounds?|cheeks?|hobs?|corbels?|lintel Stones?|quoins?|copings?|pier Caps?|gate Piers?|portico Piers?|porticos?|stoves?|firebox|sconces?|lamps?|planters?)\b/i;
 
 const STRUCTURAL_WALL_RAW_RE =
   /\b(wall|exteriorBrickWall|brickWall|wallRun|wallSegment|spandrel|gable|chimneyBreast|parapet|partition|lining|plasterLining|plasterWall|floorSlab|ceilingSlab|subSlab|terraceSlab|roofSlope|ceilingSheet)\b|wall[A-Z_0-9]|Slab$/i;
@@ -360,8 +360,8 @@ export function applySelectiveBevelModifier(
       }
       if (
         cur.userData?.interactableId ||
-        cur.userData?.isBifoldDoor ||
-        cur.userData?.isCarGate
+        cur.userData?.isAnimatedDoor ||
+        cur.userData?.isExteriorGate
       ) {
         if (nearestSemanticTag === null) {
           nearestSemanticTag = 'joinery';

@@ -106,7 +106,7 @@ export interface CctvCameraEntityState extends SmartHomeEntityBase {
 
 export type UniFiAccessDeviceModel = 'UA-G2-Pro' | 'UA-Hub-Gate' | 'UA-Hub-Door-Mini';
 export type AccessCredentialMethod = 'NFC Card' | 'Face Unlock' | 'Intercom PIN' | 'License Plate (LPR)' | 'Mobile Tap';
-export type AccessTargetEntry = 'carGates' | 'pedestrianGate' | 'frontDoor';
+export type AccessTargetEntry = string;
 
 export interface AccessPointEntityState extends SmartHomeEntityBase {
   readonly kind: 'accessPoint';

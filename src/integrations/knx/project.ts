@@ -9,6 +9,7 @@ import type {
   BuildingDefinition,
   BuildingId,
   FloorDefinition,
+  FloorId,
   KNXPhysicalDeviceDefinition,
   RoomZoneDefinition,
   RoomZoneId,
@@ -18,9 +19,7 @@ import type { RoomAutomationConfig } from './room-automation.ts';
 /**
  * Home-agnostic description of a KNX installation, in the shape an ETS project exports:
  * actuator channels (circuits), lighting zones with their stored scenes and central objects,
- * push-buttons and presence detectors with individual addresses, parameters and group
- * addresses. A home (e.g. a house definition) supplies one of these and the
- * bus controller (`KNXPropertyBusController`) runs it.
+ * push-buttons, presence detectors, motorized covers/gates, and media endpoints.
  */
 
 /** World-space XZ polygon + height band a presence detector can see (its detection field). */
@@ -65,7 +64,7 @@ export interface KnxActuatorChannelParams {
 export interface KnxLightingZone {
   readonly id: RoomZoneId;
   readonly name: string;
-  /** Extra natural-language names ("barn", "games room") for the AI assistant resolver. */
+  /** Extra natural-language names for the AI assistant resolver. */
   readonly aliases?: readonly string[];
   /** Channels recalled by the zone scenes / night / full objects. */
   readonly circuits: readonly CircuitId[];
@@ -75,10 +74,20 @@ export interface KnxLightingZone {
   readonly nightLevels: Partial<Record<CircuitId, number>>;
   readonly ga: KnxZoneGroupAddresses;
   /**
-   * Zones whose wall toggles drive the legacy 8-scene kitchen actuator scene table
-   * (`ScenePreset`s recalled on the central scene GA) instead of the zone scene list.
+   * Zones whose wall toggles drive the central actuator scene table (`ScenePreset`s recalled on
+   * `centralGa.centralScene`) instead of a per-zone scene list.
    */
   readonly usesCentralSceneTable?: boolean;
+  /**
+   * Optional short-press behaviour override:
+   * - `'cycleScenes'` (default): steps through stored scenes
+   * - `'toggleFirstNight'`: toggles between scene 0 (when off/night) and night mode (when lit)
+   */
+  readonly toggleMode?: 'cycleScenes' | 'toggleFirstNight';
+  /** Additional linked zones driven to 100 % when this zone receives a hold-up gesture. */
+  readonly holdUpLinkedZones?: readonly RoomZoneId[];
+  /** When true, a hold-down gesture on this zone triggers central master-off across all zones. */
+  readonly holdDownMasterOff?: boolean;
 }
 
 /** One gang (rocker / dolly) of a KNX push-button. */
@@ -113,12 +122,6 @@ export interface KnxPresenceDetectorParams {
   readonly luxThreshold: number;
 }
 
-/** Presence detector behaviour shared with legacy room logic (kitchen TV art, PIR circuits). */
-export type KnxPresenceLegacyBinding =
-  | { readonly kind: 'kitchen' }
-  | { readonly kind: 'utility' }
-  | { readonly kind: 'room'; readonly sensorId: RoomMotionSensorId };
-
 /** A ceiling presence detector (PIR + lux) with its detection field. */
 export interface KnxPresenceDetectorDevice {
   readonly pa: string;
@@ -130,7 +133,42 @@ export interface KnxPresenceDetectorDevice {
   readonly position: KnxVector3;
   readonly coverage: KnxCoverageVolume;
   readonly params: KnxPresenceDetectorParams;
-  readonly legacy?: KnxPresenceLegacyBinding;
+  /** True when the detector boots in an initially occupied (latched) state. */
+  readonly initiallyDetected?: boolean;
+  /** Optional link to a room-automation PIR circuit rule. */
+  readonly motionSensorId?: RoomMotionSensorId;
+}
+
+/** Motorized gate, blind, or shutter actuator channel on the KNX bus. */
+export interface KnxCoverChannelConfig {
+  readonly id: string;
+  readonly entityId?: string;
+  readonly name: string;
+  readonly shortName?: string;
+  readonly pa: string;
+  readonly gaCommand: string;
+  readonly gaPosition: string;
+  readonly travelDurationSec: number;
+  readonly buildingId?: BuildingId;
+  readonly floorId?: FloorId;
+  readonly zoneId?: RoomZoneId;
+  /** Optional access-control target entry id bridged by `SmartHomeHub` / `UniFiAccessController`. */
+  readonly targetEntry?: string;
+  readonly aliases?: readonly string[];
+}
+
+/** Indexed media / display / scene endpoint on the KNX bus (DPT 17.001 item selector). */
+export interface KnxMediaEndpointConfig {
+  readonly id: string;
+  readonly name: string;
+  readonly pa: string;
+  readonly gaSelect: string;
+  readonly items: readonly string[];
+  /** Optional automatic item rotation period in seconds while occupied. */
+  readonly autoCycleIntervalSec?: number;
+  /** Optional presence detector PA gating active state and auto-cycling. */
+  readonly linkedPresencePa?: string;
+  readonly aliases?: readonly string[];
 }
 
 /** One row of the ETS-style group address list. */
@@ -143,30 +181,21 @@ export interface KnxGroupAddressEntry {
   readonly description: string;
 }
 
-/** Fixed group addresses the controller uses for central / non-lighting objects. */
+/** Central group addresses used by the bus controller. */
 export interface KnxCentralGroupAddresses {
   readonly masterOff: string;
-  readonly centralScene: string;
   readonly masterFull: string;
-  readonly kitchenPresence: string;
+  readonly centralScene?: string;
   readonly ambientLux: string;
-  readonly utilityPresence: string;
-  readonly tvArt: string;
-  readonly carGatesCommand: string;
-  readonly carGatesPosition: string;
 }
 
-/** Fixed physical addresses of non-lighting / legacy devices. */
+/** Central physical addresses of bus infrastructure devices. */
 export interface KnxCentralDeviceAddresses {
   readonly ipInterface: string;
   readonly aiBridge: string;
-  readonly kitchenSwitchGroup: string;
-  readonly kitchenPresence: string;
-  readonly utilityPresence: string;
-  readonly utilitySwitch: string;
-  readonly courtyardSwitch: string;
-  readonly kitchenActuator: string;
-  readonly carGates: string;
+  readonly centralActuator?: string;
+  readonly centralSwitch?: string;
+  readonly ambientLuxSensor?: string;
 }
 
 export interface KnxProject {
@@ -175,7 +204,7 @@ export interface KnxProject {
   readonly floors: readonly FloorDefinition[];
   readonly rooms: readonly RoomZoneDefinition[];
   readonly circuits: readonly CircuitConfig[];
-  /** Legacy 8-slot central scene table (kitchen open-plan actuator). */
+  /** Optional central scene table recalled via `centralGa.centralScene`. */
   readonly centralScenes: readonly ScenePreset[];
   readonly zones: readonly KnxLightingZone[];
   readonly pushButtons: readonly KnxPushButtonDevice[];
@@ -184,9 +213,13 @@ export interface KnxProject {
   readonly roomAutomation: RoomAutomationConfig;
   readonly centralGa: KnxCentralGroupAddresses;
   readonly centralPa: KnxCentralDeviceAddresses;
+  /** Optional motorized cover / gate channels. */
+  readonly covers?: readonly KnxCoverChannelConfig[];
+  /** Optional indexed media / display endpoints. */
+  readonly mediaEndpoints?: readonly KnxMediaEndpointConfig[];
   /** Default presence hold time (seconds) when a detector does not override it. */
   readonly defaultPresenceHoldTimeSec: number;
-  /** Full ETS-style GA list (lighting, presence, central, HVAC, gates). */
+  /** Full ETS-style GA list. */
   readonly groupAddresses: readonly KnxGroupAddressEntry[];
 }
 

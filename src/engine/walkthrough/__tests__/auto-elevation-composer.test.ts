@@ -226,8 +226,8 @@ export const testHouse = defineHouse({
         isInterior: true,
         bounds: { minX: -3.5, maxX: 3.5, minY: 0, maxY: 2.7, minZ: -3.5, maxZ: 3.5 },
       },
-      upperLanding: {
-        id: 'upperLanding',
+      firstLanding: {
+        id: 'firstLanding',
         name: 'Upper Landing',
         shortName: 'Landing',
         buildingId: 'mainHouse',
@@ -246,7 +246,7 @@ export const testHouse = defineHouse({
         name: 'Shell',
         buildingId: 'mainHouse',
         floorId: 'ground',
-        zoneIds: ['groundHall', 'upperLanding'],
+        zoneIds: ['groundHall', 'firstLanding'],
         build(ctx) {
           const oak = createFinishMaterial('oiled-oak');
           const stair = createStaircase({

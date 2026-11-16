@@ -31,14 +31,14 @@ function createTestLightGroups(): LightGroupMap {
   barnLight.updateMatrixWorld(true);
 
   return {
-    islandPendants: {
+    kitchenPendants: {
       lights: [kitchenLight],
       emissives: [],
       cones: [],
       pools: [],
       maxIntensity: 4.0,
     },
-    barnPoolTableLight: {
+    studioFeatureLight: {
       lights: [barnLight],
       emissives: [],
       cones: [],
@@ -54,7 +54,7 @@ const TEST_ROOMS: readonly BakedRoomVolumeBounds[] = [
     bounds: { minX: -4, maxX: 4, minY: 0, maxY: 2.8, minZ: -4, maxZ: 4 },
   },
   {
-    zoneId: 'outbuildingBarn',
+    zoneId: 'studio',
     bounds: { minX: -7, maxX: 1, minY: 0, maxY: 3.5, minZ: 14, maxZ: 20 },
   },
 ];
@@ -74,11 +74,11 @@ describe('BakedLightVolumeController', () => {
   it('updates baked 3D irradiance dynamically when KNX circuits dim and occludes across walls/slabs', () => {
     const controller = new BakedLightVolumeController(createTestLightGroups(), TEST_ROOMS);
 
-    const allOff = { islandPendants: 0, barnPoolTableLight: 0 } as unknown as CircuitLevels;
+    const allOff = { kitchenPendants: 0, studioFeatureLight: 0 } as unknown as CircuitLevels;
     controller.updateFromCircuitLevels(allOff, 'night');
     expect(controller.sampleAtWorldPosition(0, 1.2, 0).r).toBe(0);
 
-    const kitchenOn = { islandPendants: 100, barnPoolTableLight: 0 } as unknown as CircuitLevels;
+    const kitchenOn = { kitchenPendants: 100, studioFeatureLight: 0 } as unknown as CircuitLevels;
     controller.updateFromCircuitLevels(kitchenOn, 'night');
 
     const kitchenLit = controller.sampleAtWorldPosition(0, 1.2, 0);
@@ -92,14 +92,14 @@ describe('BakedLightVolumeController', () => {
 
   it('incrementally updates single-circuit dimming identically to full rebuilds and skips no-op texture uploads', () => {
     const controller = new BakedLightVolumeController(createTestLightGroups(), TEST_ROOMS);
-    const baseLevels = { islandPendants: 60, barnPoolTableLight: 40 } as unknown as CircuitLevels;
+    const baseLevels = { kitchenPendants: 60, studioFeatureLight: 40 } as unknown as CircuitLevels;
     controller.updateFromCircuitLevels(baseLevels, 'dusk');
 
     const versionAfterFirst = SHARED_BAKED_VOLUME_TEXTURE.version;
     controller.updateFromCircuitLevels(baseLevels, 'dusk');
     expect(SHARED_BAKED_VOLUME_TEXTURE.version).toBe(versionAfterFirst);
 
-    const dimmedLevels = { islandPendants: 25, barnPoolTableLight: 40 } as unknown as CircuitLevels;
+    const dimmedLevels = { kitchenPendants: 25, studioFeatureLight: 40 } as unknown as CircuitLevels;
     controller.updateFromCircuitLevels(dimmedLevels, 'dusk');
     expect(SHARED_BAKED_VOLUME_TEXTURE.version).toBeGreaterThan(versionAfterFirst);
     const incrementalSnapshot = new Uint8Array(SHARED_BAKED_VOLUME_TEXTURE.image.data as Uint8Array);
@@ -112,7 +112,7 @@ describe('BakedLightVolumeController', () => {
 
     // Dimming back to 0 leaves exact zero irradiance without residual float drift
     controller.updateFromCircuitLevels(
-      { islandPendants: 0, barnPoolTableLight: 40 } as unknown as CircuitLevels,
+      { kitchenPendants: 0, studioFeatureLight: 40 } as unknown as CircuitLevels,
       'dusk'
     );
     expect(controller.sampleAtWorldPosition(0, 1.2, 0).r).toBe(0);
@@ -120,7 +120,7 @@ describe('BakedLightVolumeController', () => {
 
   it('always refreshes CircuitLightingController light.intensity when pointLightBudgetWeight changes at identical levels', () => {
     const lightGroups = createTestLightGroups();
-    const light = lightGroups.islandPendants!.lights[0]!;
+    const light = lightGroups.kitchenPendants!.lights[0]!;
     const scene = new THREE.Scene();
     scene.add(light);
 
@@ -136,13 +136,11 @@ describe('BakedLightVolumeController', () => {
         maxEmissiveIntensity: 1.8,
       } as unknown as CircuitFixtureAppearance,
       fixtureAppearanceOverrides: {},
-      tvArtTextures: [],
-      tvOffTexture: new THREE.Texture() as unknown as THREE.CanvasTexture,
       sceneRoot: scene,
       lodRegistrations: [],
     });
 
-    const levels = { islandPendants: 80, barnPoolTableLight: 0 } as unknown as CircuitLevels;
+    const levels = { kitchenPendants: 80, studioFeatureLight: 0 } as unknown as CircuitLevels;
     circuitController.applyLevels(levels);
     const fullIntensity = light.intensity;
     expect(fullIntensity).toBeGreaterThan(0);
@@ -166,21 +164,21 @@ describe('BakedLightVolumeController', () => {
     bifoldGlass.position.set(0, 1.25, 3.98);
     scene.add(bifoldGlass);
 
-    const courtyardRoom: BakedRoomVolumeBounds = {
-      zoneId: 'courtyard',
+    const terraceRoom: BakedRoomVolumeBounds = {
+      zoneId: 'terrace',
       isInterior: false,
       bounds: { minX: -6, maxX: 6, minY: 0, maxY: 3.0, minZ: 4.1, maxZ: 12.0 },
     };
 
     const controller = new BakedLightVolumeController(
       createTestLightGroups(),
-      [...TEST_ROOMS, courtyardRoom],
+      [...TEST_ROOMS, terraceRoom],
       scene
     );
     expect(controller.getBakedDaylightPortalCount()).toBe(1);
     expect(controller.getBakedDaylightVoxelCount()).toBeGreaterThan(0);
 
-    const allOff = { islandPendants: 0, barnPoolTableLight: 0 } as unknown as CircuitLevels;
+    const allOff = { kitchenPendants: 0, studioFeatureLight: 0 } as unknown as CircuitLevels;
     controller.updateFromCircuitLevels(allOff, 'day');
     controller.setDaylightState(1.0, [1.0, 0.98, 0.94]);
 
@@ -191,7 +189,7 @@ describe('BakedLightVolumeController', () => {
     expect(nearWindow.r).toBeGreaterThan(0.25);
     expect(deepRoom.r).toBeGreaterThan(0.08);
     expect(nearWindow.r).toBeGreaterThan(deepRoom.r);
-    // Exterior courtyard/patio receives strictly 0 extra irradiance
+    // Exterior terrace/patio receives strictly 0 extra irradiance
     expect(exteriorPatio.r).toBe(0);
     expect(exteriorPatio.g).toBe(0);
     expect(exteriorPatio.b).toBe(0);
@@ -230,7 +228,7 @@ describe('BakedLightVolumeController', () => {
     const controller = new BakedLightVolumeController(createTestLightGroups(), TEST_ROOMS, scene);
     expect(SHARED_DAYLIGHT_VOLUME_TEXTURE.version).toBeGreaterThan(daylightVerBefore);
 
-    const levels = { islandPendants: 50, barnPoolTableLight: 0 } as unknown as CircuitLevels;
+    const levels = { kitchenPendants: 50, studioFeatureLight: 0 } as unknown as CircuitLevels;
     controller.updateFromCircuitLevels(levels, 'dusk');
     const knxVerBeforeTransition = SHARED_BAKED_VOLUME_TEXTURE.version;
     const dlVerAfterBake = SHARED_DAYLIGHT_VOLUME_TEXTURE.version;
@@ -249,7 +247,7 @@ describe('BakedLightVolumeController', () => {
 
   it('updates SHARED_POINT_LIGHT_ACTIVITY uniform flag and mutates light.userData in place without reallocating', () => {
     const lightGroups = createTestLightGroups();
-    const light = lightGroups.islandPendants!.lights[0]!;
+    const light = lightGroups.kitchenPendants!.lights[0]!;
     const scene = new THREE.Scene();
     scene.add(light);
 
@@ -265,18 +263,16 @@ describe('BakedLightVolumeController', () => {
         maxEmissiveIntensity: 1.8,
       } as unknown as CircuitFixtureAppearance,
       fixtureAppearanceOverrides: {},
-      tvArtTextures: [],
-      tvOffTexture: new THREE.Texture() as unknown as THREE.CanvasTexture,
       sceneRoot: scene,
       lodRegistrations: [],
     });
 
     const userDataRef = light.userData;
-    circuitController.applyLevels({ islandPendants: 0, barnPoolTableLight: 0 } as unknown as CircuitLevels);
+    circuitController.applyLevels({ kitchenPendants: 0, studioFeatureLight: 0 } as unknown as CircuitLevels);
     expect(SHARED_POINT_LIGHT_ACTIVITY.x).toBe(0);
     expect(light.userData).toBe(userDataRef);
 
-    circuitController.applyLevels({ islandPendants: 75, barnPoolTableLight: 0 } as unknown as CircuitLevels);
+    circuitController.applyLevels({ kitchenPendants: 75, studioFeatureLight: 0 } as unknown as CircuitLevels);
     expect(SHARED_POINT_LIGHT_ACTIVITY.x).toBe(1);
     expect(light.userData).toBe(userDataRef);
   });
@@ -293,8 +289,8 @@ describe('BakedLightVolumeController', () => {
     expect(SHARED_DAYLIGHT_VOLUME_TEXTURE.version).toBeGreaterThan(prevVersion);
 
     const lightGroups = createTestLightGroups();
-    const kitchenLight = lightGroups.islandPendants!.lights[0]!;
-    const barnLight = lightGroups.barnPoolTableLight!.lights[0]!;
+    const kitchenLight = lightGroups.kitchenPendants!.lights[0]!;
+    const barnLight = lightGroups.studioFeatureLight!.lights[0]!;
     const scene = new THREE.Scene();
     scene.add(kitchenLight, barnLight);
 
@@ -310,8 +306,6 @@ describe('BakedLightVolumeController', () => {
         maxEmissiveIntensity: 1.8,
       } as unknown as CircuitFixtureAppearance,
       fixtureAppearanceOverrides: {},
-      tvArtTextures: [],
-      tvOffTexture: new THREE.Texture() as unknown as THREE.CanvasTexture,
       sceneRoot: scene,
       lodRegistrations: [],
     });
@@ -319,8 +313,8 @@ describe('BakedLightVolumeController', () => {
     // Even if raw levels contain 6052% or -5972% or NaN, PointLight intensities stay finite and bounded (never 254x or NaN)
     circuitController.setTimeOfDay("day");
     circuitController.applyLevels({
-      islandPendants: 6052,
-      barnPoolTableLight: -5972,
+      kitchenPendants: 6052,
+      studioFeatureLight: -5972,
     } as unknown as CircuitLevels);
 
     expect(Number.isFinite(kitchenLight.intensity)).toBe(true);

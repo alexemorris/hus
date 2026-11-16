@@ -3,21 +3,31 @@ export {
   encodeGroupAddress,
   encodePhysicalAddress,
   formatFrameHex,
+  type CompileEEPROMOptions,
 } from './addressing.ts';
 export {
   KNXAIAssistant,
   VoiceRecognitionController,
+  buildKnxAiTools,
   type AIAssistantExecutionResult,
   type ExecutedToolCallRecord,
+  type KNXFunctionDeclaration,
+  type KNXToolCall,
+  type KnxAssistantBus,
+  type KnxAssistantDevice,
+  type KnxAssistantEnvironment,
+  type KnxAssistantProject,
 } from './ai-assistant.ts';
-export { OUTDOOR_CIRCUIT_IDS, SCENE_CIRCUIT_IDS, SWITCH_SCENE_COUNT } from './scene-table.ts';
+export { SWITCH_SCENE_COUNT } from './scene-table.ts';
 export { exportDeviceCsv, exportGroupAddressCsv } from './ga-export.ts';
 export { MotionPresenceBridge, isInsideCoverage, isPointInPolygonXZ } from './motion-presence.ts';
 export { findCircuit, findZone } from './project.ts';
 export type {
+  KnxCoverChannelConfig,
   KnxCoverageVolume,
   KnxGroupAddressEntry,
   KnxLightingZone,
+  KnxMediaEndpointConfig,
   KnxPresenceDetectorDevice,
   KnxProject,
   KnxPushButtonDevice,
@@ -41,7 +51,6 @@ export {
 } from './dpt-codec.ts';
 export {
   KNXPropertyBusController,
-  TV_ARTWORKS,
   type KnxPresenceState,
   type KnxZoneStateView,
 } from './emulator.ts';

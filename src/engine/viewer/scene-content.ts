@@ -7,7 +7,6 @@ import type { RoomFinishSpec, RoomManifestEntry } from '../../core/types/twin-ux
 import type { RoomZoneLodRegistration } from '../../core/entities.ts';
 import type { FloorDefinition, Vec3Tuple } from '../../core/types/scene.ts';
 import type {
-  BifoldPanelRef,
   CutawayWallGroups,
   FloorBuilderScope,
   FloorLayerEntry,
@@ -16,11 +15,7 @@ import type {
   SceneBuilderContext,
   ZoneIndicatorMaterials,
 } from './scene-types.ts';
-import {
-  createRadialGlowTexture,
-  createTVArtGalleryTextures,
-  createTVOffTexture,
-} from '../textures/procedural-textures.ts';
+import { createRadialGlowTexture } from '../textures/procedural-textures.ts';
 import { bindSmartAssetsInScene } from '../assets/smart-asset.ts';
 import { SceneInteractionManager } from '../interaction/interaction-manager.ts';
 import {
@@ -219,15 +214,12 @@ export interface RoomSwitchLedBinding {
 export interface PropertySceneContent<TSecurity extends SecurityOverlay3D> {
   readonly lightGroups: LightGroupMap;
   readonly glowPoolGeometry: THREE.PlaneGeometry;
-  readonly bifoldPanels: readonly BifoldPanelRef[];
   readonly interactiveMeshes: THREE.Object3D[];
   readonly interactions: SceneInteractionManager;
   readonly roomSwitchLedMats: readonly RoomSwitchLedBinding[];
   readonly indicatorMats: ZoneIndicatorMaterials;
   readonly security: TSecurity;
   readonly ufhSystem: UfhSystemOverlay3D | null;
-  readonly tvArtTextures: readonly THREE.CanvasTexture[];
-  readonly tvOffTexture: THREE.CanvasTexture;
   readonly variations: readonly RoomVariationGroup[];
 }
 
@@ -617,7 +609,6 @@ export function buildPropertySceneContent<TSecurity extends SecurityOverlay3D>(
   const glowPoolGeometry = new THREE.PlaneGeometry(1, 1);
   const lightGroups = createLightGroups(options.profile.circuitMaxIntensity);
 
-  const bifoldPanels: BifoldPanelRef[] = [];
   const interactiveMeshes: THREE.Object3D[] = [];
   const interactions = new SceneInteractionManager(interactiveMeshes);
   if (options.profile.doorPolicy) interactions.setDoorPolicy(options.profile.doorPolicy);
@@ -660,7 +651,6 @@ export function buildPropertySceneContent<TSecurity extends SecurityOverlay3D>(
     floor: resolveFloorScope,
     ceilingCutaway: options.ceilingCutaway,
     cutawayWallGroups: layers.cutawayWallGroups,
-    bifoldPanels,
     interactiveMeshes,
     interactions,
     lightGroups,
@@ -700,10 +690,7 @@ export function buildPropertySceneContent<TSecurity extends SecurityOverlay3D>(
     },
   };
 
-  const tvArtTextures = createTVArtGalleryTextures();
-  const tvOffTexture = createTVOffTexture();
-
-  // Build all registered 3D zone modules across the property (main house, annex & grounds).
+  // Build all registered 3D zone modules across the property.
   const indicatorMats = options.registry.buildAllZones(ctx);
   return finalizePropertySceneContent(
     layers,
@@ -712,13 +699,10 @@ export function buildPropertySceneContent<TSecurity extends SecurityOverlay3D>(
     variationRegistry,
     lightGroups,
     glowPoolGeometry,
-    bifoldPanels,
     interactiveMeshes,
     interactions,
     roomSwitchLedMats,
-    indicatorMats,
-    tvArtTextures,
-    tvOffTexture
+    indicatorMats
   );
 }
 
@@ -729,13 +713,10 @@ function finalizePropertySceneContent<TSecurity extends SecurityOverlay3D>(
   variationRegistry: VariationRegistry,
   lightGroups: LightGroupMap,
   glowPoolGeometry: THREE.PlaneGeometry,
-  bifoldPanels: BifoldPanelRef[],
   interactiveMeshes: THREE.Object3D[],
   interactions: SceneInteractionManager,
   roomSwitchLedMats: RoomSwitchLedBinding[],
-  indicatorMats: ZoneIndicatorMaterials,
-  tvArtTextures: readonly THREE.CanvasTexture[],
-  tvOffTexture: THREE.CanvasTexture
+  indicatorMats: ZoneIndicatorMaterials
 ): PropertySceneContent<TSecurity> {
   const { scene } = layers;
   const security = options.profile.buildSecurityOverlay(ctx);
@@ -764,15 +745,12 @@ function finalizePropertySceneContent<TSecurity extends SecurityOverlay3D>(
   return {
     lightGroups,
     glowPoolGeometry,
-    bifoldPanels,
     interactiveMeshes,
     interactions,
     roomSwitchLedMats,
     indicatorMats,
     security,
     ufhSystem,
-    tvArtTextures,
-    tvOffTexture,
     variations: variationRegistry.getGroups(),
   };
 }
@@ -810,7 +788,6 @@ export async function buildPropertySceneContentAsync<TSecurity extends SecurityO
   const glowPoolGeometry = new THREE.PlaneGeometry(1, 1);
   const lightGroups = createLightGroups(options.profile.circuitMaxIntensity);
 
-  const bifoldPanels: BifoldPanelRef[] = [];
   const interactiveMeshes: THREE.Object3D[] = [];
   const interactions = new SceneInteractionManager(interactiveMeshes);
   if (options.profile.doorPolicy) interactions.setDoorPolicy(options.profile.doorPolicy);
@@ -853,7 +830,6 @@ export async function buildPropertySceneContentAsync<TSecurity extends SecurityO
     floor: resolveFloorScope,
     ceilingCutaway: options.ceilingCutaway,
     cutawayWallGroups: layers.cutawayWallGroups,
-    bifoldPanels,
     interactiveMeshes,
     interactions,
     lightGroups,
@@ -894,9 +870,6 @@ export async function buildPropertySceneContentAsync<TSecurity extends SecurityO
     ...(options.yieldIfNeeded ? { yieldIfNeeded: options.yieldIfNeeded } : {}),
   };
 
-  const tvArtTextures = createTVArtGalleryTextures();
-  const tvOffTexture = createTVOffTexture();
-
   const indicatorMats = await options.registry.buildAllZonesAsync(ctx, {
     ...(options.yieldIfNeeded ? { yieldIfNeeded: options.yieldIfNeeded } : {}),
     ...(options.onProgress ? { onProgress: options.onProgress } : {}),
@@ -910,12 +883,9 @@ export async function buildPropertySceneContentAsync<TSecurity extends SecurityO
     variationRegistry,
     lightGroups,
     glowPoolGeometry,
-    bifoldPanels,
     interactiveMeshes,
     interactions,
     roomSwitchLedMats,
-    indicatorMats,
-    tvArtTextures,
-    tvOffTexture
+    indicatorMats
   );
 }

@@ -22,7 +22,6 @@ export interface ViewerWalkthroughHost {
   /** Resolved lazily: content is built after the walkthrough controller. */
   getInteractiveMeshes(): readonly THREE.Object3D[];
   getInteractions(): SceneInteractionManager;
-  isBifoldsOpen(): boolean;
   onInteractWithMesh(mesh: THREE.Object3D): void;
   /** Optional hook when walkthrough barges a door open so portal/room LOD updates immediately. */
   onDoorBarged?(): void;
@@ -47,7 +46,7 @@ export function createViewerWalkthrough(host: ViewerWalkthroughHost): Walkthroug
     getRoomFloorSurface: (roomId) => host.getRoomFloorSurface?.(roomId),
     getInteractiveMeshes: () => host.getInteractiveMeshes(),
     describeInteractable: (mesh) =>
-      host.getInteractions().describeInteractable(mesh, host.isBifoldsOpen()),
+      host.getInteractions().describeInteractable(mesh),
     onInteractWithMesh: (mesh) => host.onInteractWithMesh(mesh),
     onTriggerCustomInteraction: (id) => rendered(host.getInteractions().triggerCustomInteraction(id)),
     getCustomInteractionElapsedSec: (id) => host.getInteractions().getCustomInteractionElapsedSec(id),

@@ -138,12 +138,12 @@ export function computeAcousticOcclusion(
 }
 
 /**
- * Fallback occlusion estimate for legacy callers that only supply `(isInterior, bifoldsOpen)`
+ * Fallback occlusion estimate for callers that only supply `(isInterior, portalOpen)`
  * without explicit portal geometry or room acoustic metadata.
  */
-export function computeLegacyAcousticOcclusion(
+export function computeFallbackAcousticOcclusion(
   isInterior: boolean,
-  bifoldsOpen: boolean
+  portalOpen = false
 ): AcousticOcclusionState {
   if (!isInterior) {
     return OUTDOOR_ACOUSTIC_OCCLUSION;
@@ -151,8 +151,8 @@ export function computeLegacyAcousticOcclusion(
   return computeAcousticOcclusion({
     listenerPos: [0, 1.5, 0],
     isInterior: true,
-    exteriorPortals: bifoldsOpen
-      ? [{ id: 'legacy-bifolds', position: [0, 1.5, 4.2], areaM2: 7.5, openness: 1 }]
+    exteriorPortals: portalOpen
+      ? [{ id: 'fallback-portal', position: [0, 1.5, 4.2], areaM2: 7.5, openness: 1 }]
       : [],
   });
 }

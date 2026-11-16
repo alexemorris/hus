@@ -2,103 +2,17 @@ import type { BuildingId, FloorId, RoomZoneId } from './topology.ts';
 import type { LightingLayerKind } from './knx-zones.ts';
 
 /**
- * Strict TypeScript domain models for the Hus KNX TP1 / cEMI Bus & Digital Twin.
+ * Home-agnostic TypeScript domain models for the Hus KNX TP1 / cEMI Bus & Digital Twin.
  */
 
-export type KitchenSceneCircuitId =
-  | 'islandPendants'
-  | 'sittingPendants'
-  | 'bifoldUplights'
-  | 'spotlights'
-  | 'underCabinet'
-  | 'aboveCabinet';
+/** Lighting circuit identifier defined by the active home. */
+export type CircuitId = string;
 
-export type OutdoorCircuitId = 'courtyardFestoons' | 'reclaimedLampPost';
+/** Room PIR presence sensor identifier handled by generic room automation. */
+export type RoomMotionSensorId = string;
 
-export type RoomPendantCircuitId =
-  | 'diningPendant'
-  | 'bootLobbyPendant'
-  | 'hallPendant'
-  | 'frontRoomPendant'
-  | 'entranceHallPendant'
-  | 'livingRoomPendant'
-  | 'studyPendant'
-  | 'mainBedroomPendant'
-  | 'familyBathroomPendant'
-  | 'upperLandingPendant'
-  | 'bedroom2Pendant'
-  | 'bedroom3Pendant'
-  | 'bedroom4Pendant'
-  | 'hallStairLeds'
-  | 'hallBeamLeds'
-  | 'hallLamps5A'
-  | 'walkInCupboardLeds'
-  | 'livingRoomShelfLeds'
-  | 'livingRoomTvBacklight'
-  | 'livingRoomWallLights'
-  | 'livingRoomDownlights'
-  | 'sittingRoomLamps5A'
-  | 'sittingRoomShelfLeds'
-  | 'upperLandingSconces';
-
-/** Room circuits switched automatically by a room PIR (see `MOTION_CIRCUIT_RULES`). */
-export type MotionCircuitId = 'wineCellarLeds' | 'cloakroomWcLights';
-
-/** Room PIR presence sensors handled by the generic room automation. */
-export type RoomMotionSensorId = 'wineCellar' | 'cloakroomWc';
-
-export type OutbuildingCircuitId =
-  | 'gymSpotsAndBattens'
-  | 'gymWallAndCoveLights'
-  | 'garageHighBayLights'
-  | 'garageBenchAndShower'
-  | 'barnBarsAndLamps5A'
-  | 'mezzanineSconcesAndAmbient'
-  | 'mezzanineLamps5A'
-  | 'stableOfficeSpotlights'
-  | 'stableOfficeWallsAndLamps5A'
-  | 'stableSuiteDownlights'
-  | 'stableSuiteLamps5A'
-  | 'gymMirrorBacklights'
-  | 'gymCoveLeds'
-  | 'gymTrussSpots'
-  | 'garageShowerLights'
-  | 'garageTrussSpots'
-  | 'storeLoftLeds'
-  | 'barnCoveLeds'
-  | 'barnWallSconces'
-  | 'barnStairLeds'
-  | 'barnPoolTableLight'
-  | 'barnPictureLights'
-  | 'mezzanineDownlights'
-  | 'mezzanineBookcaseLight'
-  | 'stableCloakroomLights'
-  | 'stableOfficeLamps5A'
-  | 'stableEnsuiteLights'
-  | 'stableBalconyLights';
-
-/** Exterior feature circuits outside the legacy kitchen scene `outdoorLevels`. */
-export type ExteriorFeatureCircuitId = 'pergolaFestoons' | 'stableExternalWallLights';
-
-export type CircuitId =
-  | KitchenSceneCircuitId
-  | 'utilitySpotlights'
-  | 'familyRoomSpots'
-  | 'diningPictureLight'
-  | 'diningFairyLights'
-  | RoomPendantCircuitId
-  | MotionCircuitId
-  | 'entranceHallUplights'
-  | OutdoorCircuitId
-  | ExteriorFeatureCircuitId
-  | OutbuildingCircuitId
-  | (string & {});
-
-export type SceneCircuitLevels = Record<KitchenSceneCircuitId, number>;
-export type OutdoorCircuitLevels = Record<OutdoorCircuitId, number>;
 export type CircuitLevels = Record<CircuitId, number>;
 
-/** Lighting fitting type carried by a single circuit. */
 /** Fitting type carried by one circuit — the same vocabulary the zone UI groups layers by. */
 export type CircuitKind = LightingLayerKind;
 
@@ -118,11 +32,11 @@ export interface CircuitConfig {
   readonly isSceneMember: boolean;
   /** Fitting type on this channel (one type per circuit) — drives UI grouping and audits. */
   readonly kind?: CircuitKind;
-  /** False for switched-only channels (5 A lamp sockets on a relay, LED drivers without DALI). */
+  /** False for switched-only channels (lamp sockets on a relay, non-dimmable LED drivers). */
   readonly dimmable?: boolean;
   /** Level the actuator channel boots at (percent). Defaults to 85. */
   readonly defaultLevel?: number;
-  /** Extra natural-language names ("island pendants", "barn downlights") for the AI resolver. */
+  /** Extra natural-language names for the AI resolver. */
   readonly aliases?: readonly string[];
 }
 
@@ -143,11 +57,6 @@ export interface ZoneScenePreset {
  */
 export type ZoneLightingMode = 'scene' | 'full' | 'night' | 'manual' | 'off';
 
-export interface AuxiliaryCircuitLevels {
-  utilitySpotlights?: number;
-  familyRoomSpots?: number;
-}
-
 export interface ScenePreset {
   readonly index: number;
   readonly number: number;
@@ -155,9 +64,9 @@ export interface ScenePreset {
   readonly name: string;
   readonly shortLabel: string;
   readonly isSwitchScene: boolean;
-  levels: SceneCircuitLevels;
-  outdoorLevels?: OutdoorCircuitLevels;
-  auxiliaryLevels?: AuxiliaryCircuitLevels;
+  levels: Record<CircuitId, number>;
+  outdoorLevels?: Record<CircuitId, number>;
+  auxiliaryLevels?: Partial<Record<CircuitId, number>>;
 }
 
 export type ShortPressMode = 'cycle3' | 'toggle13';
@@ -219,7 +128,7 @@ export type KNXBusEvent =
         | 'sceneRecall'
         | 'circuitLevel'
         | 'sensorChange'
-        | 'carGateChange'
+        | 'actuatorChange'
         | 'externalBusSync';
     }
   | { readonly type: 'eepromChanged' }

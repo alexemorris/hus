@@ -4,10 +4,11 @@ export { distanceToPolygonXZ } from '../integrations/knx/motion-presence.ts';
 export type {
   KnxCentralDeviceAddresses,
   KnxCentralGroupAddresses,
-  KnxPresenceLegacyBinding,
+  KnxCoverChannelConfig,
+  KnxMediaEndpointConfig,
 } from '../integrations/knx/project.ts';
 export type { RoomAutomationConfig } from '../integrations/knx/room-automation.ts';
-export { SmartHomeHub } from '../integrations/smart-home-hub.ts';
+export { SmartHomeHub, type SmartHomeAutomationRules } from '../integrations/smart-home-hub.ts';
 export type * from '../core/types/knx.ts';
 export * from '../core/types/knx-zones.ts';
 export type {

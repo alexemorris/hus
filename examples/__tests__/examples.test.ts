@@ -66,7 +66,6 @@ function createHarnessContext(circuitIds: readonly string[]): {
     ceilingMeshGroup,
     ceilingCutaway: false,
     cutawayWallGroups,
-    bifoldPanels: [],
     interactiveMeshes,
     interactions,
     lightGroups: lightGroups as SceneBuilderContext['lightGroups'],

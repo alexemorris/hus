@@ -158,6 +158,7 @@ export function buildCorstonToggleSwitch(
   group.rotation.y = options.rotY ?? facingToRotY(options.facing ?? 'south');
   group.userData = {
     ...(mountedInZoneId ? { zone: mountedInZoneId } : {}),
+    tradeCategory: 'smart',
     knxPushButtonPa: switchPa,
     switchLocation: location,
     ...(cutawayWall ? { isCutawayWall: true, cutawayWall } : {}),

@@ -202,10 +202,9 @@ function makeBaseApi(groups: RoomVariationGroupInfo[]): {
       getTransport: () => ({ mode: 'simulation' as const, status: 'connected' as const }),
     },
     devices: {
-      handleInteractable: () => false, onChanged: () => () => {}, isGatesOpen: () => false, isGatesMoving: () => false,
-      getGatesStatusLabel: () => 'Closed', toggleGates: () => false, isBifoldsOpen: () => false, toggleBifolds: () => false,
-      isTvArtMode: () => false, getTvArtTitle: () => '', cycleTvArt: vi.fn(), isCourtyardLightOn: () => false,
-      getCourtyardModeLabel: () => 'Off', pressCourtyardSwitch: vi.fn(), hasUfh: () => false, ufhZones: () => [],
+      handleInteractable: () => false, onChanged: () => () => {},
+      customDevices: () => [], triggerCustomDevice: () => false,
+      hasUfh: () => false, ufhZones: () => [],
       ufhZoneForRoom: () => undefined, toggleUfhZone: () => false, setAllUfhZones: vi.fn(), isUfhLayerVisible: () => false,
       setUfhLayerVisible: vi.fn(), toggleUfhLayer: () => false,
     },

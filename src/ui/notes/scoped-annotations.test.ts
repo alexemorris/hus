@@ -208,7 +208,7 @@ describe('Per-house scoped annotations & legacy migration', () => {
       makeRecord(2, 'houseDrawing', 'Drawing Room', 'Georgian drawing room chandelier'),
       makeRecord(3, 'stahlPoolTerrace', 'Pool Terrace', 'Stahl cantilever soffit wash'),
       makeRecord(4, 'flatLivingKitchen', 'Living & Kitchen', 'Apartment courtyard mullion'),
-      makeRecord(5, 'bootLobby', 'Boot Lobby', 'Manor boot bench joinery'),
+      makeRecord(5, 'mudroom', 'Boot Lobby', 'Manor boot bench joinery'),
     ];
 
     const storage = createMemoryStorage({

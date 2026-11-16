@@ -1,4 +1,4 @@
-import type { RoomVariationGroup, RoomVariationGroupInput } from "../variations/room-variation-controller.ts";
+import type { RoomVariationGroup, RoomVariationGroupInput } from '../variations/room-variation-controller.ts';
 import type { RoomManifestEntry } from '../../core/types/twin-ux.ts';
 import * as THREE from 'three';
 import type {
@@ -8,11 +8,10 @@ import type {
   RoomZoneLodRegistration,
 } from '../../core/entities.ts';
 import type { CircuitId } from '../../core/types/knx.ts';
-import type { SceneBuilderContext, ZoneIndicatorMaterials } from './scene-types.ts';
+import type { SceneBuilderContext } from './scene-types.ts';
 import type { FloorDefinition, FloorViewMode } from '../../core/types/scene.ts';
 import type { RoomZoneId } from '../../core/types/topology.ts';
 import type { DoorPolicy } from '../interaction/handlers/door-policy.ts';
-import type { BifoldDoorAnimator } from '../interaction/bifold-animator.ts';
 import type { InteractionRegistry } from '../interaction/interaction-registry.ts';
 import type { TerrainSurfaceSampler } from '../../core/geo/terrain-modifiers.ts';
 import type { SoundscapeDescriptor } from '../../core/types/acoustics.ts';
@@ -22,7 +21,8 @@ import type { PortalVisibilitySolver } from '../lod/portal-visibility-solver.ts'
 import type { HouseWalkthroughHooks } from '../walkthrough/walkthrough-controller.ts';
 import type { SceneZoneRegistry } from './scene-zone-registry.ts';
 
-export type UfhZoneId = 'ufhZone1' | 'ufhZone2' | 'ufhZone3' | 'ufhZone4';
+/** Underfloor heating zone identifier (defined per home). */
+export type UfhZoneId = string;
 
 export type HeatingStartMode = 'setback' | 'cold';
 
@@ -42,9 +42,9 @@ export interface RoomThermalProfile {
   readonly volumeM3: number;
   readonly emitterOutputW: number;
   readonly specificOutputWPerM2: number;
-  /** Fabric + infiltration heat-loss coefficient (W/K) for 1600s/1700s solid brick + double glazing */
+  /** Fabric + infiltration heat-loss coefficient (W/K) */
   readonly heatLossWPerK: number;
-  /** Effective thermal capacitance (Wh/K) of air + internal masonry skin + active screed/emitter */
+  /** Effective thermal capacitance (Wh/K) of air + internal envelope + active screed/emitter */
   readonly thermalCapacitanceWhPerK: number;
   /** Hydraulic + screed conduction dead-time lag before room air begins rising (minutes) */
   readonly emitterLagMinutes: number;
@@ -110,15 +110,12 @@ export interface SecurityOverlay3D {
   syncAccessPoints(states: readonly AccessPointEntityState[]): void;
 }
 
-/** Keys of `ZoneIndicatorMaterials` that represent multi-circuit wall switch LEDs. */
-export type SwitchLedIndicatorKey = Extract<
-  keyof ZoneIndicatorMaterials,
-  'wallSwitchLedMat' | 'utilitySwitchLedMat' | 'courtyardSwitchLedMat'
->;
+/** Identifier key into `ZoneIndicatorMaterials.switchLedMats`. */
+export type SwitchLedIndicatorKey = string;
 
 /**
  * A wall switch whose status LED lights when any of `circuits` is above 1%.
- * Rules are applied in array order.
+ * Rules are applied in array order against `ZoneIndicatorMaterials.switchLedMats[material]`.
  */
 export interface SwitchLedIndicatorRule {
   readonly material: SwitchLedIndicatorKey;
@@ -165,16 +162,12 @@ export interface BatchOptimizerHooks {
   isUfhProtectedFloor?(mesh: THREE.Mesh): boolean;
   /** Meshes whose materials are mutated at runtime and must not be deduplicated or merged. */
   isDynamicMaterialMesh?(mesh: THREE.Mesh): boolean;
-  /** Meshes of a detached building, batched separately from the main house. */
+  /** Meshes of a detached building, batched separately from the primary building. */
   isDetachedBuildingMesh?(meshName: string, groupPrefix: string): boolean;
   /** Groups that move rigidly at runtime and are merged per group rather than per room. */
   isRigidDynamicGroup?(group: THREE.Group): boolean;
 }
 
-/**
- * Camera, orbit focus point and unit view direction on the XZ plane, expressed in the local frame
- * of the static cutaway wall container (`userData.containerOffset` / `containerRotationY`).
- */
 export interface StaticCutawayView {
   readonly floorViewMode: FloorViewMode;
   readonly isTopDownPlan: boolean;
@@ -186,7 +179,6 @@ export interface StaticCutawayView {
   readonly dirZ: number;
 }
 
-/** `true` hides the corresponding `cutawayWallGroups` layer for the current view. */
 export interface StaticCutawayGroupCuts {
   readonly southWest?: boolean;
   readonly west?: boolean;
@@ -195,10 +187,6 @@ export interface StaticCutawayGroupCuts {
 }
 
 export interface CutawayOptions {
-  /**
-   * Decides which of the four static camera-facing wall groups are cut away. Without it the
-   * groups stay visible and only per-wall `userData.cutaway` descriptors are evaluated.
-   */
   readonly evaluateStaticCutawayGroups?: (view: StaticCutawayView) => StaticCutawayGroupCuts;
 }
 
@@ -206,55 +194,40 @@ export interface PortalSolverFactoryContext {
   readonly sceneRoot: THREE.Object3D;
   readonly lodRegistrations: readonly RoomZoneLodRegistration[];
   readonly interactions: InteractionRegistry;
-  readonly bifolds: BifoldDoorAnimator;
 }
 
 /**
  * Everything the home-agnostic `PropertyScene` needs to know about a specific home.
  */
 export interface PropertySceneProfile<TSecurity extends SecurityOverlay3D = SecurityOverlay3D> {
-  /** Display name of the property. */
   readonly name?: string;
-  /** The property's storeys. Homes that omit it get the two-storey `ground` / `first` default. */
   readonly floors?: readonly FloorDefinition[];
-  /** Optional initial floor focus and section-cut state at boot. */
   readonly initialView?: {
     readonly floor?: FloorViewMode;
     readonly sectionCut?: boolean;
   };
-  /** Geographic coordinates & orientation for solar/lunar ephemeris and Open-Meteo weather. */
   readonly location?: HouseLocation;
-  /** Declarative 3D `(Season × TimeSlot × WeatherRegime)` HDRI panorama suite or preset id. */
   readonly environment?: HouseEnvironmentInput;
-  /** Optional explicit climate zone / snow & seasonal foliage capability override. */
   readonly climate?: HouseClimateInput;
-  /** Declarative exterior ambient soundscape preset or custom stems. */
   readonly soundscape?: SoundscapeDescriptor;
-  /** Optional site terrain heightfield & carved ground mesh sampler. */
   readonly terrainSampler?: Pick<TerrainSurfaceSampler, 'sampleTerrainY' | 'sampleCarvedMeshY' | 'sampleNormal'>;
-  /** First-person walkthrough hooks (spawns, elevation solver, climbables, cutscenes). */
   readonly walkthroughHooks?: HouseWalkthroughHooks;
-  /** Optional entry spawns keyed by cutscene ID when triggered from orbit mode. */
   readonly cutsceneEntrySpawns?: Readonly<Record<string, { readonly position: readonly [number, number, number]; readonly yawDeg?: number }>>;
   createZoneRegistry(): SceneZoneRegistry;
   readonly lodRegistrations: readonly RoomZoneLodRegistration[];
-  /** Optional declarative room manifest carrying per-room finishes, paint swatches & renovation notes. */
   readonly roomManifest?: readonly RoomManifestEntry[];
-  /** Optional declarative room/design variations (or builder callback) for this property. */
-  readonly variations?: readonly (RoomVariationGroup | RoomVariationGroupInput)[] | ((ctx: SceneBuilderContext) => readonly (RoomVariationGroup | RoomVariationGroupInput)[]);
-  /** Scene-graph naming rules used to classify this home's hierarchy into room LOD tiers. */
+  readonly variations?:
+    | readonly (RoomVariationGroup | RoomVariationGroupInput)[]
+    | ((ctx: SceneBuilderContext) => readonly (RoomVariationGroup | RoomVariationGroupInput)[]);
   readonly lodOptions?: RoomLodOptions;
-  /** Home-specific static-geometry batching rules. */
   readonly batchHooks?: BatchOptimizerHooks;
-  /** Home-specific camera-facing wall cutaway rules. */
   readonly cutawayOptions?: CutawayOptions;
-  /** Point-light intensity at 100% for every lighting circuit (key order is significant). */
   readonly circuitMaxIntensity: Readonly<Record<CircuitId, number>>;
+  /** Optional per-circuit physical-decay intensity multiplier overrides. */
+  readonly circuitIntensityMultipliers?: Readonly<Record<CircuitId, number>>;
   readonly defaultFixtureAppearance: CircuitFixtureAppearance;
   readonly fixtureAppearanceOverrides: Readonly<Partial<Record<CircuitId, CircuitFixtureAppearance>>>;
   readonly switchLedRules: readonly SwitchLedIndicatorRule[];
-  readonly bifoldTrack: BifoldTrackConfig;
-  /** Door conflict / open-angle / split-leaf rules keyed by stable door ids. */
   readonly doorPolicy?: DoorPolicy;
   buildSecurityOverlay(ctx: SceneBuilderContext): TSecurity;
   buildUfhOverlay?: (ctx: SceneBuilderContext) => UfhSystemOverlay3D;
@@ -263,10 +236,6 @@ export interface PropertySceneProfile<TSecurity extends SecurityOverlay3D = Secu
 
 const boundProfiles = new WeakMap<THREE.Object3D, PropertySceneProfile>();
 
-/**
- * Associates a built scene with the profile it was built from, so scene services constructed
- * without a profile reference can still find the home's hooks.
- */
 export function bindPropertySceneProfile(scene: THREE.Object3D, profile: PropertySceneProfile): void {
   boundProfiles.set(scene, profile);
 }

@@ -4,52 +4,17 @@ import type { CircuitId } from './knx.ts';
 
 /**
  * Multi-building, multi-floor, and multi-room spatial & KNX topology types
- * designed to scale from the Kitchen/Utility/Courtyard wing to the entire
- * a multi-building architectural estate.
+ * for any single-building or multi-building architectural digital twin.
  */
 
-/**
- * Building id. The literals keep IDE autocomplete for the reference home; any other
- * house-defined string id is accepted.
- */
-export type BuildingId = 'mainHouse' | 'annex' | 'courtyardGrounds' | (string & {});
+/** Building identifier defined by the active home. */
+export type BuildingId = string;
 
 /** Floor id (`'exterior'` marks grounds / outdoor zones). Any house-defined string id is accepted. */
 export type FloorId = 'ground' | 'first' | 'attic' | 'exterior' | (string & {});
 
-/** Room zone id. Any house-defined string id is accepted alongside the known literals. */
-export type RoomZoneId =
-  | 'kitchen'
-  | 'sitting'
-  | 'utility'
-  | 'familyRoom'
-  | 'bootLobby'
-  | 'hall'
-  | 'livingRoom'
-  | 'entranceHall'
-  | 'sittingRoom'
-  | 'study'
-  | 'mainBedroom'
-  | 'familyBathroom'
-  | 'upperLanding'
-  | 'bedroom2'
-  | 'bedroom3'
-  | 'bedroom4'
-  | 'courtyard'
-  | 'hallway'
-  | 'diningRoom'
-  | 'snug'
-  | 'masterBedroom'
-  | 'annexLiving'
-  | 'annexBedroom'
-  | 'outbuildingGym'
-  | 'outbuildingGarage'
-  | 'outbuildingStore'
-  | 'outbuildingBarn'
-  | 'outbuildingMezzanine'
-  | 'outbuildingStableOffice'
-  | 'outbuildingStableSuite'
-  | (string & {});
+/** Room / zone identifier defined by the active home. */
+export type RoomZoneId = string;
 
 export interface RoomBoundingBox {
   readonly minX: number;

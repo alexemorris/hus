@@ -66,8 +66,9 @@ export function bindAdditionalInteriorLodGroups(
       if (
         u.isArchitecturalShell ||
         u.isCutawayWall ||
-        u.isBifoldDoor ||
-        u.isCarGate ||
+        u.isAnimatedDoor ||
+        u.isExteriorGate ||
+        u.isDynamicBarrier ||
         u.isUniFiCamera ||
         u.isUniFiAccessReader ||
         u.isFittingFx ||
@@ -148,7 +149,9 @@ export function collectProtectedObjects(
     const u = obj.userData;
     if (!u) return;
     if (
-      u.isBifoldDoor ||
+      u.isAnimatedDoor ||
+      u.isExteriorGate ||
+      u.isDynamicBarrier ||
       u.isAnnotationGroup ||
       u.isSecurityFovCone ||
       u.isDynamicInteractionObject === true ||
@@ -178,8 +181,15 @@ export function collectMutableMaterials(
     for (const m of grp.cones) set.add(m);
     for (const p of grp.pools) set.add(p.mat);
   }
-  for (const m of Object.values(indicatorMats)) {
-    if (m instanceof THREE.Material) set.add(m);
+  for (const map of [
+    indicatorMats?.switchLedMats,
+    indicatorMats?.sensorLedMats,
+    indicatorMats?.displayMats,
+  ]) {
+    if (!map) continue;
+    for (const m of Object.values(map)) {
+      if (m instanceof THREE.Material) set.add(m);
+    }
   }
   for (const b of roomSwitchLedMats) {
     set.add(b.mat);
@@ -322,13 +332,25 @@ export function isDynamicMaterial(
   return false;
 }
 
+function isDisplayIndicatorMaterial(
+  mat: THREE.Material,
+  indicatorMats: ZoneIndicatorMaterials | undefined
+): boolean {
+  const displayMats = indicatorMats?.displayMats;
+  if (!displayMats) return false;
+  for (const candidate of Object.values(displayMats)) {
+    if (candidate === mat) return true;
+  }
+  return false;
+}
+
 export function isMaterialRenderDynamic(
   mat: THREE.Material | null | undefined,
   mutableMaterials: ReadonlySet<THREE.Material>,
   indicatorMats: ZoneIndicatorMaterials | undefined
 ): boolean {
   if (!mat) return true;
-  if (mat === indicatorMats?.tvScreenMat) return true;
+  if (isDisplayIndicatorMaterial(mat, indicatorMats)) return true;
   return isDynamicMaterial(mat, mutableMaterials);
 }
 
@@ -337,7 +359,7 @@ export function isNonBatchableMaterial(
   indicatorMats: ZoneIndicatorMaterials | undefined
 ): boolean {
   if (!mat) return true;
-  if (mat === indicatorMats?.tvScreenMat) return true;
+  if (isDisplayIndicatorMaterial(mat, indicatorMats)) return true;
   const matU = mat.userData as Record<string, unknown> | undefined;
   return (
     Boolean(matU?.isDynamicScreenMaterial) ||

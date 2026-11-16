@@ -10,10 +10,6 @@ import type {
 
 /**
  * Composable registry of 3D zone modules for a property.
- *
- * Home-agnostic: a home supplies its own module list (see
- * `homes/<home>/zone-modules.ts`). The registry aggregates camera presets and
- * interior room bounds from every registered module and builds them in order.
  */
 export class SceneZoneRegistry {
   private readonly modules: SceneZoneModule[] = [];
@@ -40,9 +36,6 @@ export class SceneZoneRegistry {
     }
   }
 
-  /**
-   * Appends fallback interior room AABBs when modules omit explicit `interiorBounds`.
-   */
   public addInteriorBounds(bounds: readonly RoomBoundingBox[]): void {
     for (const b of bounds) {
       const exists = this.interiorBounds.some(
@@ -60,10 +53,6 @@ export class SceneZoneRegistry {
     }
   }
 
-  /**
-   * Synthesizes a `'top'` plan camera preset centered over the property's interior/room bounds
-   * whenever the house omits an explicit `'top'` preset, so clicking `Plan` in `TopBar` always works.
-   */
   public ensureTopCameraPreset(
     floors?: readonly FloorDefinition[],
     fallbackBounds?: readonly RoomBoundingBox[]
@@ -102,10 +91,9 @@ export class SceneZoneRegistry {
     const spanZ = Math.max(4, maxZ - minZ);
     const maxSpan = Math.max(spanX, spanZ);
     const height = Math.max(22, maxSpan * 1.45);
-    // CameraRig uses ORTHO_HALF_HEIGHT = 5.6 (total height = 11.2m at zoom=1).
     const effectiveVertSpan = Math.max(spanZ, spanX / 1.45);
     const orthoZoom = Math.min(1.08, Math.max(0.28, (11.2 * 0.84) / effectiveVertSpan));
-    const buildingId: BuildingId = this.modules[0]?.buildingId ?? ('mainHouse' as BuildingId);
+    const buildingId: BuildingId = this.modules[0]?.buildingId ?? 'building';
 
     this.presets.set('top', {
       id: 'top',
@@ -134,9 +122,6 @@ export class SceneZoneRegistry {
     return Array.from(this.presets.values());
   }
 
-  /**
-   * Returns true if the 3D point (x, y, z) is inside any registered interior room.
-   */
   public isPointInsideInteriorRoom(x: number, y: number, z: number): boolean {
     return this.interiorBounds.some(
       (b) =>
@@ -149,9 +134,6 @@ export class SceneZoneRegistry {
     );
   }
 
-  /**
-   * Returns true if both 3D points lie inside the exact same interior room bounding box.
-   */
   public arePointsInSameInteriorRoom(
     x1: number,
     y1: number,
@@ -178,15 +160,23 @@ export class SceneZoneRegistry {
   }
 
   public buildAllZones(ctx: SceneBuilderContext): ZoneIndicatorMaterials {
-    let merged: ZoneIndicatorMaterials = {};
+    const switchLedMats: Record<string, THREE.MeshStandardMaterial> = {};
+    const sensorLedMats: Record<string, THREE.MeshStandardMaterial> = {};
+    const displayMats: Record<string, THREE.MeshStandardMaterial> = {};
     for (const mod of this.modules) {
       const res = mod.build(ctx);
       if (mod.variations && mod.variations.length > 0) {
         ctx.variations?.registerAll(mod.variations);
       }
-      merged = { ...merged, ...res };
+      if (res.switchLedMats) Object.assign(switchLedMats, res.switchLedMats);
+      if (res.sensorLedMats) Object.assign(sensorLedMats, res.sensorLedMats);
+      if (res.displayMats) Object.assign(displayMats, res.displayMats);
     }
-    return merged;
+    return {
+      ...(Object.keys(switchLedMats).length > 0 ? { switchLedMats } : {}),
+      ...(Object.keys(sensorLedMats).length > 0 ? { sensorLedMats } : {}),
+      ...(Object.keys(displayMats).length > 0 ? { displayMats } : {}),
+    };
   }
 
   public async buildAllZonesAsync(
@@ -220,7 +210,15 @@ export class SceneZoneRegistry {
       if (mod.variations && mod.variations.length > 0) {
         ctx.variations?.registerAll(mod.variations);
       }
-      merged = { ...merged, ...res };
+      if (res.switchLedMats) {
+        merged = { ...merged, switchLedMats: { ...merged.switchLedMats, ...res.switchLedMats } };
+      }
+      if (res.sensorLedMats) {
+        merged = { ...merged, sensorLedMats: { ...merged.sensorLedMats, ...res.sensorLedMats } };
+      }
+      if (res.displayMats) {
+        merged = { ...merged, displayMats: { ...merged.displayMats, ...res.displayMats } };
+      }
       await options?.onProgress?.(baseLabel, (i + 1) / total);
       await options?.yieldIfNeeded?.();
     }

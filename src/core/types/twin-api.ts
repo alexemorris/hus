@@ -257,7 +257,7 @@ export interface TwinLightingApi {
   /** Applies many levels at once (unknown / omitted circuits untouched). */
   applyLevels(levels: Readonly<Partial<Record<CircuitId, number>>>): void;
   allOff(): void;
-  /** KNX scene recall from a wall switch (`pa` defaults to the kitchen switch). */
+  /** KNX central scene recall from a wall switch (`pa` defaults to the central switch). */
   recallScene(sceneNumber: number, pa?: string): void;
   scenes(): readonly ScenePreset[];
   getActiveSceneIndex(): number;
@@ -290,28 +290,28 @@ export interface TwinUfhZone {
   readonly warmupLabel?: string;
 }
 
+export interface TwinCustomDeviceControl {
+  readonly id: string;
+  readonly label: string;
+  readonly statusLabel: string;
+  readonly actionLabel: string;
+  readonly active?: boolean;
+  readonly icon?: string;
+  readonly showInWholeHouse?: boolean;
+  readonly activeToast?: string;
+  readonly inactiveToast?: string;
+}
+
 export interface TwinDevicesApi {
   /** Generic device action (doors, gates, custom interactions, …) by stable interactable id. */
   handleInteractable(interactableId: string): boolean;
-  /** Fires after any device state change (gates, bifolds, TV, UFH, motion). */
+  /** Fires after any device state change (doors, actuators, custom devices, UFH, motion). */
   onChanged(listener: () => void): Unsubscribe;
 
-  isGatesOpen(): boolean;
-  isGatesMoving(): boolean;
-  getGatesStatusLabel(): string;
-  /** Returns true when the gates are now opening. */
-  toggleGates(): boolean;
-
-  isBifoldsOpen(): boolean;
-  toggleBifolds(): boolean;
-
-  isTvArtMode(): boolean;
-  getTvArtTitle(): string;
-  cycleTvArt(): void;
-
-  isCourtyardLightOn(): boolean;
-  getCourtyardModeLabel(): string;
-  pressCourtyardSwitch(): void;
+  /** Home-configured custom devices (e.g. motorized covers/gates, folding doors, media endpoints). */
+  customDevices?(): readonly TwinCustomDeviceControl[];
+  /** Triggers a custom device by id; returns the new active state when applicable. */
+  triggerCustomDevice?(id: string): boolean;
 
   hasUfh(): boolean;
   ufhZones(): readonly TwinUfhZone[];

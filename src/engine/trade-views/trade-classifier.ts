@@ -86,7 +86,7 @@ const CATEGORY_TOKENS: Readonly<Record<Exclude<TradeCategory, 'other'>, Category
     strong: [
       'roof', 'roofing', 'slate', 'slates', 'eaves', 'soffit', 'bargeboard', 'verge', 'gutter',
       'downpipe', 'hopper', 'flashing', 'window', 'windows', 'glazing', 'sill', 'mullion', 'transom',
-      'casement', 'velux', 'skylight', 'rooflight', 'render', 'cladding', 'weatherboard', 'membrane',
+      'casement', 'rooflight', 'skylight', 'render', 'cladding', 'weatherboard', 'membrane',
       'dpc', 'dormer', 'muntin', 'bifold', 'bifolds', 'porch', 'ridge', 'hip', 'louvres', 'louvre',
       'glazed', 'fanlight', 'shutter', 'shutters', 'leadwork', 'bay', 'socketring',
     ],
@@ -94,8 +94,8 @@ const CATEGORY_TOKENS: Readonly<Record<Exclude<TradeCategory, 'other'>, Category
   },
   insulation: {
     strong: [
-      'insulation', 'insulated', 'celotex', 'kingspan', 'rockwool', 'woodfibre', 'woodfiber',
-      'mineralwool', 'steico', 'pavatex', 'quilt', 'sheepswool', 'hempcrete', 'thermalbreak',
+      'insulation', 'insulated', 'woodfibre', 'woodfiber',
+      'mineralwool', 'quilt', 'sheepswool', 'hempcrete', 'thermalbreak',
     ],
   },
   finishes: {
@@ -128,17 +128,16 @@ const CATEGORY_TOKENS: Readonly<Record<Exclude<TradeCategory, 'other'>, Category
     strong: [
       'sofa', 'chair', 'chairs', 'armchair', 'stool', 'stools', 'table', 'desk', 'bed', 'mattress',
       'headboard', 'sideboard', 'chest', 'bookcase', 'ottoman', 'chaise', 'beanbag', 'pouffe', 'tv',
-      'television', 'oled', 'qled', 'monitor', 'projector', 'macbook', 'laptop', 'imac', 'printer',
-      'piano', 'roland', 'playstation', 'nintendo', 'xbox', 'fridge', 'freezer', 'oven', 'hob',
-      'cooker', 'aga', 'dishwasher', 'washer', 'dryer', 'microwave', 'toaster', 'kettle', 'espresso',
-      'dualit', 'neff', 'smeg', 'cooler', 'treadmill', 'technogym', 'trackman', 'bambu', 'boombox',
-      'trinitron', 'vcr', 'sonos', 'speaker', 'speakers', 'subwoofer', 'amplifier', 'turntable',
+      'television', 'oled', 'qled', 'monitor', 'projector', 'laptop', 'computer', 'printer',
+      'piano', 'gameconsole', 'arcade', 'fridge', 'freezer', 'oven', 'hob',
+      'cooker', 'rangecooker', 'dishwasher', 'washer', 'dryer', 'microwave', 'toaster', 'kettle', 'espresso',
+      'cooler', 'treadmill', 'boombox', 'vcr', 'speaker', 'speakers', 'subwoofer', 'amplifier', 'turntable',
       'crib', 'cot', 'nightstand', 'bedside', 'console', 'credenza', 'bench', 'barstool', 'recliner',
       'futon', 'daybed', 'hammock', 'lounger', 'deckchair', 'parasol', 'hood', 'cookerhood',
       'extractorhood', 'washingmachine', 'tumbledryer', 'winecooler', 'grinder', 'drill', 'drills',
-      'saw', 'sander', 'vice', 'toolbench', 'workbench', 'tstak', 'barbell', 'dumbbell', 'squat',
-      'rowing', 'bike', 'simulator', 'stihl', 'blower', 'trimmer', 'mower', 'tablet', 'ipad', 'samsung',
-      'sony', 'lg', 'pegboard', 'rack', 'beertap', 'kegerator', 'cocktail', 'barcart',
+      'saw', 'sander', 'vice', 'toolbench', 'workbench', 'toolbox', 'barbell', 'dumbbell', 'squat',
+      'rowing', 'bike', 'blower', 'trimmer', 'mower', 'tablet',
+      'pegboard', 'rack', 'beertap', 'kegerator', 'cocktail', 'barcart', 'appliance',
     ],
     weak: ['screen', 'stand', 'machine', 'seat', 'tool', 'tools', 'unit', 'leg', 'legs', 'range', 'frame', 'bar'],
   },
@@ -150,7 +149,7 @@ const CATEGORY_TOKENS: Readonly<Record<Exclude<TradeCategory, 'other'>, Category
       'glassware', 'mug', 'book', 'books', 'magazine', 'fruit', 'lemon', 'lemons', 'apple',
       'orange', 'flower', 'flowers', 'bouquet', 'houseplant', 'certificate', 'certificates', 'photo',
       'photograph', 'whiteboard', 'towel', 'towels', 'basket', 'trophy', 'helmet', 'ball', 'balls',
-      'club', 'clubs', 'tourbag', 'bag', 'headcover', 'wine', 'champagne', 'pellegrino',
+      'club', 'clubs', 'bag', 'headcover', 'wine', 'champagne',
       'water', 'tray', 'bowl', 'tapestry', 'mirror', 'decanter', 'pint', 'foam', 'glasses', 'teapot',
       'plates', 'cutlery', 'cookbook', 'hat', 'coat', 'shoes', 'boots', 'umbrella', 'tablecloth',
       'napkin', 'duvet', 'quilt', 'blanket', 'linen', 'sheet', 'figurine', 'globe', 'records', 'vinyl',
@@ -185,7 +184,7 @@ const CATEGORY_TOKENS: Readonly<Record<Exclude<TradeCategory, 'other'>, Category
     strong: [
       'knx', 'keypad', 'switch', 'switches', 'switchplate', 'dimmer', 'thermostat', 'pir', 'presence',
       'unifi', 'ubiquiti', 'camera', 'cameras', 'cctv', 'router', 'gateway', 'doorbell', 'intercom',
-      'nest', 'hue', 'lutron', 'loxone', 'actuators', 'server', 'networkrack', 'ap', 'accesspoint',
+      'actuators', 'server', 'networkrack', 'ap', 'accesspoint',
       'reader', 'accessreader', 'tempsensor', 'motionsensor', 'touchpanel', 'smoke',
       'smokealarm', 'alarm', 'siren', 'thermalsensor',
     ],
@@ -203,7 +202,7 @@ const CATEGORY_TOKENS: Readonly<Record<Exclude<TradeCategory, 'other'>, Category
   },
   heating: {
     strong: [
-      'ufh', 'underfloor', 'manifold', 'radiator', 'radiators', 'rad', 'boiler', 'viessmann',
+      'ufh', 'underfloor', 'manifold', 'radiator', 'radiators', 'rad', 'boiler',
       'heatpump', 'actuator', 'flowmeter', 'expansion', 'vessel', 'stove', 'woodburner', 'woodburning',
       'towelrail', 'heatedtowelrail', 'heating', 'heater', 'aircon', 'airconditioning', 'condenser',
       'thermostatic', 'hvac', 'mvhr', 'ventilation', 'ducting', 'duct', 'firebox', 'heated', 'elbowsocket',
@@ -233,9 +232,9 @@ const CATEGORY_TOKENS: Readonly<Record<Exclude<TradeCategory, 'other'>, Category
   },
   vehicle: {
     strong: [
-      'porsche', 'defender', 'landrover', 'rover', 'car', 'cars', 'vehicle', 'bicycle', 'motorbike',
-      'motorcycle', 'tractor', 'quadbike', 'scooter', 'trailer', 'headlight', 'taillight', 'tyre',
-      'tire', 'brompton', 'carbonbike',
+      'automobile', 'saloon', 'sedan', 'coupe', 'suv', 'hatchback', 'car', 'cars', 'vehicle',
+      'bicycle', 'motorbike', 'motorcycle', 'tractor', 'quadbike', 'scooter', 'trailer',
+      'headlight', 'taillight', 'tyre', 'tire', 'carbonbike',
     ],
   },
 };
@@ -243,30 +242,22 @@ const CATEGORY_TOKENS: Readonly<Record<Exclude<TradeCategory, 'other'>, Category
 /**
  * Tokens that, when found anywhere in the name chain (any depth), force a category regardless of
  * leaf tokens. Used for self-contained assemblies whose parts would otherwise be mis-read as
- * services (a Porsche headlight is not a light fitting; a tool-bench power strip is not a socket).
+ * services (an automobile headlight is not a light fitting; a tool-bench power strip is not a socket).
  */
 const DOMINANT_TOKENS: ReadonlyMap<string, TradeCategory> = new Map<string, TradeCategory>([
-  ['porsche', 'vehicle'],
-  ['defender', 'vehicle'],
-  ['landrover', 'vehicle'],
+  ['vehicle', 'vehicle'],
+  ['automobile', 'vehicle'],
   ['bicycle', 'vehicle'],
   ['motorbike', 'vehicle'],
   ['motorcycle', 'vehicle'],
   ['tractor', 'vehicle'],
-  ['brompton', 'vehicle'],
   ['toolbench', 'furniture'],
   ['workbench', 'furniture'],
-  ['playstation', 'furniture'],
-  ['macbook', 'furniture'],
-  ['technogym', 'furniture'],
-  ['trinitron', 'furniture'],
+  ['gameconsole', 'furniture'],
+  ['laptop', 'furniture'],
+  ['computer', 'furniture'],
   ['oled', 'furniture'],
-  ['callaway', 'decor'],
-  ['tourbag', 'decor'],
-  ['stihl', 'furniture'],
-  ['bambu', 'furniture'],
   ['beertap', 'furniture'],
-  ['corstonswitch', 'smart'],
 ]);
 
 /** Tokens that dominate the segment they appear in (e.g. `knxWiringCenter` is smart, not wiring). */
@@ -286,7 +277,7 @@ const SEGMENT_DOMINANT_TOKENS: ReadonlyMap<string, TradeCategory> = new Map<stri
 const ROOM_HEAD_TOKENS: ReadonlySet<string> = new Set<string>([
   'room', 'rooms', 'lobby', 'hall', 'landing', 'ensuite', 'wc', 'bathroom', 'kitchen', 'study',
   'bedroom', 'cloakroom', 'utility', 'corridor', 'snug', 'mezzanine', 'loft', 'barn', 'garage',
-  'stable', 'stables', 'store', 'gym', 'outbuildings', 'outbuilding', 'firstfloor', 'groundfloor',
+  'stable', 'stables', 'store', 'gym', 'firstfloor', 'groundfloor',
   'wing', 'cellar', 'lounge', 'office', 'annex', 'annexe', 'porchway', 'entrance', 'scullery',
   'bootroom', 'larderroom', 'washroom', 'plantroom', 'sittingroom', 'livingroom', 'familyroom',
   'diningroom', 'showerroom', 'mainbedroom', 'cinema', 'library', 'workshop', 'downstairs', 'upstairs',
@@ -300,7 +291,7 @@ const COMPASS_TOKENS: ReadonlySet<string> = new Set<string>([
 /** Ancestor tokens that turn structure/envelope/finishes/joinery into hard landscaping. */
 const EXTERNAL_CONTEXT_TOKENS: ReadonlySet<string> = new Set<string>([
   'garden', 'grounds', 'patio', 'pergola', 'driveway', 'lawn', 'orchard', 'terrace',
-  'vegetable', 'kitchengarden', 'paddock', 'yard',
+  'vegetable', 'yard',
 ]);
 
 const TOKEN_RULES: ReadonlyMap<string, TokenRule> = (() => {
@@ -411,10 +402,8 @@ function classifyUserData(u: Readonly<Record<string, unknown>>): TradeCategory |
   if (
     readBool(u, 'isKNXSwitch') ||
     readBool(u, 'isKnxTempSensor') ||
-    readBool(u, 'isCourtyardSwitch') ||
-    readBool(u, 'isUtilitySwitch') ||
-    readBool(u, 'isKitchenMotionSensor') ||
-    readBool(u, 'isUtilityMotionSensor') ||
+    readBool(u, 'zoneSceneSwitchZoneId') ||
+    readBool(u, 'presenceDetectorPa') ||
     readBool(u, 'roomMotionSensorId') ||
     readBool(u, 'switchPa') ||
     readBool(u, 'isUniFiCamera') ||
@@ -424,7 +413,8 @@ function classifyUserData(u: Readonly<Record<string, unknown>>): TradeCategory |
     return 'smart';
   }
   if (readBool(u, 'ufhZoneId')) return 'heating';
-  if (readBool(u, 'isCarGate')) return 'external';
+  if (readBool(u, 'isExteriorGate')) return 'external';
+  if (readBool(u, 'isJoineryDoor')) return 'joinery';
   if (u['vegetationExposure'] === 'indoor') return 'decor';
   if (
     u['vegetationExposure'] === 'outdoor' ||
@@ -432,9 +422,15 @@ function classifyUserData(u: Readonly<Record<string, unknown>>): TradeCategory |
   ) {
     return 'external';
   }
-  if (readBool(u, 'isFrameTV') || readBool(u, 'isDynamicInteractionObject') || readBool(u, 'isDynamicObject')) return 'furniture';
+  if (
+    readBool(u, 'isAppliance') ||
+    readBool(u, 'isDynamicInteractionObject') ||
+    readBool(u, 'isDynamicObject')
+  ) {
+    return 'furniture';
+  }
   if (readBool(u, 'circuitId')) return 'lighting';
-  if (readBool(u, 'isBifoldDoor') || u['bifoldRole'] !== undefined) return 'envelope';
+  if (readBool(u, 'isAnimatedDoor') || u['bifoldRole'] !== undefined) return 'envelope';
   return undefined;
 }
 
@@ -536,8 +532,8 @@ function classifyFromNames(
     category === 'other' ||
     (chosenWeak && (category === 'joinery' || category === 'envelope'))
   ) {
-    // Only segments whose head noun is a landscape context (`courtyard`, `vegetableGarden`,
-    // `rattanPatio`), not incidental mentions such as `courtyardDoor`.
+    // Only segments whose head noun is a landscape context (`frontGarden`, `vegetableGarden`,
+    // `rattanPatio`), not incidental mentions such as `gardenDoor`.
     const isExternalContextToken = (token: string): boolean =>
       EXTERNAL_CONTEXT_TOKENS.has(token) || token.endsWith('yard');
     const inExternal = segmentTokens.some(

@@ -49,7 +49,7 @@ describe('micro-surface-detail & finish batching', () => {
     const scene = new THREE.Scene();
     const layers = createPropertySceneLayers(scene);
     const wallGroup = new THREE.Group();
-    wallGroup.name = 'outbuildings.groundShell';
+    wallGroup.name = 'workshop.groundShell';
     scene.add(wallGroup);
 
     const wallMat = createFinishMaterial('estate-emulsion', '#EFECE4', { microGrain: true });

@@ -6,7 +6,6 @@ import {
 } from '../../core/electrical/index.ts';
 import type {
   CircuitConfig,
-  CircuitId,
   InboundKNXFrame,
   RoomMotionSensorId,
 } from '../../core/types/knx.ts';
@@ -26,11 +25,10 @@ export interface KnxElectricalAdapterConfig extends KnxElectricalAdapterOptions 
 export interface KnxSwitchGangPressInput {
   readonly switchPa: string;
   readonly gang?: number;
-  readonly zoneId?: RoomZoneId | string;
+  readonly zoneId?: RoomZoneId;
   readonly direction: SwitchGangPose;
   readonly pressDurationMs?: number;
   readonly location?: string;
-  readonly legacyKind?: 'kitchen' | 'courtyard' | 'utility';
 }
 
 function pctTo01(pct: number | undefined): number {
@@ -127,7 +125,7 @@ export class KnxElectricalAdapter {
       immediate: true,
     });
 
-    const candidateZoneId = (input.zoneId ?? gangMeta?.zoneId) as RoomZoneId | undefined;
+    const candidateZoneId = input.zoneId ?? gangMeta?.zoneId;
     const pressMs = input.pressDurationMs ?? 0;
 
     if (candidateZoneId && this.knx.getZone(candidateZoneId)) {
@@ -139,7 +137,23 @@ export class KnxElectricalAdapter {
         resolvedLocation
       );
     } else {
-      this.dispatchLegacySwitchPress(input, pressMs, resolvedLocation);
+      const holdThreshold =
+        pb?.params.longPressMs ?? this.knx.getFlashedParams().holdThresholdMs;
+      if (pressMs >= holdThreshold) {
+        if (input.direction === 'up') {
+          this.knx.handleMasterFull(resolvedLocation, input.switchPa);
+        } else {
+          this.knx.handleMasterOff(resolvedLocation, input.switchPa);
+        }
+      } else if (this.knx.getScenes().length > 0) {
+        const count = Math.min(3, this.knx.getScenes().length);
+        const cur = this.knx.getActiveSceneIndex();
+        const next =
+          cur >= 0 && cur < count
+            ? (cur + (input.direction === 'up' ? 1 : count - 1)) % count
+            : 0;
+        this.knx.recallScene(next, input.switchPa, resolvedLocation);
+      }
     }
 
     this.syncLevelsFromKnx('target');
@@ -319,44 +333,6 @@ export class KnxElectricalAdapter {
     }
   }
 
-  private dispatchLegacySwitchPress(
-    input: KnxSwitchGangPressInput,
-    pressMs: number,
-    location?: string
-  ): void {
-    const centralPa = this.project.centralPa;
-    const holdThreshold = this.knx.getFlashedParams().holdThresholdMs;
-    const isLongPress = pressMs >= holdThreshold;
-
-    if (input.legacyKind === 'utility' || input.switchPa === centralPa.utilitySwitch) {
-      this.knx.handleUtilitySwitchToggle(input.switchPa);
-      return;
-    }
-
-    if (input.legacyKind === 'courtyard' || input.switchPa === centralPa.courtyardSwitch) {
-      if (isLongPress) {
-        if (input.direction === 'up') {
-          this.knx.handleCourtyardSwitchLongPressHoldUp(input.switchPa);
-        } else {
-          this.knx.handleCourtyardSwitchLongPressHoldDown(input.switchPa);
-        }
-      } else {
-        this.knx.handleCourtyardSwitchShortPress(input.direction, input.switchPa);
-      }
-      return;
-    }
-
-    if (isLongPress) {
-      if (input.direction === 'up') {
-        this.knx.handleSwitchLongPressHoldUp(location, input.switchPa);
-      } else {
-        this.knx.handleSwitchLongPressHoldDown(location, input.switchPa);
-      }
-    } else {
-      this.knx.handleSwitchShortPress(input.direction, location);
-    }
-  }
-
   private syncLevelsFromKnx(mode: 'target' | 'live'): void {
     if (this.isSyncingFromKnx) return;
     this.isSyncingFromKnx = true;
@@ -365,7 +341,7 @@ export class KnxElectricalAdapter {
       const updates: Record<string, number> = {};
 
       for (const circuitId of this.knownCircuitIds) {
-        const next01 = pctTo01(sourceLevels[circuitId as CircuitId] ?? 0);
+        const next01 = pctTo01(sourceLevels[circuitId] ?? 0);
         const current01 = this.bus.getCircuitBrightness(circuitId);
         if (Math.abs(next01 - current01) > 1e-6) {
           updates[circuitId] = next01;
@@ -410,9 +386,9 @@ export class KnxElectricalAdapter {
       for (const circuitId of changedCircuits) {
         if (!this.knownCircuitIds.has(circuitId)) continue;
         const desiredPct = level01ToPct(this.bus.getCircuitTargetBrightness(circuitId));
-        const currentPct = Math.round(knxTargets[circuitId as CircuitId] ?? 0);
+        const currentPct = Math.round(knxTargets[circuitId] ?? 0);
         if (desiredPct !== currentPct) {
-          this.knx.setCircuitLevel(circuitId as CircuitId, desiredPct);
+          this.knx.setCircuitLevel(circuitId, desiredPct);
         }
       }
     } finally {

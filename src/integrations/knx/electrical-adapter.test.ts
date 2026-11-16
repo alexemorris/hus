@@ -21,7 +21,7 @@ function makeCircuit(
     name: id,
     shortName: id,
     location: id,
-    buildingId: 'mainHouse',
+    buildingId: 'house',
     floorId: 'ground',
     zoneId,
     actuatorPa: '1.1.20',
@@ -64,20 +64,20 @@ const HALL_ZONE: KnxLightingZone = {
 const KITCHEN_ZONE: KnxLightingZone = {
   id: 'kitchen',
   name: 'Kitchen',
-  circuits: ['islandPendants', 'spotlights'],
+  circuits: ['kitchenPendants', 'spotlights'],
   scenes: [
     {
       id: 'cooking',
       label: 'Cooking',
-      levels: { islandPendants: 90, spotlights: 100 },
+      levels: { kitchenPendants: 90, spotlights: 100 },
     },
     {
       id: 'dining',
       label: 'Dining',
-      levels: { islandPendants: 50, spotlights: 20 },
+      levels: { kitchenPendants: 50, spotlights: 20 },
     },
   ],
-  nightLevels: { islandPendants: 6 },
+  nightLevels: { kitchenPendants: 6 },
   ga: {
     scene: '1/6/10',
     night: '1/6/11',
@@ -116,9 +116,9 @@ const CENTRAL_SCENES: ScenePreset[] = [
     shortLabel: 'Bright',
     isSwitchScene: true,
     levels: {
-      islandPendants: 85,
-      sittingPendants: 0,
-      bifoldUplights: 0,
+      kitchenPendants: 85,
+      loungePendants: 0,
+      terraceUplights: 0,
       spotlights: 100,
       underCabinet: 0,
       aboveCabinet: 0,
@@ -130,9 +130,7 @@ function makeTestProject(): KnxProject {
   return {
     name: 'KNX Adapter Test Project',
     buildings: {
-      mainHouse: { id: 'mainHouse', name: 'Main House', knxArea: 1, description: '' },
-      annex: { id: 'annex', name: 'Annex', knxArea: 2, description: '' },
-      courtyardGrounds: { id: 'courtyardGrounds', name: 'Grounds', knxArea: 1, description: '' },
+      house: { id: 'house', name: 'House', knxArea: 1, description: '' },
     },
     floors: [],
     rooms: [],
@@ -140,9 +138,9 @@ function makeTestProject(): KnxProject {
       makeCircuit('hallPendant', 'hall', 1),
       makeCircuit('hallStairLeds', 'hall', 2),
       makeCircuit('hallLamps5A', 'hall', 3, false),
-      makeCircuit('islandPendants', 'kitchen', 4),
+      makeCircuit('kitchenPendants', 'kitchen', 4),
       makeCircuit('spotlights', 'kitchen', 5),
-      makeCircuit('wineCellarLeds', 'bootLobby', 6, false),
+      makeCircuit('pantryLeds', 'pantry', 6, false),
     ],
     centralScenes: CENTRAL_SCENES,
     zones: [HALL_ZONE, KITCHEN_ZONE],
@@ -165,18 +163,18 @@ function makeTestProject(): KnxProject {
       nightWalkRules: [],
       motionCircuitRules: [
         {
-          circuitId: 'wineCellarLeds',
-          sensorId: 'wineCellar',
+          circuitId: 'pantryLeds',
+          sensorId: 'pantrySensor',
           onLevel: 100,
         },
       ],
       motionSensors: [
         {
-          id: 'wineCellar',
+          id: 'pantrySensor',
           pa: '1.1.70',
           ga: '1/4/30',
-          name: 'Wine Cellar PIR',
-          zoneId: 'bootLobby',
+          name: 'Pantry PIR',
+          zoneId: 'pantry',
         },
       ],
     },
@@ -184,23 +182,13 @@ function makeTestProject(): KnxProject {
       masterOff: '1/0/0',
       centralScene: '1/0/1',
       masterFull: '1/0/2',
-      kitchenPresence: '1/4/1',
       ambientLux: '1/4/2',
-      utilityPresence: '1/4/3',
-      tvArt: '1/4/4',
-      carGatesCommand: '1/5/1',
-      carGatesPosition: '1/5/2',
     },
     centralPa: {
       ipInterface: '1.1.1',
       aiBridge: '1.1.2',
-      kitchenSwitchGroup: '1.1.10',
-      kitchenPresence: '1.1.12',
-      utilityPresence: '1.1.13',
-      utilitySwitch: '1.1.11',
-      courtyardSwitch: '1.1.14',
-      kitchenActuator: '1.1.20',
-      carGates: '1.1.22',
+      centralActuator: '1.1.20',
+      centralSwitch: '1.1.10',
     },
     defaultPresenceHoldTimeSec: 30,
     groupAddresses: [],
@@ -216,9 +204,9 @@ describe('KnxElectricalAdapter', () => {
       'hallPendant',
       'hallStairLeds',
       'hallLamps5A',
-      'islandPendants',
+      'kitchenPendants',
       'spotlights',
-      'wineCellarLeds',
+      'pantryLeds',
     ]);
     expect(bus.getZone('hall')?.scenes.map((s) => s.id)).toEqual(['bright', 'evening']);
     const plate = bus.getWallPlate('1.1.17');
@@ -268,16 +256,16 @@ describe('KnxElectricalAdapter', () => {
 
     // Central scene recall + masterFull + masterOff
     adapter.recallCentralScene(0);
-    expect(bus.getCircuitBrightness('islandPendants')).toBeCloseTo(0.85, 5);
+    expect(bus.getCircuitBrightness('kitchenPendants')).toBeCloseTo(0.85, 5);
     expect(bus.getCircuitBrightness('spotlights')).toBeCloseTo(1.0, 5);
     expect(bus.getPlateGangIndicator('1.1.17', 2)).toBe(true);
 
     adapter.masterFull();
-    expect(bus.getCircuitBrightness('islandPendants')).toBe(1);
+    expect(bus.getCircuitBrightness('kitchenPendants')).toBe(1);
     expect(bus.getCircuitBrightness('spotlights')).toBe(1);
 
     adapter.masterOff();
-    expect(bus.getCircuitBrightness('islandPendants')).toBeCloseTo(0.06, 5);
+    expect(bus.getCircuitBrightness('kitchenPendants')).toBeCloseTo(0.06, 5);
     expect(bus.getCircuitBrightness('spotlights')).toBe(0);
 
     adapter.dispose();
@@ -288,12 +276,12 @@ describe('KnxElectricalAdapter', () => {
     const adapter = new KnxElectricalAdapter(knx);
     const { bus } = adapter;
 
-    // Room motion sensor (Wine Cellar PIR)
-    expect(bus.getCircuitBrightness('wineCellarLeds')).toBe(1);
-    adapter.triggerRoomMotion('wineCellar', false);
-    expect(bus.getCircuitBrightness('wineCellarLeds')).toBe(0);
-    adapter.triggerRoomMotion('wineCellar', true);
-    expect(bus.getCircuitBrightness('wineCellarLeds')).toBe(1);
+    // Room motion sensor (Pantry PIR)
+    expect(bus.getCircuitBrightness('pantryLeds')).toBe(1);
+    adapter.triggerRoomMotion('pantrySensor', false);
+    expect(bus.getCircuitBrightness('pantryLeds')).toBe(0);
+    adapter.triggerRoomMotion('pantrySensor', true);
+    expect(bus.getCircuitBrightness('pantryLeds')).toBe(1);
 
     // Zone PIR occupancy wake-to-night when dark + hold timeout via step(dt)
     knx.setAmbientLux(10, false);
@@ -362,9 +350,9 @@ describe('KnxElectricalAdapter', () => {
     // Direct CircuitBus mutation writes back to KNX with zero feedback loops
     knxEventCount = 0;
     busEventCount = 0;
-    bus.setCircuitBrightness('islandPendants', 0.72);
-    expect(knx.getTargetLevels().islandPendants).toBe(72);
-    expect(bus.getCircuitBrightness('islandPendants')).toBeCloseTo(0.72, 5);
+    bus.setCircuitBrightness('kitchenPendants', 0.72);
+    expect(knx.getTargetLevels().kitchenPendants).toBe(72);
+    expect(bus.getCircuitBrightness('kitchenPendants')).toBeCloseTo(0.72, 5);
     expect(knxEventCount).toBe(1);
     expect(busEventCount).toBeLessThanOrEqual(2);
 

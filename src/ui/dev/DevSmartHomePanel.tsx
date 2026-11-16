@@ -218,32 +218,17 @@ function ScenesAndSwitchesCard({ deps, refresh }: PanelProps): JSX.Element {
         </details>
       )}
 
-      {knx.getZone('courtyard') && (
+      {(api.devices.customDevices?.() ?? []).map((dev) => (
         <ActionRow
-          label="Courtyard switch"
-          status={api.devices.getCourtyardModeLabel()}
-          action="Press"
-          onAction={act(() => api.devices.pressCourtyardSwitch())}
+          key={dev.id}
+          label={dev.label}
+          status={dev.statusLabel}
+          action={dev.actionLabel}
+          onAction={act(() => {
+            api.devices.triggerCustomDevice?.(dev.id);
+          })}
         />
-      )}
-      <ActionRow
-        label="Front gates"
-        status={api.devices.getGatesStatusLabel()}
-        action={api.devices.isGatesOpen() ? 'Close' : 'Open'}
-        onAction={act(() => api.devices.toggleGates())}
-      />
-      <ActionRow
-        label="Bifolds"
-        status={api.devices.isBifoldsOpen() ? 'Open' : 'Closed'}
-        action={api.devices.isBifoldsOpen() ? 'Close' : 'Open'}
-        onAction={act(() => api.devices.toggleBifolds())}
-      />
-      <ActionRow
-        label="Frame TV art"
-        status={api.devices.isTvArtMode() ? api.devices.getTvArtTitle() : 'Off (no presence)'}
-        action="Next art"
-        onAction={act(() => api.devices.cycleTvArt())}
-      />
+      ))}
 
       {sensors.length > 0 && (
         <div class="shell-chips" role="group" aria-label="Room motion sensors">

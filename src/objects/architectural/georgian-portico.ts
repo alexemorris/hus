@@ -148,7 +148,7 @@ export function buildGeorgianTuscanPorticoAndDoor(
   // 2 bullnose Yorkstone steps (`step1`: H 150 mm, `step2` landing: H 150 mm -> FFL +300 mm)
   const stepH = 0.15;
   const landingY = stepH * 2;
-  addBevelledPorticoStoneBlock(
+  const lowerStep = addBevelledPorticoStoneBlock(
     root,
     `${namePrefix}.yorkstoneLowerStep`,
     porticoW + 0.24,
@@ -173,8 +173,10 @@ export function buildGeorgianTuscanPorticoAndDoor(
     true
   );
   lowerBullnose.rotation.z = Math.PI * 0.5;
+  lowerStep.userData.isWalkableStep = true;
+  lowerBullnose.userData.isWalkableStep = true;
 
-  addBevelledPorticoStoneBlock(
+  const upperLanding = addBevelledPorticoStoneBlock(
     root,
     `${namePrefix}.yorkstoneUpperLanding`,
     porticoW + 0.06,
@@ -185,6 +187,8 @@ export function buildGeorgianTuscanPorticoAndDoor(
     (porticoD + 0.04) * 0.5,
     yorkstoneMat
   );
+
+  upperLanding.userData.isWalkableStep = true;
 
   // Entablature dimensions (`H 490 mm` at top -> columns span `landingY .. porticoH - 0.49`)
   const entabH = 0.49;

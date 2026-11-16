@@ -7,7 +7,6 @@ export {
   type HouseLensesConfig,
   type HousePortalsConfig,
   type HouseRoomsConfig,
-  type HouseSmartHomeAddresses,
   type HouseSmartHomeConfig,
   type HouseZonesConfig,
   type MountHouseOptions,

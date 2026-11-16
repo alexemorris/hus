@@ -171,7 +171,7 @@ const TOD_OPTIONS: readonly { readonly id: TimeOfDay; readonly label: string; re
 function WholeHouse({ sections }: { readonly sections: TradeSections }): JSX.Element {
   const ctl = useShell();
   void deviceRevision.value;
-  const gatesOpen = ctl.isGateOpenOrOpening();
+  const wholeHouseDevices = ctl.getWholeHouseDevices();
   const tod = timeOfDay.value;
   return (
     <section class="shell-card shell-card-house">
@@ -190,14 +190,17 @@ function WholeHouse({ sections }: { readonly sections: TradeSections }): JSX.Ele
             <Icon name="sparkle" size={18} />
             <span>Evening</span>
           </button>
-          <button
-            type="button"
-            class={`shell-action${gatesOpen ? ' is-active' : ''}`}
-            onClick={() => ctl.toggleGates()}
-          >
-            <Icon name="gate" size={18} />
-            <span>{gatesOpen ? 'Close gates' : 'Open gates'}</span>
-          </button>
+          {wholeHouseDevices.map((dev) => (
+            <button
+              key={dev.id}
+              type="button"
+              class={`shell-action${dev.active ? ' is-active' : ''}`}
+              onClick={() => ctl.triggerCustomDevice(dev)}
+            >
+              <Icon name={(dev.icon as IconName | undefined) ?? 'device'} size={18} />
+              <span>{dev.actionLabel}</span>
+            </button>
+          ))}
         </div>
       )}
       <div class="shell-row">

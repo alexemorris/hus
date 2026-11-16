@@ -18,10 +18,10 @@ function circuit(
     name,
     shortName,
     location,
-    buildingId: 'mainHouse',
+    buildingId: 'house',
     floorId: 'ground',
     zoneId,
-    actuatorPa: '1.1.20',
+    actuatorPa: '1.1.10',
     gaSwitch: '1/1/1',
     gaValue: '1/2/1',
     gaStatus: '1/3/1',
@@ -35,7 +35,7 @@ function room(id: RoomZoneId, name: string, shortName: string): RoomZoneDefiniti
     id,
     name,
     shortName,
-    buildingId: 'mainHouse',
+    buildingId: 'house',
     floorId: 'ground',
     knxAreaLine: '1.1',
     isInterior: true,
@@ -63,53 +63,53 @@ function zone(
 
 const PROJECT: KnxNameResolverProject = {
   circuits: [
-    circuit('islandPendants', 'kitchen', 'Blue Island Pendants (Set 1)', 'Island Pendants', '3 Concrete Dome Pendants over Island'),
-    circuit('spotlights', 'kitchen', 'Kitchen Ceiling Spotlights', 'Kitchen Spots', '10 Warm-Dim Downlights'),
-    circuit('familyRoomSpots', 'familyRoom', 'Dining Room Recessed Downlights', 'Dining Spots', '6 Recessed Downlights'),
-    circuit('studyPendant', 'study', 'Study & South Lobby Ceiling Pendant', 'Study Pendant', 'Brass Globe Pendant'),
+    circuit('counterPendants', 'kitchen', 'Kitchen Counter Pendants', 'Counter Pendants', '3 Dome Pendants over Counter'),
+    circuit('kitchenSpots', 'kitchen', 'Kitchen Ceiling Spotlights', 'Kitchen Spots', '10 Warm-Dim Downlights'),
+    circuit('diningSpots', 'diningRoom', 'Dining Room Recessed Downlights', 'Dining Spots', '6 Recessed Downlights'),
+    circuit('hallPendant', 'hallway', 'Entrance Hall Ceiling Pendant', 'Hall Pendant', 'Brass Globe Pendant'),
     circuit(
-      'barnTrussSpots',
-      'outbuildingBarn',
-      'Barn Truss Spotlights, Pool Light & Studio Track LED Ring',
-      'Barn & Sim Ring',
-      'Oak Truss Spotlights + Pool Table Canopy',
-      ['barn downlights', 'barn spots'],
+      'livingDownlights',
+      'livingRoom',
+      'Living Room Ceiling Spotlights',
+      'Living Spots',
+      'Recessed ceiling downlights',
+      ['lounge downlights', 'lounge spots'],
     ),
-    circuit('barnCoveLeds', 'outbuildingBarn', 'Barn Cove LEDs & Wall Sconces', 'Barn Cove', 'Eave cove strips'),
-    circuit('studioTrackHalo', 'outbuildingBarn', 'Studio Track LED Halo', 'Track Halo', 'Inner LED halo ring around the studio track'),
-    circuit(
-      'mezzanineSconcesAndAmbient',
-      'outbuildingMezzanine',
-      'Barn Mezzanine Wall Sconces & Ambient Downlights',
-      'Mezz Sconces',
-      '2 Pleated-Linen Wall Sconces',
-    ),
-    circuit('mezzanineLamps5A', 'outbuildingMezzanine', 'Barn Mezzanine 5V/5A Lamp Sockets (4 Lamps)', 'Mezz 5V Lamps', 'Corston 5A sockets'),
-    circuit('mezzanineDownlights', 'outbuildingMezzanine', 'Barn Mezzanine Downlights', 'Mezz Downlights', 'Recessed downlights'),
-    circuit('stableOfficeSpotlights', 'outbuildingStableOffice', 'Stable Office Recessed Spotlights', 'Office Spots', '6 spots'),
+    circuit('livingCoveLeds', 'livingRoom', 'Living Room Cove LEDs', 'Living Cove', 'Perimeter cove strips'),
+    circuit('featureHalo', 'livingRoom', 'Ceiling Feature LED Halo', 'Feature Halo', 'Inner LED halo ring'),
+    circuit('bedroomSconces', 'bedroom1', 'Primary Bedroom Wall Sconces', 'Bedroom Sconces', '2 Linen Wall Sconces'),
+    circuit('bedroomLamps5A', 'bedroom1', 'Primary Bedroom 5A Lamp Sockets', 'Bedroom 5A Lamps', 'Switched 5A lamp sockets'),
+    circuit('bedroomDownlights', 'bedroom1', 'Primary Bedroom Downlights', 'Bedroom Downlights', 'Recessed downlights'),
+    circuit('officeSpotlights', 'homeOffice', 'Home Office Recessed Spotlights', 'Office Spots', '6 spots'),
   ],
   zones: [
-    zone('kitchen', 'Kitchen', ['islandPendants', 'spotlights'], [
+    zone('kitchen', 'Kitchen', ['counterPendants', 'kitchenSpots'], [
       { id: 'cooking', label: 'Cooking', levels: {} },
       { id: 'dining', label: 'Dining', levels: {} },
     ]),
-    zone('familyRoom', 'Dining Room', ['familyRoomSpots']),
-    zone('study', 'Plant Room', ['studyPendant'], [], ['study']),
-    zone('outbuildingBarn', 'Barn', ['barnTrussSpots', 'barnCoveLeds', 'studioTrackHalo'], [
-      { id: 'bright', label: 'Bright', levels: {} },
-      { id: 'cinema', label: 'Cinema', levels: {} },
-      { id: 'evening', label: 'Evening Bar', levels: {} },
-    ], ['games barn']),
-    zone('outbuildingMezzanine', 'Mezzanine', ['mezzanineSconcesAndAmbient', 'mezzanineLamps5A', 'mezzanineDownlights']),
-    zone('outbuildingStableOffice', 'Stable Office', ['stableOfficeSpotlights']),
+    zone('diningRoom', 'Dining Room', ['diningSpots']),
+    zone('hallway', 'Entrance Hall', ['hallPendant'], [], ['foyer']),
+    zone(
+      'livingRoom',
+      'Living Room',
+      ['livingDownlights', 'livingCoveLeds', 'featureHalo'],
+      [
+        { id: 'bright', label: 'Bright', levels: {} },
+        { id: 'cinema', label: 'Cinema', levels: {} },
+        { id: 'evening', label: 'Evening Relax', levels: {} },
+      ],
+      ['lounge'],
+    ),
+    zone('bedroom1', 'Primary Bedroom', ['bedroomSconces', 'bedroomLamps5A', 'bedroomDownlights']),
+    zone('homeOffice', 'Home Office', ['officeSpotlights']),
   ],
   rooms: [
     room('kitchen', 'Kitchen', 'Kitchen'),
-    room('familyRoom', 'Dining Room', 'Dining'),
-    room('study', 'Plant Room', 'Plant'),
-    room('outbuildingBarn', 'Games Barn', 'Barn'),
-    room('outbuildingMezzanine', 'Barn Mezzanine', 'Mezzanine'),
-    room('outbuildingStableOffice', 'Stable Office', 'Office'),
+    room('diningRoom', 'Dining Room', 'Dining'),
+    room('hallway', 'Entrance Hall', 'Hall'),
+    room('livingRoom', 'Living Room', 'Living'),
+    room('bedroom1', 'Primary Bedroom', 'Bedroom'),
+    room('homeOffice', 'Home Office', 'Office'),
   ],
 };
 
@@ -117,24 +117,24 @@ const resolver = createKnxNameResolver(PROJECT);
 
 describe('tokeniseKnxName', () => {
   it('splits camelCase, singularises and drops socket ratings', () => {
-    expect(tokeniseKnxName('mezzanineLamps5A')).toEqual(['mezzanine', 'lamp']);
-    expect(tokeniseKnxName('Barn & Sim Ring')).toEqual(['barn', 'sim', 'ring']);
-    expect(tokeniseKnxName('Island Pendants')).toEqual(['island', 'pendant']);
+    expect(tokeniseKnxName('bedroomLamps5A')).toEqual(['bedroom', 'lamp']);
+    expect(tokeniseKnxName('Feature & Halo Ring')).toEqual(['feature', 'halo', 'ring']);
+    expect(tokeniseKnxName('Counter Pendants')).toEqual(['counter', 'pendant']);
     expect(tokeniseKnxName('the kitchen spotlights')).toEqual(['kitchen', 'spot']);
   });
 });
 
 describe('resolveCircuit', () => {
   it.each<[string, CircuitId]>([
-    ['barn downlights', 'barnTrussSpots'],
-    ['mezzanine lamps', 'mezzanineLamps5A'],
-    ['island pendants', 'islandPendants'],
-    ['track halo', 'studioTrackHalo'],
-    ['Island Pendants', 'islandPendants'],
-    ['islandPendants', 'islandPendants'],
-    ['mezzanine downlights', 'mezzanineDownlights'],
-    ['kitchen spots', 'spotlights'],
-    ['set the island pendants to 40%', 'islandPendants'],
+    ['lounge downlights', 'livingDownlights'],
+    ['bedroom lamps', 'bedroomLamps5A'],
+    ['counter pendants', 'counterPendants'],
+    ['feature halo', 'featureHalo'],
+    ['Counter Pendants', 'counterPendants'],
+    ['counterPendants', 'counterPendants'],
+    ['bedroom downlights', 'bedroomDownlights'],
+    ['kitchen spots', 'kitchenSpots'],
+    ['set the counter pendants to 40%', 'counterPendants'],
   ])('%s → %s', (text, id) => {
     expect(resolver.resolveCircuit(text)?.id).toBe(id);
   });
@@ -145,20 +145,20 @@ describe('resolveCircuit', () => {
   });
 
   it('ranks multiple matches best first', () => {
-    const ranked = resolver.rankCircuits('mezzanine');
+    const ranked = resolver.rankCircuits('bedroom');
     expect(ranked.length).toBeGreaterThan(1);
-    expect(ranked.every((m) => m.id.startsWith('mezzanine'))).toBe(true);
+    expect(ranked.every((m) => m.id.startsWith('bedroom'))).toBe(true);
   });
 });
 
 describe('resolveZone', () => {
   it.each<[string, RoomZoneId]>([
-    ['office', 'outbuildingStableOffice'],
-    ['plant room', 'study'],
-    ['study', 'study'],
-    ['dining room', 'familyRoom'],
+    ['office', 'homeOffice'],
+    ['entrance hall', 'hallway'],
+    ['foyer', 'hallway'],
+    ['dining room', 'diningRoom'],
     ['the kitchen', 'kitchen'],
-    ['games barn', 'outbuildingBarn'],
+    ['lounge', 'livingRoom'],
     ['turn the kitchen lights off', 'kitchen'],
   ])('%s → %s', (text, id) => {
     expect(resolver.resolveZone(text)?.id).toBe(id);
@@ -171,15 +171,15 @@ describe('resolveZone', () => {
 
 describe('resolveScene', () => {
   it('matches by label, id and number', () => {
-    expect(resolver.resolveScene('outbuildingBarn', 'cinema')).toMatchObject({ id: 'cinema', index: 1 });
-    expect(resolver.resolveScene('outbuildingBarn', 'evening')).toMatchObject({ id: 'evening', index: 2 });
-    expect(resolver.resolveScene('outbuildingBarn', 'bright')).toMatchObject({ id: 'bright', index: 0 });
+    expect(resolver.resolveScene('livingRoom', 'cinema')).toMatchObject({ id: 'cinema', index: 1 });
+    expect(resolver.resolveScene('livingRoom', 'evening')).toMatchObject({ id: 'evening', index: 2 });
+    expect(resolver.resolveScene('livingRoom', 'bright')).toMatchObject({ id: 'bright', index: 0 });
     expect(resolver.resolveScene('kitchen', '2')).toMatchObject({ id: 'dining', index: 1 });
     expect(resolver.resolveScene('kitchen', 'scene 1')).toMatchObject({ id: 'cooking', index: 0 });
   });
 
   it('returns null for zones without scenes or unmatched text', () => {
-    expect(resolver.resolveScene('familyRoom', 'cooking')).toBeNull();
+    expect(resolver.resolveScene('diningRoom', 'cooking')).toBeNull();
     expect(resolver.resolveScene('kitchen', 'disco')).toBeNull();
     expect(resolver.resolveScene('kitchen', '9')).toBeNull();
   });

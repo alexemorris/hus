@@ -184,7 +184,7 @@ function ensureGeometryBoundingBoxFast(geom: THREE.BufferGeometry): THREE.Box3 |
 
 function isDynamicNode(node: THREE.Object3D): boolean {
   const u = node.userData as Record<string, unknown> | undefined;
-  if (u?.isBifoldDoor === true || u?.isCarGate === true || u?.doorRole === 'pivot') {
+  if (u?.isAnimatedDoor === true || u?.isExteriorGate === true || u?.isDynamicBarrier === true || u?.doorRole === 'pivot') {
     return true;
   }
   if (
@@ -954,9 +954,10 @@ export class WalkthroughDoorBargeAndCollisionSolver {
     const fullName = typeof name === 'string' ? `${parentName} ${name}` : parentName;
     if (
       u?.isFloorSlab === true ||
+      u?.isWalkableStep === true ||
       u?.walkableSurface === true ||
       u?.collisionRole === 'walkable' ||
-      /\.(slab|finish|deck|ceiling)$|threshold|yorkstoneLowerStep|yorkstoneUpperLanding|frenchDoorLowerStep|frenchDoorUpperStep|pool\.water|waterSurface|skirting|cornice|coving|pictureRail|dado|architrave/i.test(
+      /\.(slab|finish|deck|ceiling)$|threshold|pool\.water|waterSurface|skirting|cornice|coving|pictureRail|dado|architrave/i.test(
         fullName
       )
     ) {
