@@ -5,7 +5,7 @@ import type { KnxProject } from './project.ts';
 /**
  * Offline natural-language name resolver for a KNX project.
  *
- * Maps free text ("barn downlights", "the plant room", "mezzanine lamps") to circuit, zone and
+ * Maps free text ("living room downlights", "the hallway", "study lamps") to circuit, zone and
  * zone-scene ids using only the project's own data: ids (camelCase split), names, short names,
  * room names, locations and `aliases`. Pure and synchronous — used by the AI assistant both to
  * coerce model output and as the local fallback parser.
