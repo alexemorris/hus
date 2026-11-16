@@ -18,12 +18,12 @@ import {
 import { InteractionRegistry } from '../engine/interaction/interaction-registry.ts';
 import {
   buildLacancheCluny1000Range,
-  buildSageBaristaExpress,
 } from './catalog/appliances.ts';
 import { buildNeptuneLarderPantry } from './catalog/architectural.ts';
 import { createGeorgianSashWindow } from './objects.ts';
 import {
   buildLefroyBrooksCharterhouseWc,
+  buildPerrinRoweBasinTap,
   buildPerrinRoweKitchenTap,
   buildThomasCrapperLowLevelWc,
 } from './catalog/sanitaryware.ts';
@@ -41,12 +41,12 @@ describe('Self-Contained Smart Assets', () => {
     larder.position.set(2, 0, 0);
     scene.add(larder);
 
-    // Zero-ctx Sage Barista Express + Perrin & Rowe Kitchen Tap + Thomas Crapper WC + Sash Window
-    const espresso = buildSageBaristaExpress({ namePrefix: 'kitchen.espresso' });
-    scene.add(espresso);
-
+    // Zero-ctx Perrin & Rowe Kitchen Tap + Thomas Crapper WC + Sash Window
     const tap = buildPerrinRoweKitchenTap({ model: 'phoenician-bridge', finish: 'AB' });
     scene.add(tap);
+
+    const basinTap = buildPerrinRoweBasinTap({ collection: 'traditional', mount: '3-hole-deck', finish: 'NI' });
+    scene.add(basinTap);
 
     const wc = buildThomasCrapperLowLevelWc({ namePrefix: 'cloakroom.wc', finish: 'BR' });
     scene.add(wc);

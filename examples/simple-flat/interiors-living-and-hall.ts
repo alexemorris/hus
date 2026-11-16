@@ -397,8 +397,8 @@ export function buildLivingKitchenAndHallInteriors(
   gauge.position.set(0.075, 0.295, 0.144);
   espresso.add(gauge);
   attachAssetMetadata(espresso, {
-    name: 'Sage Barista Express Brushed-Steel Espresso Machine',
-    brand: 'Sage Appliances',
+    name: 'Brushed-Steel Dual-Boiler Espresso Machine',
+    brand: 'Heritage Appliances',
     sku: 'BES875UK',
     finish: 'Brushed Stainless Steel & Aged Brass',
     category: 'appliance',

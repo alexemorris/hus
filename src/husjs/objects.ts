@@ -29,7 +29,6 @@ export {
   getLivingCopperPatinaMaps,
   type LivingCopperPatinaMaps,
 } from '../engine/textures/timber-and-metal-textures.ts';
-export * from '../engine/textures/vitoria-chequerboard-tiles.ts';
 export * from '../objects/shared/geometry-cache.ts';
 export {
   createSharedGeo,

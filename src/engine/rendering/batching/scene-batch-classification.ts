@@ -147,7 +147,13 @@ export function collectProtectedObjects(
     }
     const u = obj.userData;
     if (!u) return;
-    if (u.isBifoldDoor || u.isAnnotationGroup || u.isSecurityFovCone) {
+    if (
+      u.isBifoldDoor ||
+      u.isAnnotationGroup ||
+      u.isSecurityFovCone ||
+      u.isDynamicInteractionObject === true ||
+      u.isDynamicObject === true
+    ) {
       markSubtree(obj);
     } else if (u.isVariationOptionRoot === true && !(obj instanceof THREE.Group)) {
       protectedSet.add(obj);

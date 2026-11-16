@@ -10,7 +10,6 @@ import {
   createWelshSlateRoofTextures,
   createWovenWoolCarpetTextures,
 } from './procedural-textures.ts';
-import { createVitoriaRossoChequerboardTextures } from './vitoria-chequerboard-tiles.ts';
 import {
   clearTextureRegistryCache,
   compactScalarRgbaDataTexture,
@@ -330,9 +329,9 @@ describe('derivePbrNormalAndRoughnessMaps', () => {
     };
     try {
       clearTextureRegistryCache();
-      const vitoria = createVitoriaRossoChequerboardTextures();
-      expect(vitoria.normalMap.colorSpace).toBe(THREE.NoColorSpace);
-      expect(vitoria.roughnessMap.colorSpace).toBe(THREE.NoColorSpace);
+      const quarryRec = createHerringboneTerracottaQuarryTileTextures();
+      expect(quarryRec.normalMap.colorSpace).toBe(THREE.NoColorSpace);
+      expect(quarryRec.roughnessMap.colorSpace).toBe(THREE.NoColorSpace);
     } finally {
       (globalThis as { document?: unknown }).document = prevDocRec;
     }

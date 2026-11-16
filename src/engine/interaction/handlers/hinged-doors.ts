@@ -129,7 +129,7 @@ export function getDefaultDoorOpenAngle(
   const isCupboardLike =
     door.isWalkthroughCandidate === false ||
     /understairs|cupboard|larder|fridge|freezer|winecooler|wardrobe|barcabinet|shower/.test(pivotChain);
-  const maxSwing = pivotChain.includes("kingsley") ? 1.95 : isCupboardLike ? 1.45 : 1.54;
+  const maxSwing = isCupboardLike ? 1.45 : 1.54;
   if (Math.abs(rawDelta) > maxSwing) {
     return door.closedAngle + Math.sign(rawDelta) * maxSwing;
   }
@@ -236,7 +236,6 @@ export function isWalkthroughDoorState(
     pivotName.includes('tvcarrier') ||
     pivotName.includes('safepanel') ||
     pivotName.includes('eurogradesafe') ||
-    pivotName.includes('kingsley') ||
     pivotName.includes('barcabinet') ||
     pivotName.includes('shower')
   ) {
@@ -269,9 +268,6 @@ export function describeHingedDoor(
   ]
     .join(' ')
     .toLowerCase();
-  if (chainNames.includes('kingsley')) {
-    return `${verb} Kingsley Bar Cabinet`;
-  }
   if (
     chainNames.includes('domelid') ||
     (chainNames.includes('aga') && /\blid\b/.test(chainNames))

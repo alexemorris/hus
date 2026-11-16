@@ -899,7 +899,6 @@ export function batchRigidDynamicGroups(
       u?.southPivot === true ||
       u?.bifoldRole === 'outerPivot' ||
       u?.bifoldRole === 'innerLeaf' ||
-      u?.pulleyMaidRole === 'rackMovingGroup' ||
       u?.isRigidDynamicGroup === true ||
       batchHooks.isRigidDynamicGroup?.(obj) === true
     ) {
@@ -961,9 +960,7 @@ export function batchRigidDynamicGroups(
       const u = (node.userData ?? {}) as Record<string, unknown>;
       if (
         u.isDynamicInteractionObject ||
-        u.isDynamicObject ||
-        u.pulleyMaidRole === 'pulleyWheel' ||
-        u.pulleyMaidRole === 'vertRope'
+        u.isDynamicObject
       ) {
         return;
       }

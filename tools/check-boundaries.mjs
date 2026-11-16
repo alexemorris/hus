@@ -69,7 +69,6 @@ export const PUBLIC_HUSJS_ENTRYPOINTS = new Set([
   'src/husjs/catalog/radiators.ts',
   'src/husjs/catalog/sanitaryware.ts',
   'src/husjs/catalog/soft-furnishings.ts',
-  'src/husjs/catalog/vehicles.ts',
 ]);
 
 /** Bare packages forbidden per layer (pure layers must stay renderer-agnostic). */

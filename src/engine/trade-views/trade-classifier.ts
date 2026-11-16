@@ -322,7 +322,7 @@ const TOKEN_RULES: ReadonlyMap<string, TokenRule> = (() => {
 
 const CAMEL_TOKEN_RE = /[A-Z]{2,}(?=[A-Z][a-z]|\d|$|[^A-Za-z])|[A-Z]?[a-z]+|[A-Z]+/g;
 
-/** Splits a single dotted-name segment (e.g. `porsche992TurboS`) into lower-case words. */
+/** Splits a single dotted-name segment (e.g. `electricSaloonCar`) into lower-case words. */
 export function tokenizeSegment(segment: string): string[] {
   const out: string[] = [];
   const matches = segment.match(CAMEL_TOKEN_RE);

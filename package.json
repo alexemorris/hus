@@ -51,7 +51,6 @@
     "./catalog/radiators": "./src/husjs/catalog/radiators.ts",
     "./catalog/sanitaryware": "./src/husjs/catalog/sanitaryware.ts",
     "./catalog/soft-furnishings": "./src/husjs/catalog/soft-furnishings.ts",
-    "./catalog/vehicles": "./src/husjs/catalog/vehicles.ts",
     "./styles.css": "./src/style.css",
     "./vite": {
       "types": "./tools/husjs-vite.d.mts",
@@ -135,9 +134,6 @@
       "catalog/soft-furnishings": [
         "./src/husjs/catalog/soft-furnishings.ts"
       ],
-      "catalog/vehicles": [
-        "./src/husjs/catalog/vehicles.ts"
-      ],
       "vite": [
         "./tools/husjs-vite.d.mts"
       ]
@@ -160,7 +156,8 @@
     "husjs:zfight": "node bin/husjs.mjs zfight",
     "husjs:audit": "node bin/husjs.mjs audit",
     "husjs:hdri": "node ./bin/husjs.mjs hdri",
-    "husjs:schedule": "node ./bin/husjs.mjs schedule"
+    "husjs:schedule": "node ./bin/husjs.mjs schedule",
+    "audit": "node bin/husjs.mjs audit"
   },
   "dependencies": {
     "@preact/signals": "^2.11.3",

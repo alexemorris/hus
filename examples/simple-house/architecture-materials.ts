@@ -6,15 +6,14 @@ import {
   type RoomPaintScheme,
 } from 'husjs/materials';
 import {
-  VITORIA_CHEQUER_REPEAT_M,
   createEngineeredOakFloorTextures,
   createHerringboneTerracottaQuarryTileTextures,
   createParisianManoirCabochonTextures,
   createTumbledLimestoneFlagstoneTextures,
-  createVitoriaRossoChequerboardTextures,
   prepGeo,
 } from 'husjs/objects';
 import {
+  createCarraraNeroChequerboardTextures,
   createHeritageFloorFinishMaterial,
   createPaleOakHerringboneParquetMaterial,
 } from 'husjs/catalog/architectural';
@@ -372,10 +371,11 @@ export function createSimpleHouseFloorMaterials() {
     0.72,
     0.5
   );
+  const carraraNeroChequer = createCarraraNeroChequerboardTextures();
   const wcVitoriaChequerMat = buildMetricScaledFloorMaterial(
     'simpleHouse.floorMat.wcVitoriaChequer',
-    createVitoriaRossoChequerboardTextures(),
-    [1 / VITORIA_CHEQUER_REPEAT_M, 1 / VITORIA_CHEQUER_REPEAT_M],
+    carraraNeroChequer,
+    [1 / carraraNeroChequer.diagonalRepeatM, 1 / carraraNeroChequer.diagonalRepeatM],
     0.46,
     0.42
   );

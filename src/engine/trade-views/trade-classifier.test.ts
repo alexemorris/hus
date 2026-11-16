@@ -23,7 +23,7 @@ describe('classifyName', () => {
   const cases: readonly (readonly [string, readonly string[], string])[] = [
     ['bootRoomManifoldCupboard', [], 'joinery'],
     ['kitchen.island.sink.tap', [], 'plumbing'],
-    ['porsche992TurboS.headlight', [], 'vehicle'],
+    ['electricSaloonCar.headlight', [], 'vehicle'],
     ['hall.corstonSocket.southWall', [], 'electrical'],
     ['knxWiringCenter', [], 'smart'],
     ['showerRoom.wall', [], 'structure'],

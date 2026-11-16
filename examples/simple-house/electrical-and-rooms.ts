@@ -373,7 +373,7 @@ export const SIMPLE_HOUSE_MANIFEST: readonly RoomManifestEntry[] = [
       walls: paintSpecFromSwatch('shaded-white', 'modern-emulsion'),
       ceiling: paintSpecFromSwatch('wimborne-white', 'modern-emulsion'),
       trim: paintSpecFromSwatch('green-smoke', 'modern-eggshell', 'Tongue-and-groove half-height dado panelling'),
-      flooring: 'Vitoria Rosso & Carrara tumbled chequerboard marble',
+      flooring: 'Belgian Nero Marquina & Carrara tumbled chequerboard marble',
     },
   },
   {

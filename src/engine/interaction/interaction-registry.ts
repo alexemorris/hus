@@ -54,15 +54,6 @@ import {
 } from './handlers/hinged-doors.ts';
 import { GARAGE_DOOR_GROUP_ID, getPseudoDeviceUserData } from './handlers/pseudo-devices.ts';
 import {
-  collectPulleyMaidDynamicObjects,
-  createPulleyMaidState,
-  playPulleyMaidSound,
-  stepPulleyMaid,
-  tagPulleyMaidRoles,
-  type PulleyMaidConfig,
-  type PulleyMaidState,
-} from './handlers/pulley-maid.ts';
-import {
   createSlidingDrawerState,
   playSlidingDrawerSound,
   stepSlidingDrawer,
@@ -91,7 +82,6 @@ export type InteractableKind =
   | 'drawer'
   | 'bifold-cupboard'
   | 'toggle'
-  | 'pulley-maid'
   | 'animated'
   | 'smart'
   | 'custom';
@@ -130,7 +120,6 @@ export class InteractionRegistry {
   private readonly bifoldCupboards = new Map<string, BifoldCupboardState>();
   private readonly slidingDrawers = new Map<string, SlidingDrawerState>();
   private readonly toggleCallbacks = new Map<string, ToggleCallbackEntry>();
-  private pulleyMaid: PulleyMaidState | null = null;
   private carGatePair: MotorizedCarGatePairState | null = null;
   private nextId = 1;
   private readonly tmpHingeWorld = new THREE.Vector3();
@@ -255,7 +244,7 @@ export class InteractionRegistry {
     return this.#ensureStableIds().byStable.get(id) ?? id;
   }
 
-  /** Stable id for a legacy id (or the id itself for fixed ids such as `pulley-maid`). */
+  /** Stable id for a legacy id (or the id itself for fixed custom ids). */
   public getStableId(id: string): string {
     return this.#ensureStableIds().byLegacy.get(this.resolveInteractableId(id)) ?? id;
   }
@@ -273,7 +262,6 @@ export class InteractionRegistry {
     for (const dr of this.slidingDrawers.values()) add(dr.id, 'drawer');
     for (const bf of this.bifoldCupboards.values()) add(bf.id, 'bifold-cupboard');
     for (const id of this.toggleCallbacks.keys()) add(id, 'toggle');
-    if (this.pulleyMaid) add(this.pulleyMaid.id, 'pulley-maid');
     for (const custom of this.#customInteractions.values()) {
       out.push({
         id: custom.id,
@@ -610,16 +598,6 @@ export class InteractionRegistry {
     this.#exteriorAcousticPortals.push(provider);
   }
 
-  /**
-   * Registers the Utility Room Pulley Maid ceiling clothes airer so clicking it lowers/raises
-   * the wooden drying laths and dynamically adjusts the vertical hoist ropes.
-   */
-  public registerPulleyMaid(config: PulleyMaidConfig): void {
-    const state = createPulleyMaidState(config);
-    this.registerClickableObject(config.clickRoot, { interactableId: state.id });
-    tagPulleyMaidRoles(config);
-    this.pulleyMaid = state;
-  }
 
   /**
    * Registers the Motorized Dual-Leaf Front Car Entrance Gates so both leaves swing open/closed
@@ -913,14 +891,6 @@ export class InteractionRegistry {
       return true;
     }
 
-    if (this.pulleyMaid && this.pulleyMaid.id === id) {
-      const pmTargets = new Set<THREE.Object3D>();
-      collectPulleyMaidDynamicObjects(this.pulleyMaid, pmTargets);
-      this.#ensureUnbatchedSet(pmTargets);
-      this.pulleyMaid.isLowered = !this.pulleyMaid.isLowered;
-      playPulleyMaidSound(this.pulleyMaid);
-      return true;
-    }
 
     const smartEntry = this.#smartEntries.get(id);
     if (smartEntry) {
@@ -1061,9 +1031,6 @@ export class InteractionRegistry {
       if (drawer) {
         return `${drawer.isOpen ? 'Close' : 'Open'} Drawer`;
       }
-      if (this.pulleyMaid && this.pulleyMaid.id === id) {
-        return `${this.pulleyMaid.isLowered ? 'Raise' : 'Lower'} Pulley Maid Airer`;
-      }
       if (this.toggleCallbacks.has(id)) {
         return 'Extend / Retract Table';
       }
@@ -1101,9 +1068,6 @@ export class InteractionRegistry {
     }
     for (const dr of this.slidingDrawers.values()) {
       dr.group.traverse((c) => outSet.add(c));
-    }
-    if (this.pulleyMaid) {
-      collectPulleyMaidDynamicObjects(this.pulleyMaid, outSet);
     }
     if (this.carGatePair) {
       this.carGatePair.northPivot.traverse((c) => outSet.add(c));
@@ -1232,9 +1196,6 @@ export class InteractionRegistry {
       if (stepSlidingDrawer(dr, dtSeconds)) anyChanged = true;
     }
 
-    if (this.pulleyMaid && stepPulleyMaid(this.pulleyMaid, dtSeconds)) {
-      anyChanged = true;
-    }
 
     for (const custom of this.#customInteractions.values()) {
       if (custom.step?.(dtSeconds)) anyChanged = true;
