@@ -219,4 +219,76 @@ describe('PortalVisibilitySolver', () => {
     expect(shadowRevealed).toContain(utilityWasher);
     expect(shadowRevealed).not.toContain(kitchenTable);
   });
+
+  it('keeps built-in wardrobes and doors in LOD0 shell and pre-warms adjacent rooms in 1PV walkthrough before doorway entry', () => {
+    let doorOpen = false;
+    const lod = new RoomLodController(TEST_ROOMS);
+    const solver = new PortalVisibilitySolver({
+      rooms: TEST_ROOMS,
+      exteriorPortals: [],
+      interiorPortals: [
+        {
+          id: 'kitchen-utility-door',
+          roomA: 'kitchen',
+          roomB: 'utility',
+          minX: 1.85,
+          maxX: 2.15,
+          minY: 0.0,
+          maxY: 2.1,
+          minZ: -0.5,
+          maxZ: 0.5,
+          alwaysOpenOrGlazed: false,
+          isActive: () => doorOpen,
+        },
+      ],
+    });
+    lod.setPortalVisibilitySolver(solver);
+
+    const root = new THREE.Group();
+    const wardrobeCarcass = new THREE.Mesh(new THREE.BoxGeometry(1.8, 2.2, 0.6));
+    wardrobeCarcass.name = 'utility.eastWardrobes.carcass';
+    wardrobeCarcass.position.set(4.5, 1.1, 0);
+    wardrobeCarcass.updateMatrixWorld(true);
+
+    const interiorDoor = new THREE.Mesh(new THREE.BoxGeometry(0.85, 2.05, 0.045));
+    interiorDoor.name = 'utility.door';
+    interiorDoor.userData.interactableId = 'door:utility.door';
+    interiorDoor.position.set(2.05, 1.025, 0);
+    interiorDoor.updateMatrixWorld(true);
+
+    const armchair = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.9, 0.85));
+    armchair.name = 'utility.armchair';
+    armchair.position.set(4.0, 0.45, 1.2);
+    armchair.updateMatrixWorld(true);
+
+    const tableLamp = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.3, 0.24));
+    tableLamp.name = 'utility.tableLamp';
+    tableLamp.position.set(4.0, 0.85, -1.2);
+    tableLamp.updateMatrixWorld(true);
+
+    root.add(wardrobeCarcass, interiorDoor, armchair, tableLamp);
+    root.updateMatrixWorld(true);
+    lod.indexBuiltSceneHierarchy([root], { deepBatchClassification: true });
+
+    // Even when forced to LOD0, built-in wardrobes and interactive interior doors stay visible
+    const farCam = makeCamera([-3.5, 1.6, 0], [-1.0, 1.6, 0]);
+    lod.setDistanceScale(0.3);
+    lod.evaluateLod(farCam.position, farCam.position, 'all', true, {
+      camera: farCam,
+      isWalkthrough: true,
+    });
+    expect(wardrobeCarcass.visible).toBe(true);
+    expect(interiorDoor.visible).toBe(true);
+    expect(armchair.visible).toBe(false);
+
+    // Approaching within 2.6m of the closed doorway in 1PV pre-warms both LOD1 and LOD2 before entry/barge
+    const approachCam = makeCamera([0.2, 1.6, 0], [3.5, 1.5, 0]);
+    lod.evaluateLod(approachCam.position, approachCam.position, 'all', false, {
+      camera: approachCam,
+      isWalkthrough: true,
+    });
+    expect(wardrobeCarcass.visible).toBe(true);
+    expect(armchair.visible).toBe(true);
+    expect(tableLamp.visible).toBe(true);
+  });
 });

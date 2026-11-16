@@ -400,12 +400,21 @@ export class RoomLodController {
     }
 
     // Never classify dynamic cutaway wall segments, architectural shell groups, windows, doors, floors, skirtings, or stairs as LOD1/LOD2 furniture
-    const isStructuralShellName =
+    const isBuiltInJoineryOrFixtureName =
       typeof obj.name === 'string' &&
-      /floor|stairs|architrave|doorwaycasing|skirting|chimneybreast|gable|skeiling|collar/i.test(
+      /wardrobe|cupboard|bookcase|windowseat|vanity|sanitaryware|showerenclosure|showerniche|thermostaticshower|copperboatbath|bathtub|fireplace|entrancedoor|pocketdoor|bifold/i.test(
         obj.name
       ) &&
-      (!deep || !/turfmat|foldingfloor/i.test(obj.name));
+      !/cushion|pillow|throw|towel|book\b|bottle|vase|jar|mug|plate|shoe|hanger|shirt|coat|dress|folded/i.test(
+        obj.name
+      );
+    const isStructuralShellName =
+      (typeof obj.name === 'string' &&
+        /floor|stairs|architrave|doorwaycasing|skirting|chimneybreast|gable|skeiling|collar/i.test(
+          obj.name
+        ) &&
+        (!deep || !/turfmat|foldingfloor/i.test(obj.name))) ||
+      isBuiltInJoineryOrFixtureName;
     const isCrossFloorStair =
       getStaircaseWalkableSampler(obj) !== undefined ||
       Boolean(obj.userData?.crossFloorStair) ||
@@ -457,7 +466,7 @@ export class RoomLodController {
       /wall|ceiling|roof|window|sill|lintel|beam|joist|rafter|purlin|truss|brick|plaster|cladding|fascia|soffit|gutter|downpipe|casement|glazing|mullion|frame|threshold|plinth|doorheader/i.test(
         obj.name
       ) &&
-      !/sideboard|wardrobe|cabinet|cupboard|bookcase|shelf|shelving|sofa|bed|table|island|piano|roland|simulator|pooltable|stove|radiator|curtain|rug|tv|mirror|picture|art|lamp|chandelier|pendant/i.test(
+      !/sideboard|cabinet|shelf|shelving|sofa|bed|table|island|piano|roland|simulator|pooltable|stove|radiator|curtain|rug|tv|mirror|picture|art|lamp|chandelier|pendant/i.test(
         obj.name
       );
 
@@ -588,9 +597,12 @@ export class RoomLodController {
           u?.isFittingFx ||
           u?.isLightGlowPool ||
           (typeof u?.interactableId === 'string' &&
-            /frontdoor|stabledoor|frenchdoor|garagedoor|courtyard|extdoor/i.test(
-              `${u.interactableId}|${node.name}`
-            ))
+            (/^door:/i.test(u.interactableId) ||
+              /frontdoor|stabledoor|frenchdoor|garagedoor|courtyard|extdoor|wardrobe|cupboard|safe/i.test(
+                `${u.interactableId}|${node.name}`
+              ))) ||
+          u?.isKNXSwitch ||
+          Boolean(u?.switchPa)
         ) {
           found = true;
         }
@@ -735,6 +747,7 @@ export class RoomLodController {
     if (usePortalCulling && this.portalSolver && options?.camera) {
       this.portalSolver.solveVisibleInteriorRooms(options.camera, 'all', {
         roofCutawayOpen: options.roofCutawayOpen,
+        isWalkthrough: options.isWalkthrough,
       });
     }
 
@@ -761,7 +774,8 @@ export class RoomLodController {
       const unoccludedTier = this.computeDesiredTierForRoom(
         room,
         effectiveDist,
-        effectiveFloorMode
+        effectiveFloorMode,
+        Boolean(options?.isWalkthrough)
       );
 
       const portalOccluded =
@@ -860,7 +874,8 @@ export class RoomLodController {
   private computeDesiredTierForRoom(
     room: ManagedRoomLodEntry,
     effectiveDistM: number,
-    floorViewMode: FloorViewMode
+    floorViewMode: FloorViewMode,
+    isWalkthrough = false
   ): RoomLodTier {
     if (this.policyMode === 'lod0') return 0;
     if (this.policyMode === 'lod1') return 1;
@@ -884,7 +899,10 @@ export class RoomLodController {
       (room.zoneId === this.focusedZoneId ||
         Boolean(room.linkedOpenPlanZones?.includes(this.focusedZoneId)));
 
-    if (isFocusedPair || effectiveDistM <= this.highDetailMaxDistanceM * this.distanceScale) {
+    const heroRadiusM = isWalkthrough
+      ? Math.max(this.highDetailMaxDistanceM * this.distanceScale, 20.0)
+      : this.highDetailMaxDistanceM * this.distanceScale;
+    if (isFocusedPair || effectiveDistM <= heroRadiusM) {
       return 2;
     }
 

@@ -4,6 +4,7 @@ import { detectIOS, detectMobile } from '../../perf/device-tier.ts';
 import type { WebGPURenderer } from 'three/webgpu';
 import {
   husCloudPenumbraShadowFilter,
+  setSunShadowLightAxes,
   setSunShadowPenumbraUniforms,
 } from '../shader-light-culling.ts';
 import {
@@ -90,6 +91,7 @@ export class DirectionalShadowController {
     (this.sunLight.shadow as unknown as { filterNode: unknown }).filterNode =
       husCloudPenumbraShadowFilter;
     setSunShadowPenumbraUniforms(1.0, this.shadowMapSize);
+    setSunShadowLightAxes(this.sunLight.shadow.camera);
   }
 
   /**
@@ -213,6 +215,7 @@ export class DirectionalShadowController {
     cam.updateMatrix();
     cam.updateMatrixWorld(true);
     cam.updateProjectionMatrix();
+    setSunShadowLightAxes(cam);
     if (updateShadowMap && hasActiveSunShadow) {
       this.shadowMapStaleWhileExtinct = false;
       this.sunLight.shadow.needsUpdate = true;
@@ -378,7 +381,7 @@ export class DirectionalShadowController {
   private updateNormalBias(): void {
     const cam = this.sunLight.shadow.camera;
     const texel = Math.max(cam.right - cam.left, cam.top - cam.bottom) / this.shadowMapSize;
-    this.sunLight.shadow.normalBias = texel * 0.45;
+    this.sunLight.shadow.normalBias = texel * 0.85;
   }
 
   public getShadowMapSize(): 1024 | 2048 | 4096 {

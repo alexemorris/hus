@@ -1,6 +1,10 @@
 import { EnvironmentLighting } from '../environment-lighting.ts';
 import {
+  SHARED_SUN_SHADOW_AXIS_U,
+  SHARED_SUN_SHADOW_AXIS_V,
+  SHARED_SUN_SHADOW_AXIS_Z,
   SHARED_SUN_SHADOW_PENUMBRA,
+  computeReceiverPlaneShadowSlopeCpu,
   evaluateCloudTransmittanceCpu,
   uCloudGoboParams,
   uCloudSunDir,
@@ -581,8 +585,8 @@ describe('Direct Daylight, Camera-Fitted 4096 Shadows & Volumetric Cloud Cover',
     expect(diag.halfExtentM).toBeCloseTo(22.5, 3);
     expect(diag.texelSizeM).toBeLessThan(0.0115); // ~1.10 cm/texel (90.9 texels/m!)
     expect(diag.texelsPerMetre).toBeGreaterThan(90.0);
-    expect(diag.normalBiasM).toBeGreaterThan(0.004);
-    expect(diag.normalBiasM).toBeLessThan(0.0055); // ~4.9 mm normalBias
+    expect(diag.normalBiasM).toBeGreaterThan(0.008);
+    expect(diag.normalBiasM).toBeLessThan(0.011); // ~9.3 mm normalBias
 
     // Clear shadow.needsUpdate and perform 40 normal orbit / pan micro-movements within the room/courtyard:
     // MUST trigger 0 shadow invalidations!
@@ -1381,5 +1385,45 @@ describe('HdrEnvironmentManager async cancellation & timer cleanup', () => {
     const countAfterCompile = applyCount;
     mgr.applyEnvironmentTextures('dusk', sunDir, fogColor);
     expect(applyCount).toBe(countAfterCompile);
+  });
+
+  it('computes analytical receiver-plane shadow depth slope that tracks grazing 49° skeilings across multi-texel PCF offsets', () => {
+    const scene = new THREE.Scene();
+    const env = new EnvironmentLighting(scene);
+    env.applyTimeOfDay('dusk');
+    env.updateShadowFrustumForCamera(new THREE.Vector3(-8.0, 2.8, 1.5), 14.0);
+
+    let sunLight: THREE.DirectionalLight | undefined;
+    scene.traverse((o) => {
+      if (o instanceof THREE.DirectionalLight) sunLight = o;
+    });
+    const cam = sunLight!.shadow.camera;
+    const span = cam.right - cam.left;
+    const depthRange = cam.far - cam.near;
+    const texelUv = 1 / 4096;
+
+    // 49° sloped skeiling normal facing down-and-north inside Main Bedroom
+    const skeilingNormal = new THREE.Vector3(0.02, -Math.cos(THREE.MathUtils.degToRad(49)), -Math.sin(THREE.MathUtils.degToRad(49))).normalize();
+    const { dzDu, dzDv, quantGuard } = computeReceiverPlaneShadowSlopeCpu(
+      skeilingNormal,
+      SHARED_SUN_SHADOW_AXIS_U,
+      SHARED_SUN_SHADOW_AXIS_V,
+      SHARED_SUN_SHADOW_AXIS_Z,
+      texelUv
+    );
+
+    // Verify tangent point offset on the skeiling plane matches analytical dzDu * du + dzDv * dv
+    const tVec = new THREE.Vector3(1, 0, 0).cross(skeilingNormal).normalize().multiplyScalar(0.04);
+    const p0 = new THREE.Vector3(-7.0, 4.3, 1.8);
+    const p1 = p0.clone().add(tVec);
+    const p0Cam = p0.clone().applyMatrix4(cam.matrixWorldInverse);
+    const p1Cam = p1.clone().applyMatrix4(cam.matrixWorldInverse);
+    const du = (p1Cam.x - p0Cam.x) / span;
+    const dv = -(p1Cam.y - p0Cam.y) / span;
+    const actualDz = (-p1Cam.z - -p0Cam.z) / depthRange;
+    const predictedDz = dzDu * du + dzDv * dv;
+    expect(Math.abs(predictedDz - actualDz)).toBeLessThan(1e-5);
+    expect(quantGuard).toBeGreaterThan(0);
+    expect(quantGuard).toBeLessThan(0.002);
   });
 });

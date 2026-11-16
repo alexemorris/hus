@@ -433,7 +433,7 @@ export class CutawayController {
       if (
         enteredWalkthrough ||
         camRotated ||
-        this.lastWalkthroughLodPos.distanceToSquared(cam) >= 0.14
+        this.lastWalkthroughLodPos.distanceToSquared(cam) >= 0.04
       ) {
         this.lastWalkthroughLodPos.copy(cam);
         if (view.camera) {

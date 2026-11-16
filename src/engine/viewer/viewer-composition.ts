@@ -230,6 +230,9 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
       getInteractions: () => this.devices.interactions,
       isBifoldsOpen: () => this.devices.isBifoldsOpen(),
       onInteractWithMesh: (mesh) => this.input.triggerInteractiveObject(mesh),
+      onDoorBarged: () => {
+        this.cutaways.invalidateLodCache();
+      },
       onStateChanged: () => {
         this.camera.resetViewNotifyThrottle();
         renderer.resetHistory();

@@ -4,6 +4,7 @@ import {
   Fn,
   If,
   Loop,
+  abs,
   cameraViewMatrix,
   add,
   clamp,
@@ -21,6 +22,7 @@ import {
   mix,
   normalView,
   normalWorld,
+  normalWorldGeometry,
   positionViewDirection,
   positionWorld,
   renderGroup,
@@ -322,6 +324,60 @@ export function setSunShadowPenumbraUniforms(radiusTexels: number, mapSize: numb
   SHARED_SUN_SHADOW_PENUMBRA.set(safeRadius, invMap);
 }
 
+/**
+ * Light-space shadow-camera basis vectors scaled for analytical receiver-plane depth bias
+ * (`dCoordZ = dzDu * du + dzDv * dv`) in `husCloudPenumbraShadowFilter`:
+ * - `SHARED_SUN_SHADOW_AXIS_U = right * (spanU / depthRange)`
+ * - `SHARED_SUN_SHADOW_AXIS_V = -up * (spanV / depthRange)` (since `shadowCoord.y = (top - Y_cam) / spanV`)
+ * - `SHARED_SUN_SHADOW_AXIS_Z = back` (`+Z_cam`, unit vector toward directional light)
+ */
+export const SHARED_SUN_SHADOW_AXIS_U: THREE.Vector3 = makeNonCloningVec(new THREE.Vector3(0, 0, 0));
+export const SHARED_SUN_SHADOW_AXIS_V: THREE.Vector3 = makeNonCloningVec(new THREE.Vector3(0, 0, 0));
+export const SHARED_SUN_SHADOW_AXIS_Z: THREE.Vector3 = makeNonCloningVec(new THREE.Vector3(0, 1, 0));
+
+export const uSunShadowAxisUNode = uniform(SHARED_SUN_SHADOW_AXIS_U).setGroup(renderGroup);
+export const uSunShadowAxisVNode = uniform(SHARED_SUN_SHADOW_AXIS_V).setGroup(renderGroup);
+export const uSunShadowAxisZNode = uniform(SHARED_SUN_SHADOW_AXIS_Z).setGroup(renderGroup);
+
+export const MAX_RECEIVER_PLANE_DEPTH_SLOPE = 4.0;
+
+export function setSunShadowLightAxes(shadowCamera: THREE.OrthographicCamera): void {
+  const e = shadowCamera.matrixWorld.elements;
+  const depthRange = Math.max(1e-3, shadowCamera.far - shadowCamera.near);
+  const scaleU = (shadowCamera.right - shadowCamera.left) / depthRange;
+  const scaleV = (shadowCamera.top - shadowCamera.bottom) / depthRange;
+  SHARED_SUN_SHADOW_AXIS_U.set(e[0]! * scaleU, e[1]! * scaleU, e[2]! * scaleU);
+  SHARED_SUN_SHADOW_AXIS_V.set(-e[4]! * scaleV, -e[5]! * scaleV, -e[6]! * scaleV);
+  SHARED_SUN_SHADOW_AXIS_Z.set(e[8]!, e[9]!, e[10]!).normalize();
+}
+
+/**
+ * Pure CPU reference for analytical receiver-plane shadow depth slope `(dzDu, dzDv)` and
+ * sub-texel hardware-bilinear quantization guard from geometric triangle normal `N_g`.
+ */
+export function computeReceiverPlaneShadowSlopeCpu(
+  geometricNormalWorld: THREE.Vector3,
+  axisU: THREE.Vector3,
+  axisV: THREE.Vector3,
+  axisZ: THREE.Vector3,
+  texelSizeUv: number
+): { readonly dzDu: number; readonly dzDv: number; readonly quantGuard: number } {
+  const rawNz = geometricNormalWorld.dot(axisZ);
+  const signedNz = rawNz >= 0 ? Math.max(0.08, rawNz) : Math.min(-0.08, rawNz);
+  const dzDu = THREE.MathUtils.clamp(
+    geometricNormalWorld.dot(axisU) / signedNz,
+    -MAX_RECEIVER_PLANE_DEPTH_SLOPE,
+    MAX_RECEIVER_PLANE_DEPTH_SLOPE
+  );
+  const dzDv = THREE.MathUtils.clamp(
+    geometricNormalWorld.dot(axisV) / signedNz,
+    -MAX_RECEIVER_PLANE_DEPTH_SLOPE,
+    MAX_RECEIVER_PLANE_DEPTH_SLOPE
+  );
+  const quantGuard = (Math.abs(dzDu) + Math.abs(dzDv)) * texelSizeUv * 0.65;
+  return { dzDu, dzDv, quantGuard };
+}
+
 interface VogelDiskTap {
   readonly x: number;
   readonly y: number;
@@ -462,8 +518,30 @@ export const husCloudPenumbraShadowFilter = Fn((inputs: ShadowFilterInputs) => {
   const mapSize = float(1.0).div(max(1e-6, texel)).toVar('husShadowMapSize');
   const result = float(1.0).toVar('husSunShadowVis');
 
+  // Analytical receiver-plane depth slope from true geometric normal (immune to normal maps and
+  // WGSL non-uniform derivative restrictions) so multi-texel PCF taps never self-shadow sloped ceilings/walls.
+  const geomN = normalWorldGeometry;
+  const rawNz = dot(geomN, uSunShadowAxisZNode).toVar('husShadowRawNz');
+  const signedNz = select(
+    rawNz.greaterThanEqual(0.0),
+    max(0.08, rawNz),
+    min(-0.08, rawNz)
+  ).toVar('husShadowSignedNz');
+  const dzDu = clamp(
+    dot(geomN, uSunShadowAxisUNode).div(signedNz),
+    -MAX_RECEIVER_PLANE_DEPTH_SLOPE,
+    MAX_RECEIVER_PLANE_DEPTH_SLOPE
+  ).toVar('husShadowDzDu');
+  const dzDv = clamp(
+    dot(geomN, uSunShadowAxisVNode).div(signedNz),
+    -MAX_RECEIVER_PLANE_DEPTH_SLOPE,
+    MAX_RECEIVER_PLANE_DEPTH_SLOPE
+  ).toVar('husShadowDzDv');
+  const quantGuard = abs(dzDu).add(abs(dzDv)).mul(texel.mul(0.65)).toVar('husShadowQuantGuard');
+  const baseCompareZ = shadowCoord.z.sub(quantGuard).toVar('husShadowBaseZ');
+
   If(uInMirrorPassNode.greaterThan(0.5), () => {
-    result.assign(depthCompare(shadowCoord.xy, shadowCoord.z));
+    result.assign(depthCompare(shadowCoord.xy, baseCompareZ));
   }).ElseIf(radius.lessThan(1.6), () => {
     const scaledUv = shadowCoord.xy.mul(mapSize).add(0.5).toVar();
     const s = fract(scaledUv).toVar();
@@ -481,12 +559,21 @@ export const husCloudPenumbraShadowFilter = Fn((inputs: ShadowFilterInputs) => {
     const v0 = float(2.0).sub(sy).div(vw0).sub(1.0).mul(texel);
     const v1 = sy.div(vw1).add(1.0).mul(texel);
 
-    const cz = shadowCoord.z;
+    const tap00 = baseUv.add(vec2(u0, v0)).toVar();
+    const tap10 = baseUv.add(vec2(u1, v0)).toVar();
+    const tap01 = baseUv.add(vec2(u0, v1)).toVar();
+    const tap11 = baseUv.add(vec2(u1, v1)).toVar();
+
+    const d00 = tap00.sub(shadowCoord.xy);
+    const d10 = tap10.sub(shadowCoord.xy);
+    const d01 = tap01.sub(shadowCoord.xy);
+    const d11 = tap11.sub(shadowCoord.xy);
+
     const sum = add(
-      uw0.mul(vw0).mul(depthCompare(baseUv.add(vec2(u0, v0)), cz)),
-      uw1.mul(vw0).mul(depthCompare(baseUv.add(vec2(u1, v0)), cz)),
-      uw0.mul(vw1).mul(depthCompare(baseUv.add(vec2(u0, v1)), cz)),
-      uw1.mul(vw1).mul(depthCompare(baseUv.add(vec2(u1, v1)), cz))
+      uw0.mul(vw0).mul(depthCompare(tap00, baseCompareZ.add(dzDu.mul(d00.x)).add(dzDv.mul(d00.y)))),
+      uw1.mul(vw0).mul(depthCompare(tap10, baseCompareZ.add(dzDu.mul(d10.x)).add(dzDv.mul(d10.y)))),
+      uw0.mul(vw1).mul(depthCompare(tap01, baseCompareZ.add(dzDu.mul(d01.x)).add(dzDv.mul(d01.y)))),
+      uw1.mul(vw1).mul(depthCompare(tap11, baseCompareZ.add(dzDu.mul(d11.x)).add(dzDv.mul(d11.y))))
     );
     result.assign(sum.mul(1.0 / 16.0));
   }).Else(() => {
@@ -498,7 +585,7 @@ export const husCloudPenumbraShadowFilter = Fn((inputs: ShadowFilterInputs) => {
     const sinA = sin(angle).toVar('husVogelSin');
     const spreadUv = texel.mul(radius).toVar('husVogelSpreadUv');
 
-    let acc: ShaderNodeObject<Node> = depthCompare(shadowCoord.xy, shadowCoord.z).mul(
+    let acc: ShaderNodeObject<Node> = depthCompare(shadowCoord.xy, baseCompareZ).mul(
       CORE_TAP_NORM_WEIGHT
     );
 
@@ -506,9 +593,14 @@ export const husCloudPenumbraShadowFilter = Fn((inputs: ShadowFilterInputs) => {
       const tap = VOGEL_DISK_7[i]!;
       const rotX = cosA.mul(tap.x).sub(sinA.mul(tap.y));
       const rotY = sinA.mul(tap.x).add(cosA.mul(tap.y));
-      const tapUv = shadowCoord.xy.add(vec2(rotX, rotY).mul(spreadUv));
+      const offsetUv = vec2(rotX, rotY).mul(spreadUv).toVar();
+      const tapUv = shadowCoord.xy.add(offsetUv);
       const tapBias = max(float(0.0), radius.mul(tap.r).sub(1.1)).mul(0.000082);
-      acc = acc.add(depthCompare(tapUv, shadowCoord.z.sub(tapBias)).mul(tap.weight));
+      const tapCompareZ = baseCompareZ
+        .add(dzDu.mul(offsetUv.x))
+        .add(dzDv.mul(offsetUv.y))
+        .sub(tapBias);
+      acc = acc.add(depthCompare(tapUv, tapCompareZ).mul(tap.weight));
     }
     result.assign(acc);
   });

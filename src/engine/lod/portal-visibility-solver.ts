@@ -58,6 +58,8 @@ export interface PortalSolveOptions {
    * exposing 1st-floor bedrooms from above even though walls are up.
    */
   readonly roofCutawayOpen?: boolean;
+  /** True during first-person walkthrough so nearby doorway rooms pre-warm before entry/barge. */
+  readonly isWalkthrough?: boolean;
 }
 
 interface InternalRoomRecord {
@@ -112,7 +114,8 @@ interface InternalInteriorPortal {
 
 const CAMERA_CONTAINMENT_INFLATE_M = 0.35;
 const EXTERIOR_PROXIMITY_M = 1.5;
-const INTERIOR_DOORWAY_PROXIMITY_M = 0.45;
+const INTERIOR_DOORWAY_PROXIMITY_M = 1.45;
+const WALKTHROUGH_CLOSED_DOOR_PREWARM_M = 2.6;
 const EXTERIOR_HORIZON_DOT = -0.25;
 const ROOFLIGHT_HORIZON_DOT = -0.45;
 
@@ -423,21 +426,40 @@ export class PortalVisibilitySolver {
       this.propagateInteriorPortals(3);
     } else {
       // CASE B: Camera is INSIDE room(s) R_0 (first-person walkthrough or interior orbit)
-      // Doorway threshold guard: any room within 0.45m connected via active portal to a seed room gets full rect
+      // Doorway threshold & walkthrough pre-warm guard:
+      // - Active open doorways within 1.45m of the adjacent room (or 2.6m of the doorway in 1PV) get full rect
+      //   so oblique hallway approaches show room contents before stepping through.
+      // - In 1PV walkthrough, even closed doorways within 2.6m of the doorway AABB pre-warm the adjacent room
+      //   so barging or opening a door never pops wardrobes or room furnishings in.
+      const isWalkthrough = Boolean(options?.isWalkthrough);
       for (let p = 0; p < nInt; p++) {
-        if (this.interiorPortalActive[p] === 0) continue;
         const portal = this.interiorPortals[p]!;
+        const isActive = this.interiorPortalActive[p] === 1;
+        if (!isActive && !isWalkthrough) continue;
         const aSeed = this.seedFlags[portal.indexA] === 1;
         const bSeed = this.seedFlags[portal.indexB] === 1;
+        if (!aSeed && !bSeed) continue;
+
+        const dxP = camX < portal.minX ? portal.minX - camX : camX > portal.maxX ? camX - portal.maxX : 0;
+        const dyP = camY < portal.minY ? portal.minY - camY : camY > portal.maxY ? camY - portal.maxY : 0;
+        const dzP = camZ < portal.minZ ? portal.minZ - camZ : camZ > portal.maxZ ? camZ - portal.maxZ : 0;
+        const distToPortal = Math.hypot(dxP, dyP, dzP);
+
         if (aSeed && !bSeed) {
           const roomB = this.rooms[portal.indexB]!;
-          if (this.distancePointToRoom(camX, camY, camZ, roomB) <= INTERIOR_DOORWAY_PROXIMITY_M) {
+          if (
+            (isActive && this.distancePointToRoom(camX, camY, camZ, roomB) <= INTERIOR_DOORWAY_PROXIMITY_M) ||
+            (isWalkthrough && distToPortal <= WALKTHROUGH_CLOSED_DOOR_PREWARM_M)
+          ) {
             this.visibleFlags[portal.indexB] = 1;
             this.setFullScreenRect(portal.indexB);
           }
         } else if (bSeed && !aSeed) {
           const roomA = this.rooms[portal.indexA]!;
-          if (this.distancePointToRoom(camX, camY, camZ, roomA) <= INTERIOR_DOORWAY_PROXIMITY_M) {
+          if (
+            (isActive && this.distancePointToRoom(camX, camY, camZ, roomA) <= INTERIOR_DOORWAY_PROXIMITY_M) ||
+            (isWalkthrough && distToPortal <= WALKTHROUGH_CLOSED_DOOR_PREWARM_M)
+          ) {
             this.visibleFlags[portal.indexA] = 1;
             this.setFullScreenRect(portal.indexA);
           }

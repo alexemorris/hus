@@ -24,6 +24,8 @@ export interface ViewerWalkthroughHost {
   getInteractions(): SceneInteractionManager;
   isBifoldsOpen(): boolean;
   onInteractWithMesh(mesh: THREE.Object3D): void;
+  /** Optional hook when walkthrough barges a door open so portal/room LOD updates immediately. */
+  onDoorBarged?(): void;
   /** Walkthrough entered / exited. */
   onStateChanged(): void;
   /** Eye pose moved. */
@@ -61,18 +63,20 @@ export function createViewerWalkthrough(host: ViewerWalkthroughHost): Walkthroug
         trigger: () => rendered(host.getInteractions().handleInteractableClick(hit.id)),
       };
     },
-    onBargeWalkthroughDoor: (interactableId, isSprinting, footX, footY, footZ, moveDirX, moveDirZ) =>
-      rendered(
-        host
-          .getInteractions()
-          .bargeOpenWalkthroughDoor(interactableId, isSprinting, footX, footY, footZ, moveDirX, moveDirZ)
-      ),
-    onProximityBargeDoors: (footX, footY, footZ, moveDirX, moveDirZ, isSprinting) =>
-      rendered(
-        host
-          .getInteractions()
-          .bargeNearbyWalkthroughDoors(footX, footY, footZ, moveDirX, moveDirZ, isSprinting)
-      ),
+    onBargeWalkthroughDoor: (interactableId, isSprinting, footX, footY, footZ, moveDirX, moveDirZ) => {
+      const changed = host
+        .getInteractions()
+        .bargeOpenWalkthroughDoor(interactableId, isSprinting, footX, footY, footZ, moveDirX, moveDirZ);
+      if (changed) host.onDoorBarged?.();
+      return rendered(changed);
+    },
+    onProximityBargeDoors: (footX, footY, footZ, moveDirX, moveDirZ, isSprinting) => {
+      const changed = host
+        .getInteractions()
+        .bargeNearbyWalkthroughDoors(footX, footY, footZ, moveDirX, moveDirZ, isSprinting);
+      if (changed) host.onDoorBarged?.();
+      return rendered(changed);
+    },
     onStateChanged: () => host.onStateChanged(),
     onPoseUpdated: () => host.onPoseUpdated(),
     hooks: host.walkthroughHooks,

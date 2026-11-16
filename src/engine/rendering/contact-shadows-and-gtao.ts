@@ -832,8 +832,15 @@ export function evaluateScreenSpaceContactShadow(
       const nDotV = max(0.15, dot(centerViewNormal, viewDir)).toVar();
       const grazingScale = float(1.0).div(nDotV).toVar();
 
+      const sunGrazingBoost = mix(
+        float(2.4),
+        float(1.0),
+        smoothstep(CONTACT_SHADOW_MIN_NDOTL, 0.38, nDotL)
+      ).toVar();
       const rayLength = clamp(scaleDist.mul(0.088), 0.075, 0.55).toVar();
-      const originBias = clamp(scaleDist.mul(0.0016), 0.001, 0.007).mul(grazingScale);
+      const originBias = clamp(scaleDist.mul(0.0018), 0.0015, 0.008)
+        .mul(grazingScale)
+        .mul(sunGrazingBoost);
       const rayOrigin = centerViewPos.add(centerViewNormal.mul(originBias)).toVar();
       const jitter = float(0.2).add(
         spatialInterleavedGradientNoise(screenCoordinate.xy.add(vec2(43.0, 11.0))).mul(0.65)
@@ -860,7 +867,9 @@ export function evaluateScreenSpaceContactShadow(
               .mul(grazingScale);
 
             const planeElev = dot(scenePos.sub(centerViewPos), centerViewNormal);
-            const minPlaneElev = max(0.005, tMeters.mul(0.038)).mul(grazingScale);
+            const minPlaneElev = max(0.0085, tMeters.mul(0.056))
+              .mul(grazingScale)
+              .mul(sunGrazingBoost);
             const planeGate = smoothstep(minPlaneElev, minPlaneElev.mul(2.2), planeElev);
 
             const enterHit = smoothstep(minBias, minBias.mul(2.3).add(0.0018), depthDiff);
