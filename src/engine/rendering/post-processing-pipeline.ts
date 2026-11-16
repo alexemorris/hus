@@ -27,6 +27,7 @@ import {
   select,
   type ShaderNodeObject,
   sRGBTransferOETF,
+  uint,
   uniform,
   uv,
   vec2,
@@ -35,6 +36,7 @@ import {
 } from 'three/tsl';
 import type { RigCamera } from '../camera/camera-rig.ts';
 import type { GraphicsTier, GraphicsTierSettings } from '../../core/types/twin-ux.ts';
+import { detectIOS, detectMobile } from '../perf/device-tier.ts';
 import {
   clampPixelRatioForViewport,
   getTierSettings,
@@ -43,11 +45,13 @@ import {
 import { BloomPass } from './bloom-pass.ts';
 import {
   applyPhotorealismShading,
-  evaluateHalfResGtao,
-  evaluateScreenSpaceContactShadow,
+  denoiseBilateralAoAndContactPass,
+  evaluateDeterministicMicroContactShadow,
+  evaluateHalfResAoAndContactRaw,
   reconstructMinDeltaViewNormal,
   resolvePrimaryDirectionalSunSample,
-  upsampleBilateralGtao,
+  sampleDepthLevel0,
+  upsampleBilateralAoAndContact,
 } from './contact-shadows-and-gtao.ts';
 import { evaluateMotionBlurOrFxaaCas, sampleClampedHdrRgb } from './fxaa-and-cas.ts';
 
@@ -81,6 +85,18 @@ function tierToPreset(tier: GraphicsTier): GraphicsQualityPreset {
   return 'balanced';
 }
 
+/**
+ * Pure helper selecting hardware MSAA sample count for `scenePass`:
+ * `4` (`4x MSAA`) on desktop `high` and `ultra` tiers; `1` on `low`/`medium` or constrained mobile/iOS.
+ */
+export function resolveScenePassMsaaSamples(
+  tier: GraphicsTier,
+  isConstrainedMobile: boolean
+): 1 | 4 {
+  if (isConstrainedMobile) return 1;
+  return tier === 'high' || tier === 'ultra' ? 4 : 1;
+}
+
 /** Vertical projection scale (`P[1][1]`) of the rig's 42-degree perspective camera; used until one is seen. */
 const DEFAULT_PERSPECTIVE_PROJ_Y = 1 / Math.tan(THREE.MathUtils.degToRad(21));
 
@@ -90,18 +106,39 @@ export const RENDERER_TONE_MAPPING: THREE.ToneMapping = THREE.AgXToneMapping;
 const STORAGE_KEY = 'hus_graphics_settings_v3';
 const AO_INTENSITY = 0.48;
 const BLOOM_INTENSITY = 0.12;
-const SHARPEN_INTENSITY = 0.26;
+export const SHARPEN_INTENSITY = 0.18;
 const MOTION_BLUR_STRENGTH = 0.38;
 
 function currentDevicePixelRatio(): number {
   return typeof window !== 'undefined' && window.devicePixelRatio > 0 ? window.devicePixelRatio : 1;
 }
 
+function configureAuxRtt(
+  rttNode: ShaderNodeObject<RTTNode>,
+  filter: THREE.MagnificationTextureFilter & THREE.MinificationTextureFilter
+): void {
+  const rt = rttNode.renderTarget;
+  if (!rt) return;
+  rt.depthBuffer = false;
+  rt.texture.minFilter = filter;
+  rt.texture.magFilter = filter;
+  rt.texture.generateMipmaps = false;
+  rt.addEventListener('dispose', () => {
+    for (const tex of rt.textures) {
+      tex.version++;
+    }
+  });
+}
+
 export class PostProcessingPipeline {
   private readonly renderer: WebGPURenderer;
   private postProcessing: PostProcessing | null = null;
   private scenePass: ShaderNodeObject<PassNode> | null = null;
+  private msaaDepthResolveRtt: ShaderNodeObject<RTTNode> | null = null;
   private halfResFxRtt: ShaderNodeObject<RTTNode> | null = null;
+  private halfResAoRawRtt: ShaderNodeObject<RTTNode> | null = null;
+  private halfResAoBlurHRtt: ShaderNodeObject<RTTNode> | null = null;
+  private halfResAoBlurVRtt: ShaderNodeObject<RTTNode> | null = null;
   private readonly bloom = new BloomPass();
 
   private readonly uResolution: ShaderNodeObject<UniformNode<THREE.Vector2>>;
@@ -125,6 +162,7 @@ export class PostProcessingPipeline {
   private readonly uContactShadowStrength = uniform(0.0).setGroup(renderGroup);
   private readonly uSharpenIntensity = uniform(SHARPEN_INTENSITY).setGroup(renderGroup);
   private readonly uFxaaEnabled = uniform(0.0).setGroup(renderGroup);
+  private readonly uMsaaActive = uniform(0.0).setGroup(renderGroup);
   private readonly uHalfResFxWeight = uniform(1.0).setGroup(renderGroup);
   private readonly uIsWebGPU = uniform(1.0).setGroup(renderGroup);
 
@@ -134,6 +172,7 @@ export class PostProcessingPipeline {
   private hasPrevMatrix = false;
 
   private tier: GraphicsTier = 'low';
+  private currentMsaaSamples: 1 | 4 = 1;
   private motionBlurEnabled = false;
   private motionBlurUserOverride: boolean | null = null;
   private motionBlurStrength = MOTION_BLUR_STRENGTH;
@@ -148,6 +187,7 @@ export class PostProcessingPipeline {
   private currentPixelRatio = 1.0;
   private interactiveScrubActive = false;
   private halfResRenderedOnce = false;
+  private halfResAoRenderedOnce = false;
   private lastPerspectiveProjY = DEFAULT_PERSPECTIVE_PROJ_Y;
 
   public constructor(renderer: WebGPURenderer, initialWidth = 1, initialHeight = 1) {
@@ -167,6 +207,10 @@ export class PostProcessingPipeline {
     this.uExposure = uniform(renderer.toneMappingExposure).setGroup(renderGroup);
   }
 
+  private targetMsaaSamples(): 1 | 4 {
+    return resolveScenePassMsaaSamples(this.tier, detectMobile() || detectIOS());
+  }
+
   private assignTierSettings(settings: GraphicsTierSettings): void {
     this.tier = settings.tier;
     this.targetPixelRatio = Math.max(0.5, settings.pixelRatio);
@@ -176,6 +220,39 @@ export class PostProcessingPipeline {
     this.bloomEnabled = settings.postProcessing && settings.bloom;
     this.sharpenEnabled = settings.postProcessing && settings.sharpen;
     this.motionBlurEnabled = settings.postProcessing && this.motionBlurUserOverride === true;
+  }
+
+  private disposePassGraphOnly(): void {
+    if (this.msaaDepthResolveRtt) {
+      this.msaaDepthResolveRtt.renderTarget?.dispose();
+      this.msaaDepthResolveRtt = null;
+    }
+    if (this.halfResFxRtt) {
+      this.halfResFxRtt.renderTarget?.dispose();
+      this.halfResFxRtt = null;
+    }
+    if (this.halfResAoRawRtt) {
+      this.halfResAoRawRtt.renderTarget?.dispose();
+      this.halfResAoRawRtt = null;
+    }
+    if (this.halfResAoBlurHRtt) {
+      this.halfResAoBlurHRtt.renderTarget?.dispose();
+      this.halfResAoBlurHRtt = null;
+    }
+    if (this.halfResAoBlurVRtt) {
+      this.halfResAoBlurVRtt.renderTarget?.dispose();
+      this.halfResAoBlurVRtt = null;
+    }
+    this.halfResRenderedOnce = false;
+    this.halfResAoRenderedOnce = false;
+    if (this.scenePass) {
+      this.scenePass.dispose();
+      this.scenePass = null;
+    }
+    if (this.postProcessing) {
+      this.postProcessing.dispose();
+      this.postProcessing = null;
+    }
   }
 
   private syncRendererPixelRatio(): void {
@@ -195,36 +272,67 @@ export class PostProcessingPipeline {
     this.uResolution.value.set(rtWidth, rtHeight);
     this.uTexelSize.value.set(1 / rtWidth, 1 / rtHeight);
     this.uHalfTexelSize.value.set(1 / halfW, 1 / halfH);
+
+    const desiredSamples = this.targetMsaaSamples();
+    if (this.scenePass && this.currentMsaaSamples !== desiredSamples) {
+      this.disposePassGraphOnly();
+    }
     if (this.scenePass) {
-      this.scenePass.renderTarget.samples = 1;
+      this.scenePass.renderTarget.samples = this.currentMsaaSamples;
     }
-    if (this.halfResFxRtt) {
-      const prevRt = this.halfResFxRtt.renderTarget;
-      const sizeChanged = !prevRt || prevRt.width !== halfW || prevRt.height !== halfH;
-      this.halfResFxRtt.setSize(halfW, halfH);
-      if (sizeChanged) {
-        this.halfResRenderedOnce = false;
+    if (this.msaaDepthResolveRtt) {
+      this.msaaDepthResolveRtt.setSize(rtWidth, rtHeight);
+    }
+
+    let halfSizeChanged = false;
+    for (const halfRtt of [
+      this.halfResFxRtt,
+      this.halfResAoRawRtt,
+      this.halfResAoBlurHRtt,
+      this.halfResAoBlurVRtt,
+    ]) {
+      if (!halfRtt) continue;
+      const prevRt = halfRtt.renderTarget;
+      if (!prevRt || prevRt.width !== halfW || prevRt.height !== halfH) {
+        halfSizeChanged = true;
       }
-      this.syncHalfResAutoUpdate();
+      halfRtt.setSize(halfW, halfH);
     }
+    if (halfSizeChanged) {
+      this.halfResRenderedOnce = false;
+      this.halfResAoRenderedOnce = false;
+    }
+    this.syncHalfResAutoUpdate();
     if (this.postEnabled) {
       this.bloom.setSize(halfW, halfH);
     }
   }
 
   private syncHalfResAutoUpdate(): boolean {
-    const shouldUpdateHalfRes =
-      (this.bloomEnabled || this.ambientOcclusionEnabled) &&
-      (!this.interactiveScrubActive || !this.halfResRenderedOnce);
-    if (this.halfResFxRtt) {
-      this.halfResFxRtt.autoUpdate = shouldUpdateHalfRes;
-      if (!shouldUpdateHalfRes) {
-        this.halfResFxRtt.textureNeedsUpdate = false;
-      } else if (!this.halfResRenderedOnce) {
-        this.halfResFxRtt.textureNeedsUpdate = true;
+    const shouldUpdateBloom =
+      this.bloomEnabled && (!this.interactiveScrubActive || !this.halfResRenderedOnce);
+    const shouldUpdateAo =
+      this.ambientOcclusionEnabled && (!this.interactiveScrubActive || !this.halfResAoRenderedOnce);
+
+    if (this.msaaDepthResolveRtt) {
+      this.msaaDepthResolveRtt.autoUpdate = false;
+      if (!this.postEnabled) {
+        this.msaaDepthResolveRtt.textureNeedsUpdate = false;
       }
     }
-    return shouldUpdateHalfRes;
+
+    if (this.halfResFxRtt) {
+      this.halfResFxRtt.autoUpdate = false;
+      this.halfResFxRtt.textureNeedsUpdate = shouldUpdateBloom && !this.halfResRenderedOnce;
+    }
+
+    for (const aoRtt of [this.halfResAoRawRtt, this.halfResAoBlurHRtt, this.halfResAoBlurVRtt]) {
+      if (!aoRtt) continue;
+      aoRtt.autoUpdate = false;
+      aoRtt.textureNeedsUpdate = shouldUpdateAo && !this.halfResAoRenderedOnce;
+    }
+
+    return shouldUpdateBloom || shouldUpdateAo;
   }
 
   public setInteractiveScrubActive(active: boolean): void {
@@ -272,6 +380,8 @@ export class PostProcessingPipeline {
     this.assignTierSettings(settings);
     if (wasPostEnabled && !this.postEnabled) {
       this.dispose();
+    } else if (this.scenePass && this.currentMsaaSamples !== this.targetMsaaSamples()) {
+      this.disposePassGraphOnly();
     }
     this.syncRendererPixelRatio();
     this.hasPrevMatrix = false;
@@ -361,14 +471,20 @@ export class PostProcessingPipeline {
     scene: THREE.Scene,
     camera: THREE.Camera
   ): PostProcessing {
+    const desiredSamples = this.targetMsaaSamples();
+    if (this.postProcessing && this.scenePass && this.currentMsaaSamples !== desiredSamples) {
+      this.disposePassGraphOnly();
+    }
+
     if (this.postProcessing && this.scenePass) {
       this.scenePass.scene = scene;
       this.scenePass.camera = camera;
       return this.postProcessing;
     }
 
-    const scenePass = pass(scene, camera, { samples: 1 });
-    scenePass.renderTarget.samples = 1;
+    this.currentMsaaSamples = desiredSamples;
+    const scenePass = pass(scene, camera, { samples: desiredSamples });
+    scenePass.renderTarget.samples = desiredSamples;
     if (scenePass.renderTarget.depthTexture) {
       scenePass.renderTarget.depthTexture.minFilter = THREE.NearestFilter;
       scenePass.renderTarget.depthTexture.magFilter = THREE.NearestFilter;
@@ -406,18 +522,18 @@ export class PostProcessingPipeline {
     this.scenePass = scenePass;
 
     const colorNode = scenePass.getTextureNode('output');
-    const depthNode = scenePass.getTextureNode('depth');
+    const rawSceneDepthNode = scenePass.getTextureNode('depth');
 
     const postProcessing = new PostProcessing(renderer);
     postProcessing.outputColorTransform = false;
-    postProcessing.outputNode = this.buildCompositeNode(colorNode, depthNode);
+    postProcessing.outputNode = this.buildCompositeNode(colorNode, rawSceneDepthNode);
     this.postProcessing = postProcessing;
     return postProcessing;
   }
 
   private buildCompositeNode(
     colorNode: ShaderNodeObject<TextureNode>,
-    depthNode: ShaderNodeObject<TextureNode>
+    rawSceneDepthNode: ShaderNodeObject<TextureNode>
   ): ShaderNodeObject<Node> {
     const sampleHdr = (sampleUv: ShaderNodeObject<Node>): ShaderNodeObject<Node> =>
       sampleClampedHdrRgb(colorNode, sampleUv);
@@ -453,6 +569,7 @@ export class PostProcessingPipeline {
       uMotionBlurEnabled: this.uMotionBlurEnabled,
       uShutterScale: this.uShutterScale,
       uIsWebGPU: this.uIsWebGPU,
+      uMsaaActive: this.uMsaaActive,
     };
 
     const rtWidth = Math.max(1, Math.round(this.cssWidth * this.currentPixelRatio));
@@ -461,19 +578,59 @@ export class PostProcessingPipeline {
     const initHalfH = Math.max(1, Math.floor(rtHeight * 0.5));
     this.bloom.setSize(initHalfW, initHalfH);
 
-    const halfResFxShader = Fn(() => {
-      const hUv = uv();
-      const hRawDepth = depthNode.sample(hUv).r.toVar();
-      const hBloom = this.bloom.buildNode(colorNode, hUv).toVar();
-      const hAo = float(1.0).toVar();
-      If(hRawDepth.lessThan(0.9999), () => {
-        hAo.assign(evaluateHalfResGtao(depthNode, hUv, hRawDepth, gtaoUniforms));
+    let resolvedDepthNode: ShaderNodeObject<TextureNode> = rawSceneDepthNode;
+    if (this.currentMsaaSamples > 1) {
+      const isWebGPU = this.renderer.coordinateSystem === THREE.WebGPUCoordinateSystem;
+      const msaaDepthResolveShader = Fn(() => {
+        const dUv = clamp(uv(), 0.0002, 0.9998);
+        if (isWebGPU) {
+          const d0 = (
+            rawSceneDepthNode.sample(dUv) as unknown as ShaderNodeObject<TextureNode>
+          ).level(uint(0));
+          const d1 = (
+            rawSceneDepthNode.sample(dUv) as unknown as ShaderNodeObject<TextureNode>
+          ).level(uint(1));
+          const d2 = (
+            rawSceneDepthNode.sample(dUv) as unknown as ShaderNodeObject<TextureNode>
+          ).level(uint(2));
+          const d3 = (
+            rawSceneDepthNode.sample(dUv) as unknown as ShaderNodeObject<TextureNode>
+          ).level(uint(3));
+          return vec4(min(min(d0, d1), min(d2, d3)), 0.0, 0.0, 1.0);
+        }
+        const glDepth = (
+          rawSceneDepthNode.sample(dUv) as unknown as ShaderNodeObject<TextureNode>
+        ).level(float(0)).r;
+        return vec4(glDepth, 0.0, 0.0, 1.0);
       });
-      return vec4(hBloom, hAo);
+
+      const msaaDepthResolveRtt = rtt(
+        msaaDepthResolveShader(),
+        rtWidth,
+        rtHeight,
+        {
+          type: THREE.FloatType,
+          format: THREE.RedFormat,
+          minFilter: THREE.NearestFilter,
+          magFilter: THREE.NearestFilter,
+          depthBuffer: false,
+        } as unknown as Parameters<typeof rtt>[3]
+      );
+      configureAuxRtt(msaaDepthResolveRtt, THREE.NearestFilter);
+      this.msaaDepthResolveRtt = msaaDepthResolveRtt;
+      resolvedDepthNode = msaaDepthResolveRtt as unknown as ShaderNodeObject<TextureNode>;
+    } else {
+      this.msaaDepthResolveRtt = null;
+    }
+
+    const halfResBloomShader = Fn(() => {
+      const hUv = uv();
+      const hBloom = this.bloom.buildNode(colorNode, hUv).toVar();
+      return vec4(hBloom, 1.0);
     });
 
     const halfResFxRtt = rtt(
-      halfResFxShader(),
+      halfResBloomShader(),
       initHalfW,
       initHalfH,
       {
@@ -481,26 +638,78 @@ export class PostProcessingPipeline {
         depthBuffer: false,
       } as unknown as Parameters<typeof rtt>[3]
     );
-    if (halfResFxRtt.renderTarget) {
-      halfResFxRtt.renderTarget.depthBuffer = false;
-    }
-    const halfRt = halfResFxRtt.renderTarget;
-    if (halfRt) {
-      halfRt.texture.minFilter = THREE.LinearFilter;
-      halfRt.texture.magFilter = THREE.LinearFilter;
-      halfRt.addEventListener('dispose', () => {
-        for (const tex of halfRt.textures) {
-          tex.version++;
-        }
-      });
-    }
-    this.halfResRenderedOnce = false;
+    configureAuxRtt(halfResFxRtt, THREE.LinearFilter);
     this.halfResFxRtt = halfResFxRtt;
+
+    const halfResAoRawShader = Fn(() => {
+      const hUv = uv();
+      const hRawDepth = sampleDepthLevel0(resolvedDepthNode, hUv).toVar();
+      return evaluateHalfResAoAndContactRaw(resolvedDepthNode, hUv, hRawDepth, gtaoUniforms);
+    });
+
+    const halfResAoRawRtt = rtt(
+      halfResAoRawShader(),
+      initHalfW,
+      initHalfH,
+      {
+        type: THREE.HalfFloatType,
+        depthBuffer: false,
+      } as unknown as Parameters<typeof rtt>[3]
+    );
+    configureAuxRtt(halfResAoRawRtt, THREE.NearestFilter);
+    this.halfResAoRawRtt = halfResAoRawRtt;
+
+    const halfResAoBlurHShader = Fn(() =>
+      denoiseBilateralAoAndContactPass(
+        halfResAoRawRtt,
+        resolvedDepthNode,
+        uv(),
+        vec2(this.uHalfTexelSize.x, 0.0),
+        gtaoUniforms
+      )
+    );
+
+    const halfResAoBlurHRtt = rtt(
+      halfResAoBlurHShader(),
+      initHalfW,
+      initHalfH,
+      {
+        type: THREE.HalfFloatType,
+        depthBuffer: false,
+      } as unknown as Parameters<typeof rtt>[3]
+    );
+    configureAuxRtt(halfResAoBlurHRtt, THREE.NearestFilter);
+    this.halfResAoBlurHRtt = halfResAoBlurHRtt;
+
+    const halfResAoBlurVShader = Fn(() =>
+      denoiseBilateralAoAndContactPass(
+        halfResAoBlurHRtt,
+        resolvedDepthNode,
+        uv(),
+        vec2(0.0, this.uHalfTexelSize.y),
+        gtaoUniforms
+      )
+    );
+
+    const halfResAoBlurVRtt = rtt(
+      halfResAoBlurVShader(),
+      initHalfW,
+      initHalfH,
+      {
+        type: THREE.HalfFloatType,
+        depthBuffer: false,
+      } as unknown as Parameters<typeof rtt>[3]
+    );
+    configureAuxRtt(halfResAoBlurVRtt, THREE.NearestFilter);
+    this.halfResAoBlurVRtt = halfResAoBlurVRtt;
+
+    this.halfResRenderedOnce = false;
+    this.halfResAoRenderedOnce = false;
     this.syncHalfResAutoUpdate();
 
     const compositeShader = Fn(() => {
       const vUv = uv();
-      const rawDepth = depthNode.sample(vUv).r.toVar();
+      const rawDepth = sampleDepthLevel0(resolvedDepthNode, vUv).toVar();
       const centerColor = sampleHdr(vUv).toVar();
       const bloomColor = vec3(0.0).toVar();
       If(this.uHalfResFxWeight.greaterThan(0.001), () => {
@@ -518,7 +727,13 @@ export class PostProcessingPipeline {
       });
 
       If(rawDepth.lessThan(0.9999), () => {
-        const { hdrColor, speedPx } = evaluateMotionBlurOrFxaaCas(colorNode, vUv, rawDepth, centerColor, fxaaUniforms);
+        const { hdrColor, speedPx } = evaluateMotionBlurOrFxaaCas(
+          colorNode,
+          vUv,
+          rawDepth,
+          centerColor,
+          fxaaUniforms
+        );
 
         const centerViewPos = getViewPosition(vUv, rawDepth, this.uProjMatrixInverse).toVar();
         const scaleDist = select(
@@ -527,7 +742,7 @@ export class PostProcessingPipeline {
           max(0.1, centerViewPos.z.negate())
         ).toVar();
         const centerViewNormal = reconstructMinDeltaViewNormal(
-          depthNode,
+          resolvedDepthNode,
           vUv,
           centerViewPos,
           this.uTexelSize,
@@ -539,23 +754,25 @@ export class PostProcessingPipeline {
         const contactVis = float(1.0).toVar();
 
         If(this.uHalfResFxWeight.greaterThan(0.001).and(this.uAoIntensity.greaterThan(0.001)), () => {
-          const upsampledAo = upsampleBilateralGtao(
-            halfResFxRtt,
-            depthNode,
+          const upsampledAoContact = upsampleBilateralAoAndContact(
+            halfResAoBlurVRtt,
+            resolvedDepthNode,
             vUv,
             centerViewPos,
             centerViewNormal,
             gtaoUniforms
-          );
-          gtaoVis.assign(mix(float(1.0), upsampledAo, motionFade.mul(this.uHalfResFxWeight)));
-          const rawContact = evaluateScreenSpaceContactShadow(
-            depthNode,
+          ).toVar();
+          const microContact = evaluateDeterministicMicroContactShadow(
+            resolvedDepthNode,
             centerViewPos,
             centerViewNormal,
             scaleDist,
             gtaoUniforms
           );
-          contactVis.assign(mix(float(1.0), rawContact, motionFade.mul(this.uHalfResFxWeight)));
+          const combinedContact = min(upsampledAoContact.y, microContact);
+          const effectFade = motionFade.mul(this.uHalfResFxWeight);
+          gtaoVis.assign(mix(float(1.0), upsampledAoContact.x, effectFade));
+          contactVis.assign(mix(float(1.0), combinedContact, effectFade));
         });
 
         const neighborE = sampleHdr(vUv.add(vec2(this.uTexelSize.x, 0.0)));
@@ -632,7 +849,7 @@ export class PostProcessingPipeline {
     postInternal._update?.();
 
     const scenePass = this.scenePass!;
-    scenePass.renderTarget.samples = 1;
+    scenePass.renderTarget.samples = this.currentMsaaSamples;
     const getColorBufferType = (
       this.renderer as unknown as { getColorBufferType?: () => THREE.TextureDataType }
     ).getColorBufferType;
@@ -648,14 +865,25 @@ export class PostProcessingPipeline {
     };
     passInternal._pixelRatio = this.renderer.getPixelRatio();
     passInternal.setSize(size.x, size.y);
-    if (this.halfResFxRtt) {
-      const fullW = Math.max(1, Math.floor(size.x * passInternal._pixelRatio));
-      const fullH = Math.max(1, Math.floor(size.y * passInternal._pixelRatio));
-      const halfW = Math.max(1, Math.floor(fullW * 0.5));
-      const halfH = Math.max(1, Math.floor(fullH * 0.5));
-      this.halfResFxRtt.setSize(halfW, halfH);
-      this.uHalfTexelSize.value.set(1 / halfW, 1 / halfH);
+
+    const fullW = Math.max(1, Math.floor(size.x * passInternal._pixelRatio));
+    const fullH = Math.max(1, Math.floor(size.y * passInternal._pixelRatio));
+    const halfW = Math.max(1, Math.floor(fullW * 0.5));
+    const halfH = Math.max(1, Math.floor(fullH * 0.5));
+    if (this.msaaDepthResolveRtt) {
+      this.msaaDepthResolveRtt.setSize(fullW, fullH);
     }
+    for (const halfRtt of [
+      this.halfResFxRtt,
+      this.halfResAoRawRtt,
+      this.halfResAoBlurHRtt,
+      this.halfResAoBlurVRtt,
+    ]) {
+      if (halfRtt) {
+        halfRtt.setSize(halfW, halfH);
+      }
+    }
+    this.uHalfTexelSize.value.set(1 / halfW, 1 / halfH);
 
     const prevToneMapping = this.renderer.toneMapping;
     const prevColorSpace = this.renderer.outputColorSpace;
@@ -678,27 +906,33 @@ export class PostProcessingPipeline {
           await this.renderer.compileAsync(postInternal._quadMesh, postInternal._quadMesh.camera);
         }
 
-        const halfRttInternal = this.halfResFxRtt as unknown as {
-          _rttNode?: Node | null;
-          _quadMesh?: THREE.Mesh & {
-            camera?: THREE.Camera;
-            material?: THREE.Material & { fragmentNode?: Node | null };
-          };
-          renderTarget?: THREE.RenderTarget | null;
-        } | null;
-        if (
-          halfRttInternal?._rttNode &&
-          halfRttInternal._quadMesh?.camera &&
-          halfRttInternal._quadMesh.material &&
-          halfRttInternal.renderTarget
-        ) {
-          halfRttInternal._quadMesh.material.fragmentNode = halfRttInternal._rttNode;
-          halfRttInternal._quadMesh.material.needsUpdate = true;
-          rtSetter.setRenderTarget(halfRttInternal.renderTarget);
-          await this.renderer.compileAsync(
-            halfRttInternal._quadMesh,
-            halfRttInternal._quadMesh.camera
-          );
+        const auxRtts: ReadonlyArray<ShaderNodeObject<RTTNode> | null> = [
+          this.msaaDepthResolveRtt,
+          this.halfResFxRtt,
+          this.halfResAoRawRtt,
+          this.halfResAoBlurHRtt,
+          this.halfResAoBlurVRtt,
+        ];
+        for (const aux of auxRtts) {
+          const rttInternal = aux as unknown as {
+            _rttNode?: Node | null;
+            _quadMesh?: THREE.Mesh & {
+              camera?: THREE.Camera;
+              material?: THREE.Material & { fragmentNode?: Node | null };
+            };
+            renderTarget?: THREE.RenderTarget | null;
+          } | null;
+          if (
+            rttInternal?._rttNode &&
+            rttInternal._quadMesh?.camera &&
+            rttInternal._quadMesh.material &&
+            rttInternal.renderTarget
+          ) {
+            rttInternal._quadMesh.material.fragmentNode = rttInternal._rttNode;
+            rttInternal._quadMesh.material.needsUpdate = true;
+            rtSetter.setRenderTarget(rttInternal.renderTarget);
+            await this.renderer.compileAsync(rttInternal._quadMesh, rttInternal._quadMesh.camera);
+          }
         }
       }
     } finally {
@@ -782,16 +1016,27 @@ export class PostProcessingPipeline {
     const scrubBypass = this.interactiveScrubActive;
     const hasHalfResFx = this.bloomEnabled || this.ambientOcclusionEnabled;
     const postProcessing = this.ensurePostProcessing(this.renderer, scene, camera);
-    const shouldUpdateHalfRes = hasHalfResFx && (!scrubBypass || !this.halfResRenderedOnce);
-    if (this.halfResFxRtt) {
-      if (!shouldUpdateHalfRes) {
-        this.halfResFxRtt.autoUpdate = false;
-        this.halfResFxRtt.textureNeedsUpdate = false;
-      } else if (!this.halfResFxRtt.autoUpdate) {
-        this.halfResFxRtt.autoUpdate = true;
-        this.halfResFxRtt.textureNeedsUpdate = true;
-      }
+
+    this.uMsaaActive.value = this.currentMsaaSamples > 1 ? 1.0 : 0.0;
+    if (this.msaaDepthResolveRtt) {
+      this.msaaDepthResolveRtt.autoUpdate = false;
+      this.msaaDepthResolveRtt.textureNeedsUpdate = true;
     }
+
+    const shouldUpdateBloom = this.bloomEnabled && (!scrubBypass || !this.halfResRenderedOnce);
+    if (this.halfResFxRtt) {
+      this.halfResFxRtt.autoUpdate = false;
+      this.halfResFxRtt.textureNeedsUpdate = shouldUpdateBloom;
+    }
+
+    const shouldUpdateAo =
+      this.ambientOcclusionEnabled && (!scrubBypass || !this.halfResAoRenderedOnce);
+    for (const aoRtt of [this.halfResAoRawRtt, this.halfResAoBlurHRtt, this.halfResAoBlurVRtt]) {
+      if (!aoRtt) continue;
+      aoRtt.autoUpdate = false;
+      aoRtt.textureNeedsUpdate = shouldUpdateAo;
+    }
+
     this.uHalfResFxWeight.value = postActive && hasHalfResFx && !scrubBypass ? 1.0 : 0.0;
     this.uMotionBlurEnabled.value =
       postActive && !scrubBypass && this.motionBlurEnabled && !isOrtho && cameraMoved ? 1.0 : 0.0;
@@ -806,8 +1051,11 @@ export class PostProcessingPipeline {
     this.uFxaaEnabled.value = postActive && !scrubBypass && this.fxaaEnabled ? 1.0 : 0.0;
 
     postProcessing.render();
-    if (this.halfResFxRtt && this.halfResFxRtt.autoUpdate !== false) {
+    if (shouldUpdateBloom) {
       this.halfResRenderedOnce = true;
+    }
+    if (shouldUpdateAo) {
+      this.halfResAoRenderedOnce = true;
     }
 
     this.prevViewProj.copy(this.currViewProj);
@@ -815,18 +1063,6 @@ export class PostProcessingPipeline {
 
   public dispose(): void {
     this.bloom.dispose();
-    if (this.halfResFxRtt) {
-      this.halfResFxRtt.renderTarget?.dispose();
-      this.halfResFxRtt = null;
-    }
-    this.halfResRenderedOnce = false;
-    if (this.scenePass) {
-      this.scenePass.dispose();
-      this.scenePass = null;
-    }
-    if (this.postProcessing) {
-      this.postProcessing.dispose();
-      this.postProcessing = null;
-    }
+    this.disposePassGraphOnly();
   }
 }

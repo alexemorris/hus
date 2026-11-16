@@ -1,15 +1,29 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { isRealBrowserMobile } from '../perf/device-tier.ts';
 import type { PropertySceneLayers } from '../viewer/scene-content.ts';
 
 const bevelGeometryCache = new Map<string, RoundedBoxGeometry>();
 
-/** Minimum cross-section thickness (18 mm) for a chamfered edge to resolve above sub-pixel width. */
-export const BEVEL_MIN_THICKNESS_M = 0.018;
-/** Minimum secondary dimension (48 mm) — skips narrow slats, fins, battens, muntins, and trim strips. */
-export const BEVEL_MIN_MIDDLE_DIM_M = 0.048;
-/** Minimum primary length (160 mm) — skips small blocks, buttons, sockets, and hardware micro-parts. */
-export const BEVEL_MIN_LENGTH_M = 0.16;
+/** Minimum cross-section thickness (12 mm) — catches 12–18 mm door panels, plinths, shelves, window boards, frame members, and fascia. */
+export const BEVEL_MIN_THICKNESS_M = 0.012;
+/** Minimum secondary dimension (32 mm) — catches 35–48 mm stiles, rails, frames, trim, and mullions. */
+export const BEVEL_MIN_MIDDLE_DIM_M = 0.032;
+/** Minimum primary length (110 mm) — catches plinth blocks, corbels, hob cheeks, and short returns. */
+export const BEVEL_MIN_LENGTH_M = 0.11;
+
+export interface SelectiveBevelOptions {
+  readonly segments?: 1 | 2;
+  readonly isConstrainedMobile?: boolean;
+}
+
+export interface RoundedBoxParameters {
+  readonly width: number;
+  readonly height: number;
+  readonly depth: number;
+  readonly segments: number;
+  readonly radius: number;
+}
 
 function qMm(value: number): number {
   return Math.round(value * 2000) / 2000;
@@ -19,18 +33,17 @@ function getCachedChamferBoxGeometry(
   width: number,
   height: number,
   depth: number,
+  segments: 1 | 2,
   radius: number
 ): RoundedBoxGeometry {
   const qw = qMm(width);
   const qh = qMm(height);
   const qd = qMm(depth);
   const qr = qMm(radius);
-  const key = `${qw}:${qh}:${qd}:${qr}`;
+  const key = `${qw}:${qh}:${qd}:${segments}:${qr}`;
   let geo = bevelGeometryCache.get(key);
   if (!geo) {
-    // segments = 1 creates a 1-segment smoothed-normal chamfer (108 tris vs 200+ for multi-segment),
-    // giving smooth specular edge highlights at a fraction of the vertex count.
-    geo = new RoundedBoxGeometry(qw, qh, qd, 1, qr);
+    geo = new RoundedBoxGeometry(qw, qh, qd, segments, qr);
     geo.computeBoundingSphere();
     geo.computeBoundingBox();
     bevelGeometryCache.set(key, geo);
@@ -38,27 +51,166 @@ function getCachedChamferBoxGeometry(
   return geo;
 }
 
-const JOINERY_OR_FURNITURE_NAME_RE =
-  /island|cabinet|drawer|door|table|desk|bench|sofa|chair|ottoman|bed|wardrobe|dresser|sideboard|bookcase|shelf|shelves|mantel|hearth|beam|bressummer|joist|rafter|newel|handrail|balustrade|tread|aga|fridge|oven|washer|dryer|sink|vanity|bath|radiator|tv|speaker|subwoofer|console|clock|frame|art|mirror|plinth|worktop|counter/i;
-
-const STRUCTURAL_WALL_NAME_RE =
-  /wall|pier|header|lintel|sill|spandrel|gable|chimneyBreast|parapet|partition|lining|plaster|slab|floor|terrace|step|roof|ceilingSheet/i;
+const DEFAULT_UV_EPS = 1e-4;
 
 /**
- * Micro-parts, repetitive thin slats/battens, and concealed carcass interiors where a 9x triangle
- * bevel expansion (`12 -> 108` tris) produces sub-0.2px edges or sits inside closed joinery.
+ * Checks whether a 24-vertex `THREE.BoxGeometry` `uv` attribute still holds standard
+ * per-face `[0,1], [1,1], [0,0], [1,0]` coordinates across all 6 faces.
+ */
+export function hasDefaultBoxUvs(
+  uvAttr: THREE.BufferAttribute | THREE.InterleavedBufferAttribute
+): boolean {
+  if (uvAttr.count !== 24) return false;
+  for (let side = 0; side < 6; side++) {
+    const base = side * 4;
+    if (
+      Math.abs(uvAttr.getX(base) - 0) > DEFAULT_UV_EPS ||
+      Math.abs(uvAttr.getY(base) - 1) > DEFAULT_UV_EPS ||
+      Math.abs(uvAttr.getX(base + 1) - 1) > DEFAULT_UV_EPS ||
+      Math.abs(uvAttr.getY(base + 1) - 1) > DEFAULT_UV_EPS ||
+      Math.abs(uvAttr.getX(base + 2) - 0) > DEFAULT_UV_EPS ||
+      Math.abs(uvAttr.getY(base + 2) - 0) > DEFAULT_UV_EPS ||
+      Math.abs(uvAttr.getX(base + 3) - 1) > DEFAULT_UV_EPS ||
+      Math.abs(uvAttr.getY(base + 3) - 0) > DEFAULT_UV_EPS
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Creates a `RoundedBoxGeometry` instance sharing `position` and `normal` `BufferAttribute`
+ * references with `baseRounded` while allocating only a custom `uv` `Float32Array` whose
+ * per-face UVs bilinearly interpolate the source 24-vertex `BoxGeometry`'s affine face UVs
+ * (preserving rotated wood grain, flips, stochastic slice offsets, and metric masonry tiling).
+ */
+function buildUvInterpolatedRoundedBox(
+  baseRounded: RoundedBoxGeometry,
+  srcUvAttr: THREE.BufferAttribute | THREE.InterleavedBufferAttribute,
+  srcUserData?: Record<string, unknown>
+): RoundedBoxGeometry {
+  const baseUv = baseRounded.getAttribute('uv') as THREE.BufferAttribute;
+  const totalVerts = baseUv.count;
+  const vertsPerSide = totalVerts / 6;
+  const baseUvArr = baseUv.array as Float32Array;
+  const outUvArr = new Float32Array(totalVerts * 2);
+
+  for (let side = 0; side < 6; side++) {
+    const srcBase = side * 4;
+    const u0 = srcUvAttr.getX(srcBase);
+    const v0 = srcUvAttr.getY(srcBase);
+    const u1 = srcUvAttr.getX(srcBase + 1);
+    const v1 = srcUvAttr.getY(srcBase + 1);
+    const u2 = srcUvAttr.getX(srcBase + 2);
+    const v2 = srcUvAttr.getY(srcBase + 2);
+    const u3 = srcUvAttr.getX(srcBase + 3);
+    const v3 = srcUvAttr.getY(srcBase + 3);
+
+    const vStart = side * vertsPerSide;
+    const vEnd = vStart + vertsPerSide;
+    for (let vi = vStart; vi < vEnd; vi++) {
+      const j = vi * 2;
+      const s = baseUvArr[j]!;
+      const t = baseUvArr[j + 1]!;
+      const oneMinusS = 1 - s;
+      const oneMinusT = 1 - t;
+
+      const uBot = oneMinusS * u2 + s * u3;
+      const uTop = oneMinusS * u0 + s * u1;
+      const vBot = oneMinusS * v2 + s * v3;
+      const vTop = oneMinusS * v0 + s * v1;
+
+      outUvArr[j] = oneMinusT * uBot + t * uTop;
+      outUvArr[j + 1] = oneMinusT * vBot + t * vTop;
+    }
+  }
+
+  const cloned = new THREE.BufferGeometry() as RoundedBoxGeometry;
+  Object.setPrototypeOf(cloned, RoundedBoxGeometry.prototype);
+  const mutableCloned = cloned as unknown as {
+    type: string;
+    parameters: unknown;
+  };
+  mutableCloned.type = baseRounded.type;
+  mutableCloned.parameters = (baseRounded as unknown as { parameters: unknown }).parameters;
+  cloned.setAttribute('position', baseRounded.getAttribute('position'));
+  cloned.setAttribute('normal', baseRounded.getAttribute('normal'));
+  cloned.setAttribute('uv', new THREE.BufferAttribute(outUvArr, 2));
+  if (baseRounded.groups.length > 0) {
+    for (const grp of baseRounded.groups) {
+      cloned.addGroup(grp.start, grp.count, grp.materialIndex);
+    }
+  }
+  cloned.boundingBox = baseRounded.boundingBox ? baseRounded.boundingBox.clone() : null;
+  cloned.boundingSphere = baseRounded.boundingSphere ? baseRounded.boundingSphere.clone() : null;
+  if (srcUserData) {
+    cloned.userData = { ...srcUserData };
+  }
+  return cloned;
+}
+
+function tokenizeIdentifierWords(name: string): string {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .replace(/[^a-zA-Z0-9]+/g, ' ')
+    .trim();
+}
+
+const JOINERY_OR_FURNITURE_WORD_RE =
+  /\b(island|cabinets?|drawers?|doors?|tables?|desks?|bench|benches|sofas?|chairs?|ottomans?|beds?|wardrobes?|dressers?|sideboards?|bookcases?|shelf|shelves|mantels?|mantles?|hearths?|beams?|bressummers?|joists?|rafters?|newels?|handrails?|balustrades?|treads?|risers?|steps?|thresholds?|aga|fridges?|ovens?|washers?|dryers?|sinks?|vanity|vanities|baths?|bathtubs?|radiators?|tvs?|speakers?|subwoofers?|consoles?|clocks?|frames?|art|artworks?|mirrors?|plinths?|worktops?|counters?|countertops?|sills?|cills?|window Boards?|mullions?|transoms?|casements?|sash|sashes|stiles?|rails?|panels?|architraves?|skirtings?|dados?|cornices?|pelmets?|shutters?|pilasters?|columns?|posts?|surrounds?|cheeks?|hobs?|corbels?|lintel Stones?|quoins?|copings?|pier Caps?|gate Piers?|portico Piers?|porticos?|stoves?|firebox|sconces?|lamps?|planters?)\b/i;
+
+const STRUCTURAL_WALL_RAW_RE =
+  /\b(wall|exteriorBrickWall|brickWall|wallRun|wallSegment|spandrel|gable|chimneyBreast|parapet|partition|lining|plasterLining|plasterWall|floorSlab|ceilingSlab|subSlab|terraceSlab|roofSlope|ceilingSheet)\b|wall[A-Z_0-9]|Slab$/i;
+
+const STRUCTURAL_WALL_WORD_RE =
+  /\b(walls?|spandrels?|gables?|chimney Breasts?|parapets?|partitions?|linings?|slabs?|roof Slopes?|ceiling Sheets?)\b/i;
+
+function classifySemanticSegment(segment: string): 'joinery' | 'structural' | 'neutral' {
+  if (!segment) return 'neutral';
+  const words = tokenizeIdentifierWords(segment);
+  if (JOINERY_OR_FURNITURE_WORD_RE.test(words)) {
+    return 'joinery';
+  }
+  if (STRUCTURAL_WALL_RAW_RE.test(segment) || STRUCTURAL_WALL_WORD_RE.test(words)) {
+    return 'structural';
+  }
+  return 'neutral';
+}
+
+function classifyObjectName(rawName: string): 'joinery' | 'structural' | 'neutral' {
+  const parts = rawName.split('.');
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const cls = classifySemanticSegment(parts[i]!);
+    if (cls !== 'neutral') {
+      return cls;
+    }
+  }
+  return classifySemanticSegment(rawName);
+}
+
+/**
+ * Micro-parts, repetitive thin slats/battens, and concealed carcass interiors where bevel
+ * expansion produces sub-pixel edges or sits inside closed joinery.
  */
 const MICRO_OR_HIDDEN_PART_NAME_RE =
   /leafCore|recessCore|solidDoorCore|alcoveEnclosure|voidFloor|ceilingBacking|subSlab|stoneCourse|archBrick|firebrick|tgPlank|\bbook\b|book[._A-Z0-9]|socket|switch|screw|bolt|rivet|shelfPin|\bfin\b|dripTray|slat|batten|trellis|muntin|glazingBar|spoke|pegboard|lath|greenhouse/i;
 
 /**
- * Applies a selective 1-segment smoothed chamfer (`RoundedBoxGeometry` with `segments = 1`)
- * to furniture, cabinetry, worktops, tables, timber beams, fireplace mantels, and doors,
- * while preserving seamless flat structural plaster walls, floor slabs, concealed interiors,
- * and sub-4.8cm micro-parts.
+ * Applies a selective smooth micro-bevel (`RoundedBoxGeometry` with `segments = 2` on desktop,
+ * `segments = 1` on constrained mobile) with exact per-face affine UV interpolation to joinery,
+ * trim, window sills/boards, doors, fireplaces, stone steps, cabinetry, and furniture, while
+ * preserving seamless flat structural walls, floor/ceiling slabs, and `isSculpted` / `bevelLocked` meshes.
  */
-export function applySelectiveBevelModifier(layers: PropertySceneLayers): void {
+export function applySelectiveBevelModifier(
+  layers: PropertySceneLayers,
+  options?: SelectiveBevelOptions
+): void {
   const { scene, cutawayWallGroups } = layers;
+  const segments: 1 | 2 =
+    options?.segments ?? ((options?.isConstrainedMobile ?? isRealBrowserMobile()) ? 1 : 2);
+
   const cutawayRoots = new Set<THREE.Object3D>([
     cutawayWallGroups.southWest,
     cutawayWallGroups.west,
@@ -72,11 +224,20 @@ export function applySelectiveBevelModifier(layers: PropertySceneLayers): void {
     if (Array.isArray(obj.material)) return;
     if (obj.userData?.isAnnotationGroup) return;
 
-    // Skip invisible hitboxes or transparent glow/glass volumes
+    const geoUserData = obj.geometry.userData as Record<string, unknown> | undefined;
+    if (
+      obj.userData?.noBevel === true ||
+      geoUserData?.noBevel === true ||
+      geoUserData?.bevelLocked === true ||
+      Boolean(geoUserData?.isSheared) ||
+      Boolean(geoUserData?.isSculpted)
+    ) {
+      return;
+    }
+
     const mat = obj.material as THREE.MeshStandardMaterial | THREE.MeshBasicMaterial;
     if (!mat || !mat.visible || mat.transparent) return;
 
-    // Only bevel meshes with near-uniform scale so bevels are never stretched
     if (
       Math.abs(obj.scale.x - 1) > 0.05 ||
       Math.abs(obj.scale.y - 1) > 0.05 ||
@@ -100,8 +261,6 @@ export function applySelectiveBevelModifier(layers: PropertySceneLayers): void {
     const h = params.height ?? 1;
     const d = params.depth ?? 1;
 
-    // Physical dimension gate: skip sub-18mm thin parts, narrow strips/rods (< 48mm middle axis),
-    // and short micro-blocks (< 160mm) before scanning vertex buffers or parent chains.
     const minDim = Math.min(w, h, d);
     const maxDim = Math.max(w, h, d);
     const midDim = w + h + d - minDim - maxDim;
@@ -114,22 +273,18 @@ export function applySelectiveBevelModifier(layers: PropertySceneLayers): void {
       return;
     }
 
-    // Skip wide room floor slabs, ceiling plasterboards, and terrace slabs
     if (midDim >= 1.6 && minDim <= 0.45) {
       return;
     }
 
-    // Never overwrite BoxGeometries that are subdivided, sculpted (e.g. sofa cushions, pillows, beds),
-    // or whose vertices were sheared, tapered, or translated in-place!
     if (
-      obj.geometry.userData?.isSheared ||
-      obj.geometry.userData?.isSculpted ||
       (params.widthSegments ?? 1) !== 1 ||
       (params.heightSegments ?? 1) !== 1 ||
       (params.depthSegments ?? 1) !== 1
     ) {
       return;
     }
+
     const posAttr = obj.geometry.getAttribute('position');
     if (!posAttr || posAttr.count !== 24) {
       return;
@@ -149,21 +304,25 @@ export function applySelectiveBevelModifier(layers: PropertySceneLayers): void {
       }
     }
 
-    // Inspect ancestor hierarchy for semantic context
     let inCutawayWall = false;
     let inArchitecturalShell = false;
-    let hasFurnitureOrJoineryTag = false;
-    let hasExplicitWallName = false;
+    let nearestSemanticTag: 'joinery' | 'structural' | null = null;
+    let hasAncestorWallTag = false;
     let cur: THREE.Object3D | null = obj;
     while (cur && cur !== scene) {
+      if (cur.userData?.noBevel === true || cur.userData?.bevelLocked === true) {
+        return;
+      }
       if (typeof cur.name === 'string' && cur.name.length > 0) {
         if (MICRO_OR_HIDDEN_PART_NAME_RE.test(cur.name)) {
           return;
         }
-        if (JOINERY_OR_FURNITURE_NAME_RE.test(cur.name)) {
-          hasFurnitureOrJoineryTag = true;
-        } else if (STRUCTURAL_WALL_NAME_RE.test(cur.name)) {
-          hasExplicitWallName = true;
+        const cls = classifyObjectName(cur.name);
+        if (cls !== 'neutral' && nearestSemanticTag === null) {
+          nearestSemanticTag = cls;
+        }
+        if (cls === 'structural') {
+          hasAncestorWallTag = true;
         }
       }
       if (cutawayRoots.has(cur) || cur.userData?.cutawayWall || cur.userData?.isCutawayWall) {
@@ -177,17 +336,22 @@ export function applySelectiveBevelModifier(layers: PropertySceneLayers): void {
         cur.userData?.isBifoldDoor ||
         cur.userData?.isCarGate
       ) {
-        hasFurnitureOrJoineryTag = true;
+        if (nearestSemanticTag === null) {
+          nearestSemanticTag = 'joinery';
+        }
       }
       cur = cur.parent;
     }
 
-    if (hasExplicitWallName || (inArchitecturalShell && !hasFurnitureOrJoineryTag)) {
+    if (nearestSemanticTag === 'structural') {
       return;
     }
 
-    // Skip structural plaster / brick wall segments (piers, lintels, sills, partitions)
-    // so abutting wall boxes never show V-groove seams in flat walls.
+    const hasFurnitureOrJoineryTag = nearestSemanticTag === 'joinery';
+    if (!hasFurnitureOrJoineryTag && (hasAncestorWallTag || inArchitecturalShell)) {
+      return;
+    }
+
     const minHoriz = Math.min(w, d);
     const maxHoriz = Math.max(w, d);
     const isWallThickness = minHoriz >= 0.075 && minHoriz <= 0.36;
@@ -209,11 +373,14 @@ export function applySelectiveBevelModifier(layers: PropertySceneLayers): void {
       }
     }
 
-    const radius =
-      minDim <= 0.045
-        ? Math.min(0.0035, minDim * 0.12)
-        : Math.min(0.0055, minDim * 0.075);
+    const radius = THREE.MathUtils.clamp(minDim * 0.085, 0.0012, 0.0035);
+    const baseRounded = getCachedChamferBoxGeometry(w, h, d, segments, radius);
 
-    obj.geometry = getCachedChamferBoxGeometry(w, h, d, radius);
+    const uvAttr = obj.geometry.getAttribute('uv');
+    if (!uvAttr || hasDefaultBoxUvs(uvAttr)) {
+      obj.geometry = baseRounded;
+    } else {
+      obj.geometry = buildUvInterpolatedRoundedBox(baseRounded, uvAttr, geoUserData);
+    }
   });
 }

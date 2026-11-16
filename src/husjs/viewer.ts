@@ -87,3 +87,12 @@ export {
   type RoomVariationOption,
 } from '../engine/variations/room-variation-controller.ts';
 export { findVariationOptionRoot, isVariationHiddenInHierarchy } from '../engine/util/object-utils.ts';
+
+export {
+  MirrorReflectorController,
+  createMirrorMaterial,
+  isLikelyMirrorGlassMesh,
+  markMirrorSurface,
+  type MirrorReflectorControllerOptions,
+  type MirrorSurfaceOptions,
+} from '../engine/rendering/mirror-reflector-controller.ts';

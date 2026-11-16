@@ -14,6 +14,7 @@ import {
   getPointLightBudget,
   type PerformanceGovernorStats,
 } from '../../perf/index.ts';
+import type { MirrorReflectorController } from '../../rendering/mirror-reflector-controller.ts';
 import type {
   GraphicsQualityPreset,
   GraphicsSettingsState,
@@ -30,6 +31,7 @@ export interface GraphicsServiceHost {
   readonly environment: EnvironmentLighting;
   readonly lodController: RoomLodController;
   readonly batchOptimizer: SceneBatchOptimizer;
+  readonly mirrors?: MirrorReflectorController;
   /** Re-evaluates cutaways / LOD for the current view after a tier change. */
   refreshView(): void;
 }
@@ -186,6 +188,7 @@ export class GraphicsService {
     batchOptimizer.stepFades(0);
     setCloudGoboTierEnabled(settings.tier !== 'low');
     environment.weather.setGraphicsTier(settings.tier);
+    this.host.mirrors?.setGraphicsTier(settings.tier);
     this.host.refreshView();
     renderer.invalidateShadows();
     renderer.requestRender();

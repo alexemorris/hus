@@ -11,8 +11,20 @@
 import * as THREE from 'three';
 import type { PaintSheen, RoomPaintSurfaceSpec } from '../../core/types/twin-ux.ts';
 import { getHeritageLimePlasterNormalMap } from './micro-surface-detail.ts';
+import {
+  applyGeometricSpecularAA,
+  getGeometricSpecularAAMetadata,
+  type SpecularAntiAliasingMetadata,
+  type SpecularAntiAliasingOptions,
+} from './specular-anti-aliasing.ts';
 
-export { getHeritageLimePlasterNormalMap };
+export {
+  applyGeometricSpecularAA,
+  getGeometricSpecularAAMetadata,
+  getHeritageLimePlasterNormalMap,
+  type SpecularAntiAliasingMetadata,
+  type SpecularAntiAliasingOptions,
+};
 export type { PaintSheen, RoomPaintSurfaceSpec };
 
 export type PaintMicroTextureKind = 'chalk' | 'limewash' | 'roller';
@@ -1333,7 +1345,7 @@ export function createPaintMaterial(options: PaintMaterialOptions): THREE.MeshPh
     params.normalScale = new THREE.Vector2(plasterReliefScale, plasterReliefScale);
   }
 
-  const material = new THREE.MeshPhysicalMaterial(params);
+  const material = applyGeometricSpecularAA(new THREE.MeshPhysicalMaterial(params));
   paintInfoRegistry.set(
     material,
     buildResolvedPaintInfo(

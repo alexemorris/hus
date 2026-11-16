@@ -27,6 +27,7 @@ import {
   buildNeptuneOakTablesAndBedsides,
   buildNeptuneUpholsteredSofa,
   buildWhiteCompanyAccessories,
+  markMirrorSurface,
 } from 'husjs/catalog/furniture';
 import {
   buildFlutedBrassPictureLight,
@@ -175,14 +176,17 @@ export function buildSimpleHouseGroundWestAndCloakroom(
     interactions: ctx.interactions,
   });
 
-  const overmantel = buildCuratedMirrorsArtAndRugs({
-    kind: 'regencyGiltOvermantel',
-    name: 'simpleHouse.drawing.overmantelMirror',
-    widthM: 1.32,
-    heightM: 1.14,
-    position: [DRAWING_BREAST.maxX + 0.004, FFL_GROUND + 1.22, 0],
-    rotationY: Math.PI / 2,
-  });
+  const overmantel = markMirrorSurface(
+    buildCuratedMirrorsArtAndRugs({
+      kind: 'regencyGiltOvermantel',
+      name: 'simpleHouse.drawing.overmantelMirror',
+      widthM: 1.32,
+      heightM: 1.14,
+      position: [DRAWING_BREAST.maxX + 0.004, FFL_GROUND + 1.22, 0],
+      rotationY: Math.PI / 2,
+    }),
+    { localNormal: [0, 0, 1], zoneId: 'houseDrawing' }
+  );
 
   // Full-width Georgian alcove bookcases w/ concealed 2700K LED wash on houseDrawingAccent (0 PointLights)
   const accentCircuit = 'houseDrawingAccent' as CircuitId;
@@ -747,13 +751,16 @@ export function buildSimpleHouseGroundWestAndCloakroom(
   cloakWashstand.position.set(1.36, FFL_GROUND + 0.001, -2.85);
   cloakWashstand.rotation.y = -Math.PI / 2;
 
-  const cloakMirror = buildCuratedMirrorsArtAndRugs({
-    kind: 'coxRoundBrass',
-    name: 'simpleHouse.cloakroom.coxRoundMirror',
-    widthM: 0.56,
-    position: [1.646, FFL_GROUND + 1.22, -2.85],
-    rotationY: -Math.PI / 2,
-  });
+  const cloakMirror = markMirrorSurface(
+    buildCuratedMirrorsArtAndRugs({
+      kind: 'coxRoundBrass',
+      name: 'simpleHouse.cloakroom.coxRoundMirror',
+      widthM: 0.56,
+      position: [1.646, FFL_GROUND + 1.22, -2.85],
+      rotationY: -Math.PI / 2,
+    }),
+    { localNormal: [0, 1, 0], zoneId: 'houseCloakroom' }
+  );
 
   // Twin IP44 fluted-glass & brass vanity sconces flanking mirror at face height (Y = 1.60 m, 1 PointLight only)
   const cloakCircuit = 'houseCloakroomSconces' as CircuitId;

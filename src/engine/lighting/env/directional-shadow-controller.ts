@@ -25,6 +25,21 @@ const SHADOW_CENTER_DEADBAND_M = 10.8;
 /** Larger first-person walkthrough deadband (metres) so multi-room walking across the house triggers 0 mid-walk 4096^2 shadow passes. */
 const SHADOW_CENTER_WALKTHROUGH_DEADBAND_M = 22.0;
 
+export type ShadowWeatherPenumbraPreset = 'clear' | 'partly_cloudy' | 'overcast' | 'rain' | 'storm';
+
+/** Calibrated base shadow-map penumbra radii (in texels) per sky condition for sub-texel bilinear PCF + Vogel filtering. */
+export const WEATHER_SHADOW_PENUMBRA_RADII: Readonly<Record<ShadowWeatherPenumbraPreset, number>> = {
+  clear: 1.35,
+  partly_cloudy: 2.4,
+  overcast: 4.2,
+  rain: 5.2,
+  storm: 5.2,
+};
+
+export function resolveWeatherShadowPenumbraRadius(preset: ShadowWeatherPenumbraPreset): number {
+  return WEATHER_SHADOW_PENUMBRA_RADII[preset];
+}
+
 export interface ShadowFrustumDiagnostics {
   readonly shadowMapSize: 1024 | 2048 | 4096;
   readonly halfExtentM: number;
@@ -70,7 +85,8 @@ export class DirectionalShadowController {
     this.sunLight.shadow.autoUpdate = false;
     this.sunLight.shadow.needsUpdate = true;
     this.sunLight.shadow.mapSize.set(this.shadowMapSize, this.shadowMapSize);
-    this.sunLight.shadow.bias = -0.00014;
+    this.sunLight.shadow.bias = -0.00012;
+    this.sunLight.shadow.normalBias = 0.014;
     (this.sunLight.shadow as unknown as { filterNode: unknown }).filterNode =
       husCloudPenumbraShadowFilter;
     setSunShadowPenumbraUniforms(1.0, this.shadowMapSize);

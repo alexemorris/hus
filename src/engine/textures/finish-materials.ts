@@ -14,8 +14,22 @@ import {
   type MicroSurfaceClass,
   type ThinFabricShadeOptions,
 } from './micro-surface-detail.ts';
+import {
+  applyGeometricSpecularAA,
+  getGeometricSpecularAAMetadata,
+  type SpecularAntiAliasingMetadata,
+  type SpecularAntiAliasingOptions,
+} from './specular-anti-aliasing.ts';
 
-export { createThinFabricShadeMaterial, type MicroSurfaceClass, type ThinFabricShadeOptions };
+export {
+  applyGeometricSpecularAA,
+  createThinFabricShadeMaterial,
+  getGeometricSpecularAAMetadata,
+  type MicroSurfaceClass,
+  type SpecularAntiAliasingMetadata,
+  type SpecularAntiAliasingOptions,
+  type ThinFabricShadeOptions,
+};
 
 export type FinishCategory = 'paint-plaster' | 'timber-stone' | 'metal-enamel';
 
@@ -308,7 +322,7 @@ export function createFinishMaterial(
     matParams.normalScale = new THREE.Vector2(scale, scale);
   }
 
-  const material = new THREE.MeshStandardMaterial(matParams);
+  const material = applyGeometricSpecularAA(new THREE.MeshStandardMaterial(matParams));
   if (!unique) {
     finishMaterialCache.set(cacheKey, material);
   }

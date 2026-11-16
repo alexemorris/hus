@@ -22,6 +22,7 @@ import {
   buildWhiteCompanyAccessories,
   buildWhiteCompanyBedStyling,
   collectSeatClickableMeshes,
+  markMirrorSurface,
 } from 'husjs/catalog/furniture';
 import { buildHeritageInteriorLighting } from 'husjs/catalog/lighting';
 import {
@@ -419,14 +420,17 @@ export function buildBedroomAndBathroomInteriors(
   tagCutaway(vanity, shell.southCut);
   bathGroup.add(vanity);
 
-  const bathMirror = buildCuratedMirrorsArtAndRugs({
-    name: 'simpleFlat.bathroom.roundBrassMirror',
-    kind: 'coxRoundBrass',
-    widthM: 0.62,
-    heightM: 0.62,
-    position: [-3.74, 1.16, IN_Z - 0.014],
-    rotationY: Math.PI,
-  });
+  const bathMirror = markMirrorSurface(
+    buildCuratedMirrorsArtAndRugs({
+      name: 'simpleFlat.bathroom.roundBrassMirror',
+      kind: 'coxRoundBrass',
+      widthM: 0.62,
+      heightM: 0.62,
+      position: [-3.74, 1.16, IN_Z - 0.014],
+      rotationY: Math.PI,
+    }),
+    { localNormal: [0, 1, 0], zoneId: 'flatBathroom' }
+  );
   tagCutaway(bathMirror, shell.southCut);
   bathGroup.add(bathMirror);
 

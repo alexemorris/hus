@@ -6,6 +6,13 @@ import {
 } from '../shared/geometry-cache.ts';
 import { buildSweptMouldingGeometry } from '../../engine/geometry/swept-moulding.ts';
 import type { RoomZoneId } from '../../core/types/topology.ts';
+import {
+  createMirrorMaterial,
+  markMirrorSurface,
+  type MirrorSurfaceOptions,
+} from '../../engine/rendering/mirror-reflector-controller.ts';
+
+export { createMirrorMaterial, markMirrorSurface, type MirrorSurfaceOptions };
 
 export interface OrnateGiltFloorMirrorOptions {
   readonly name: string;
@@ -176,11 +183,11 @@ export function buildOrnateGiltFloorMirror(
     roughness: 0.95,
     metalness: 0.0,
   });
-  const mirrorGlassMat = new THREE.MeshStandardMaterial({
-    color: 0xeef1f3,
+  const mirrorGlassMat = createMirrorMaterial({
+    name: `${name}.mirrorGlassMat`,
+    tint: 0xeef1f3,
     roughness: 0.025,
     metalness: 0.965,
-    envMapIntensity: 1.45,
   });
 
   // Leaner pivot group: when leanDeg > 0 (e.g. 2.75° against West wall X = -9.56 m from base position X = -9.55 m),
@@ -227,6 +234,7 @@ export function buildOrnateGiltFloorMirror(
   glassMesh.name = `${name}.mirrorGlass`;
   glassMesh.position.z = 0.0065;
   glassMesh.receiveShadow = true;
+  markMirrorSurface(glassMesh, { localNormal: [0, 0, 1], zoneId: zone });
   leanerAssembly.add(glassMesh);
 
   // Slim 20 mm × 20 mm reeded Antique-Gold metal outer frame

@@ -61,3 +61,10 @@ export * from '../objects/architectural/heritage-timber.ts';
 export * from '../core/assets/asset-metadata.ts';
 export * from '../engine/assets/smart-asset.ts';
 export { detectMobile, isRealBrowserMobile } from '../engine/perf/device-tier.ts';
+
+export {
+  createMirrorMaterial,
+  isLikelyMirrorGlassMesh,
+  markMirrorSurface,
+  type MirrorSurfaceOptions,
+} from '../engine/rendering/mirror-reflector-controller.ts';

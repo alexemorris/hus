@@ -119,3 +119,19 @@ export {
   createEvergreenFoliagePbrMaterial,
   createRollerMownStripedLawnMaterial,
 } from '../objects/architectural/lawn-and-foliage-materials.ts';
+
+export {
+  applyGeometricSpecularAA,
+  buildGeometricSpecularRoughnessNode,
+  computeGeometricSpecularAaRoughnessCpu,
+  getGeometricSpecularAAMetadata,
+  resolveMaterialSpecularAA,
+  type SpecularAntiAliasingOptions,
+  type SpecularAntiAliasingMetadata,
+} from '../engine/textures/specular-anti-aliasing.ts';
+
+export {
+  createMirrorMaterial,
+  markMirrorSurface,
+  type MirrorSurfaceOptions,
+} from '../engine/rendering/mirror-reflector-controller.ts';

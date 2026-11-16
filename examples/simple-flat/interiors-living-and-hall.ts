@@ -27,6 +27,7 @@ import {
   buildNeptuneOakTablesAndBedsides,
   buildNeptuneUpholsteredSofa,
   buildWhiteCompanyAccessories,
+  markMirrorSurface,
 } from 'husjs/catalog/furniture';
 import { buildHeritageInteriorLighting } from 'husjs/catalog/lighting';
 import { getHonedCarraraMarbleMaterial } from 'husjs/catalog/sanitaryware';
@@ -159,14 +160,17 @@ export function buildLivingKitchenAndHallInteriors(
     dimensionsMm: [860, 185, 1880],
   });
   hallGroup.add(pegConsole);
-  const hallMirror = buildCuratedMirrorsArtAndRugs({
-    name: 'simpleFlat.hall.archedMirror',
-    kind: 'coxArchedBrass',
-    widthM: 0.54,
-    heightM: 0.66,
-    position: [BATH_HALL_X + INT_T * 0.5 + 0.004, 1.02, 2.8],
-    rotationY: Math.PI / 2,
-  });
+  const hallMirror = markMirrorSurface(
+    buildCuratedMirrorsArtAndRugs({
+      name: 'simpleFlat.hall.archedMirror',
+      kind: 'coxArchedBrass',
+      widthM: 0.54,
+      heightM: 0.66,
+      position: [BATH_HALL_X + INT_T * 0.5 + 0.004, 1.02, 2.8],
+      rotationY: Math.PI / 2,
+    }),
+    { localNormal: [0, 0, 1], zoneId: 'flatHall' }
+  );
   hallGroup.add(hallMirror);
   const hallLantern = buildHeritageInteriorLighting(ctx, {
     name: 'simpleFlat.hall.bellJarLantern',

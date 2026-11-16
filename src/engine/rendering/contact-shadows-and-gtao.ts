@@ -1,10 +1,11 @@
 /**
- * Horizon-Based Ground-Truth Ambient Occlusion (GTAO), Depth-Bilateral Upsampling,
- * Multi-Bounce & Specular AO, and Screen-Space Contact Shadows (SSCS) in TSL.
+ * Horizon-Based Ground-Truth Ambient Occlusion (GTAO), Separable Two-Pass Depth-and-Normal-Aware
+ * Bilateral Denoising, Bilateral Upsampling, Multi-Bounce & Specular AO, and Screen-Space Contact
+ * Shadows (SSCS) in TSL.
  *
  * Compatible with both `WebGPUCoordinateSystem` and `WebGLCoordinateSystem` (`?forceWebGL=1`),
  * perspective and orthographic cameras, and 0 Hz demand-driven idle sleep (purely spatial
- * Interleaved Gradient Noise with zero temporal frame jitter).
+ * sampling with zero temporal frame accumulation).
  */
 import * as THREE from 'three';
 import type { Node, RTTNode, TextureNode, UniformNode } from 'three/webgpu';
@@ -60,9 +61,25 @@ export interface PrimarySunLightSample {
   readonly contactShadowStrength: number;
 }
 
-const GTAO_SLICE_COUNT = 3;
-const GTAO_STEPS_PER_SIDE = 3;
-const CONTACT_SHADOW_STEPS = 10;
+export interface BilateralDenoiseSampleCpu {
+  readonly ao: number;
+  readonly contact?: number;
+  readonly viewPos: THREE.Vector3;
+  readonly viewNormal: THREE.Vector3;
+  readonly isSky?: boolean;
+}
+
+export interface BilateralDenoisedValueCpu {
+  readonly ao: number;
+  readonly contact: number;
+}
+
+export const GTAO_SLICE_COUNT = 4;
+export const GTAO_STEPS_PER_SIDE = 4;
+export const CONTACT_SHADOW_STEPS = 12;
+export const MICRO_CONTACT_SHADOW_STEPS = 6;
+export const BILATERAL_KERNEL_RADIUS = 4;
+export const BILATERAL_SPATIAL_SIGMA = 2.15;
 
 /** Safe viewport UV margin so horizon / contact-shadow taps never sample clamped border depth. */
 export const VIEWPORT_SAFE_UV_MIN = 0.002;
@@ -74,6 +91,16 @@ export const GTAO_MAX_REL_SCREEN_RADIUS = 0.135;
 /** Minimum `dot(N, L)` for a surface to receive direct sun and screen-space sun contact shadows. */
 export const CONTACT_SHADOW_MIN_NDOTL = 0.05;
 
+/**
+ * Minimum elevation (metres) above the receiver tangent plane required for a GTAO horizon tap
+ * to register occlusion. Set above 5 mm heritage lime-plaster undulation so flat or hand-trowelled
+ * oblique walls never self-occlude as the 1PV camera moves.
+ */
+export const GTAO_MIN_PLANE_ELEV_M = 0.006;
+
+/** Close-up plaster micro-relief outer fade distance (metres), matching micro-surface-detail.ts. */
+export const CLOSE_UP_MICRO_RELIEF_MAX_DIST_M = 1.95;
+
 const sunPosScratch = new THREE.Vector3();
 const targetPosScratch = new THREE.Vector3();
 const worldDirScratch = new THREE.Vector3();
@@ -81,10 +108,6 @@ const worldDirScratch = new THREE.Vector3();
 /**
  * Pure CPU reference for the perspective-capped GTAO world-space search radius (metres)
  * and close-range 1PV strength scale at `scaleDist` (`-viewZ` in metres).
- *
- * At close first-person wall distances (`scaleDist < 0.85 m`), capping `worldRadius` to
- * `scaleDist * 0.135` prevents `radiusPx` from blowing up across hundreds of screen pixels,
- * and `closeRangeWeight` smoothly attenuates micro-horizon noise when walking beside walls.
  */
 export function computeGtaoRadiusAndCloseRangeWeight(scaleDistMeters: number): {
   readonly worldRadiusM: number;
@@ -98,9 +121,7 @@ export function computeGtaoRadiusAndCloseRangeWeight(scaleDistMeters: number): {
 
 /**
  * Pure CPU reference check for whether a screen-space UV tap lies strictly inside the valid
- * un-clamped viewport (`[0.002, 0.998]^2`). Any tap outside this box must be skipped rather
- * than sampling clamped border depth with an unclamped `uv`, which would otherwise bend
- * oblique close walls into phantom 90-degree screen-edge corners.
+ * un-clamped viewport (`[0.002, 0.998]^2`).
  */
 export function isScreenUvInsideSafeViewport(u: number, v: number): boolean {
   return (
@@ -112,20 +133,126 @@ export function isScreenUvInsideSafeViewport(u: number, v: number): boolean {
 }
 
 /**
- * Pure CPU reference for Screen-Space Contact Shadow sun-facing weight and grazing-aware depth
- * bias (metres). Surfaces facing away from or nearly parallel to the sun (`nDotL <= 0.05`)
- * receive zero sun contact shadow (`facingWeight = 0`), and grazing camera angles (`nDotV` small)
- * scale `minBias` by `1 / max(nDotV, 0.15)` so flat oblique walls never self-shadow.
+ * Pure CPU reference for octahedral unit-normal encoding (`[-1, 1]^2`).
  */
-/**
- * Minimum elevation (metres) above the receiver tangent plane required for a GTAO horizon tap
- * to register occlusion. Set above 5 mm heritage lime-plaster undulation so flat or hand-trowelled
- * oblique walls never self-occlude as the 1PV camera moves.
- */
-export const GTAO_MIN_PLANE_ELEV_M = 0.006;
+export function encodeOctNormalCpu(normal: THREE.Vector3): readonly [number, number] {
+  const invL1 = 1 / Math.max(1e-6, Math.abs(normal.x) + Math.abs(normal.y) + Math.abs(normal.z));
+  let ox = normal.x * invL1;
+  let oy = normal.y * invL1;
+  if (normal.z < 0) {
+    const wrappedX = (1 - Math.abs(oy)) * (ox >= 0 ? 1 : -1);
+    const wrappedY = (1 - Math.abs(ox)) * (oy >= 0 ? 1 : -1);
+    ox = wrappedX;
+    oy = wrappedY;
+  }
+  return [ox, oy];
+}
 
-/** Close-up plaster micro-relief outer fade distance (metres), matching micro-surface-detail.ts. */
-export const CLOSE_UP_MICRO_RELIEF_MAX_DIST_M = 1.95;
+/**
+ * Pure CPU reference for octahedral unit-normal decoding.
+ */
+export function decodeOctNormalCpu(ox: number, oy: number, out = new THREE.Vector3()): THREE.Vector3 {
+  const nz = 1 - Math.abs(ox) - Math.abs(oy);
+  const t = Math.max(0, -nz);
+  const nx = ox + (ox >= 0 ? -t : t);
+  const ny = oy + (oy >= 0 ? -t : t);
+  return out.set(nx, ny, nz).normalize();
+}
+
+/**
+ * Pure CPU reference for the 9-tap (`-4..+4`) depth-and-normal-aware bilateral denoiser pass.
+ * Matches `denoiseBilateralAoAndContactPass` spatial Gaussian (`sigma = 2.15`), tangent-plane
+ * distance (`invPlaneSigma`), and normal-similarity (`dot(N_c, N_t)^16`) weights, preserving
+ * exact `1.0` constant invariance on flat unoccluded walls while rejecting depth/normal edges.
+ */
+export function evaluateBilateralAoDenoise1DCpu(
+  samples: readonly BilateralDenoiseSampleCpu[]
+): BilateralDenoisedValueCpu[] {
+  const n = samples.length;
+  const out: BilateralDenoisedValueCpu[] = new Array(n);
+  const centerNormal = new THREE.Vector3();
+  const tapNormal = new THREE.Vector3();
+  const delta = new THREE.Vector3();
+
+  for (let i = 0; i < n; i++) {
+    const center = samples[i]!;
+    if (center.isSky) {
+      out[i] = { ao: 1.0, contact: 1.0 };
+      continue;
+    }
+    const [cox, coy] = encodeOctNormalCpu(center.viewNormal);
+    decodeOctNormalCpu(cox, coy, centerNormal);
+    const invPlaneSigma = 1.0 / Math.max(0.012, Math.abs(center.viewPos.z) * 0.018);
+
+    let sumAo = center.ao;
+    let sumContact = center.contact ?? 1.0;
+    let weightTotal = 1.0;
+
+    for (let k = -BILATERAL_KERNEL_RADIUS; k <= BILATERAL_KERNEL_RADIUS; k++) {
+      if (k === 0) continue;
+      const idx = i + k;
+      if (idx < 0 || idx >= n) continue;
+      const tap = samples[idx]!;
+      if (tap.isSky) continue;
+
+      const wSpatial = Math.exp(-0.5 * (k / BILATERAL_SPATIAL_SIGMA) * (k / BILATERAL_SPATIAL_SIGMA));
+      delta.subVectors(tap.viewPos, center.viewPos);
+      const planeDist = Math.abs(delta.dot(centerNormal));
+      const wPlane = Math.exp(-planeDist * invPlaneSigma);
+
+      const [tox, toy] = encodeOctNormalCpu(tap.viewNormal);
+      decodeOctNormalCpu(tox, toy, tapNormal);
+      const wNormal = Math.pow(Math.max(0.0, centerNormal.dot(tapNormal)), 16.0);
+
+      const w = wSpatial * wPlane * wNormal;
+      sumAo += tap.ao * w;
+      sumContact += (tap.contact ?? 1.0) * w;
+      weightTotal += w;
+    }
+
+    out[i] = {
+      ao: sumAo / weightTotal,
+      contact: sumContact / weightTotal,
+    };
+  }
+
+  return out;
+}
+
+/**
+ * Pure CPU reference for the two-pass separable (Horizontal -> Vertical) 9x9 bilateral denoiser.
+ */
+export function evaluateSeparableBilateralAoDenoise2DCpu(
+  grid: readonly (readonly BilateralDenoiseSampleCpu[])[]
+): BilateralDenoisedValueCpu[][] {
+  const height = grid.length;
+  if (height === 0) return [];
+  const width = grid[0]!.length;
+
+  const hPassGrid: BilateralDenoiseSampleCpu[][] = Array.from({ length: height }, (_, y) => {
+    const row = grid[y]!;
+    const denoisedRow = evaluateBilateralAoDenoise1DCpu(row);
+    return row.map((cell, x) => ({
+      ao: denoisedRow[x]!.ao,
+      contact: denoisedRow[x]!.contact,
+      viewPos: cell.viewPos,
+      viewNormal: cell.viewNormal,
+      isSky: cell.isSky,
+    }));
+  });
+
+  const vOut: BilateralDenoisedValueCpu[][] = Array.from({ length: height }, () =>
+    new Array<BilateralDenoisedValueCpu>(width)
+  );
+  for (let x = 0; x < width; x++) {
+    const col = Array.from({ length: height }, (_, y) => hPassGrid[y]![x]!);
+    const denoisedCol = evaluateBilateralAoDenoise1DCpu(col);
+    for (let y = 0; y < height; y++) {
+      vOut[y]![x] = denoisedCol[y]!;
+    }
+  }
+  return vOut;
+}
 
 /**
  * Pure CPU reference for the view-ray-orthogonal, unoccluded-normalized GTAO slice estimator.
@@ -298,10 +425,10 @@ export function spatialInterleavedGradientNoise(
 }
 
 /**
- * Samples scene depth at explicit mip level 0 (`textureSampleLevel`) so WGSL never needs implicit
- * screen-space derivatives inside non-uniform fragment `If(...)` blocks (rejected by WebKit WebGPU).
+ * Samples a single-sample scene depth node (`DepthTexture` or resolved `RedFormat` `FloatType` `RTTNode`)
+ * at explicit mip level 0 so WGSL never requires implicit screen-space derivatives inside non-uniform branches.
  */
-function sampleDepthLevel0(
+export function sampleDepthLevel0(
   depthNode: ShaderNodeObject<TextureNode>,
   sampleUv: ShaderNodeObject<Node>
 ): ShaderNodeObject<Node> {
@@ -315,12 +442,56 @@ function sampleClampedDepth(
   return sampleDepthLevel0(depthNode, clamp(sampleUv, 0.001, 0.999));
 }
 
+function sampleRttLevel0(
+  rttNode: ShaderNodeObject<RTTNode>,
+  sampleUv: ShaderNodeObject<Node>
+): ShaderNodeObject<Node> {
+  return (
+    (rttNode as unknown as ShaderNodeObject<TextureNode>).sample(
+      clamp(sampleUv, 0.001, 0.999)
+    ) as unknown as ShaderNodeObject<TextureNode>
+  ).level(float(0));
+}
+
 function isUvInSafeViewportNode(sampleUv: ShaderNodeObject<Node>): ShaderNodeObject<Node> {
   return sampleUv.x
     .greaterThan(VIEWPORT_SAFE_UV_MIN)
     .and(sampleUv.x.lessThan(VIEWPORT_SAFE_UV_MAX))
     .and(sampleUv.y.greaterThan(VIEWPORT_SAFE_UV_MIN))
     .and(sampleUv.y.lessThan(VIEWPORT_SAFE_UV_MAX));
+}
+
+/**
+ * Encodes a unit view-space normal into octahedral `[-1, 1]^2` coordinates for packing into `.zw`
+ * of `HalfFloatType` AO/contact buffers.
+ */
+export function encodeOctNormalNode(
+  unitNormal: ShaderNodeObject<Node>
+): ShaderNodeObject<Node> {
+  const n = unitNormal.toVar();
+  const invL1 = float(1.0).div(max(1e-6, abs(n.x).add(abs(n.y)).add(abs(n.z))));
+  const p = n.xy.mul(invL1).toVar();
+  const signX = select(p.x.greaterThanEqual(0.0), float(1.0), float(-1.0));
+  const signY = select(p.y.greaterThanEqual(0.0), float(1.0), float(-1.0));
+  const wrapped = vec2(
+    float(1.0).sub(abs(p.y)).mul(signX),
+    float(1.0).sub(abs(p.x)).mul(signY)
+  );
+  return select(n.z.lessThan(0.0), wrapped, p);
+}
+
+/**
+ * Decodes an octahedral `[-1, 1]^2` normal back into a unit `vec3` view-space normal.
+ */
+export function decodeOctNormalNode(
+  oct: ShaderNodeObject<Node>
+): ShaderNodeObject<Node> {
+  const e = oct.toVar();
+  const nz = float(1.0).sub(abs(e.x)).sub(abs(e.y)).toVar();
+  const t = max(0.0, nz.negate()).toVar();
+  const nx = e.x.add(select(e.x.greaterThanEqual(0.0), t.negate(), t));
+  const ny = e.y.add(select(e.y.greaterThanEqual(0.0), t.negate(), t));
+  return normalize(vec3(nx, ny, nz));
 }
 
 /**
@@ -339,8 +510,6 @@ export function reconstructMinDeltaViewNormal(
   const rawUvD = centerUv.add(vec2(0.0, stepUv.y));
   const rawUvU = centerUv.sub(vec2(0.0, stepUv.y));
 
-  // Clamp UV BEFORE both depth sample and getViewPosition so border pixels never pair
-  // clamped depth with an out-of-frustum ray direction, and prefer the interior neighbor at edges.
   const uvR = clamp(rawUvR, 0.001, 0.999).toVar();
   const uvL = clamp(rawUvL, 0.001, 0.999).toVar();
   const uvD = clamp(rawUvD, 0.001, 0.999).toVar();
@@ -367,44 +536,17 @@ export function reconstructMinDeltaViewNormal(
   return normalize(select(dot(rawCross, rawCross).greaterThan(1e-12), rawCross, vec3(0.0, 0.0, 1.0)));
 }
 
-/**
- * Evaluates multi-slice cosine-space Ground-Truth Ambient Occlusion (Jimenez 2016) at half resolution.
- * Integrates projected surface-normal visibility across 3 rotated hemisphere slices (18 horizon taps)
- * with strict viewport-bounds rejection, close-range radius capping, and grazing-plane self-occlusion
- * rejection so walking beside oblique walls in 1PV produces zero camera-following dark bands.
- */
-export function evaluateHalfResGtao(
+function evaluateHalfResGtaoWithNormal(
   depthNode: ShaderNodeObject<TextureNode>,
-  hUv: ShaderNodeObject<Node>,
-  hRawDepth: ShaderNodeObject<Node>,
+  centerViewPos: ShaderNodeObject<Node>,
+  viewNormal: ShaderNodeObject<Node>,
+  scaleDist: ShaderNodeObject<Node>,
   uniforms: GtaoAndContactShadowUniforms
 ): ShaderNodeObject<Node> {
-  const {
-    uProjMatrix,
-    uProjMatrixInverse,
-    uHalfTexelSize,
-    uIsOrtho,
-    uOrthoEquivDepth,
-    uAoIntensity,
-  } = uniforms;
-
+  const { uProjMatrix, uProjMatrixInverse, uIsOrtho, uAoIntensity } = uniforms;
   const aoOut = float(1.0).toVar();
-  const centerViewPos = getViewPosition(hUv, hRawDepth, uProjMatrixInverse).toVar();
-  const scaleDist = select(
-    uIsOrtho.greaterThan(0.5),
-    uOrthoEquivDepth,
-    max(0.12, centerViewPos.z.negate())
-  ).toVar();
 
   If(uAoIntensity.greaterThan(0.001).and(scaleDist.lessThan(26.0)), () => {
-    const viewNormal = reconstructMinDeltaViewNormal(
-      depthNode,
-      hUv,
-      centerViewPos,
-      uHalfTexelSize,
-      uProjMatrixInverse
-    ).toVar();
-
     const viewDir = select(
       uIsOrtho.greaterThan(0.5),
       vec3(0.0, 0.0, 1.0),
@@ -414,8 +556,6 @@ export function evaluateHalfResGtao(
     const nDotV = max(0.15, dot(viewNormal, viewDir)).toVar();
     const grazingBiasScale = float(1.0).div(nDotV).toVar();
 
-    // Proportional radius cap (`0.135 * scaleDist`, min `2.4 cm` instead of `8.5 cm`) prevents
-    // screen-space `radiusPx` blow-up when walking within `0.2..1.0 m` of walls in 1PV.
     const worldRadius = clamp(scaleDist.mul(GTAO_MAX_REL_SCREEN_RADIUS), 0.024, 0.44).toVar();
     const normalBias = viewNormal
       .mul(clamp(scaleDist.mul(0.0025), 0.0015, 0.01).mul(grazingBiasScale))
@@ -425,8 +565,6 @@ export function evaluateHalfResGtao(
       screenCoordinate.xy.add(vec2(19.0, 37.0))
     ).toVar();
 
-    // Orthonormal tangent basis perpendicular to viewDir so off-center perspective rays
-    // sample a true view-ray-orthogonal hemisphere instead of tilting into the wall plane.
     const refUp = select(
       abs(viewDir.y).lessThan(0.999),
       vec3(0.0, 1.0, 0.0),
@@ -474,8 +612,6 @@ export function evaluateHalfResGtao(
             const distSq = dot(delta, delta);
             If(distSq.greaterThan(1e-7), () => {
               const dist = sqrt(distSq);
-              // Clear <= 5 mm hand-trowelled plaster undulation & grazing depth quantization
-              // while preserving crisp 90-degree architectural corner, skirting, and frame crevices.
               const planeElev = dot(rawDeltaPos, viewNormal);
               const minPlaneElev = max(GTAO_MIN_PLANE_ELEV_M, dist.mul(0.038)).mul(grazingBiasScale);
               const planeGate = smoothstep(minPlaneElev, minPlaneElev.mul(2.4), planeElev);
@@ -566,60 +702,37 @@ export function evaluateHalfResGtao(
 }
 
 /**
- * Depth + plane-slope bilateral 5-tap cross upsample of half-resolution GTAO (`halfResFxRtt.a`),
- * preventing dark floor or furniture occlusion from bleeding across foreground silhouettes.
+ * Evaluates multi-slice cosine-space Ground-Truth Ambient Occlusion (Jimenez 2016) at half resolution.
+ * Integrates projected surface-normal visibility across 4 rotated hemisphere slices (32 horizon taps)
+ * with strict viewport-bounds rejection, close-range radius capping, and grazing-plane self-occlusion
+ * rejection so walking beside oblique walls in 1PV produces zero camera-following dark bands.
  */
-export function upsampleBilateralGtao(
-  halfResFxRtt: ShaderNodeObject<RTTNode>,
+export function evaluateHalfResGtao(
   depthNode: ShaderNodeObject<TextureNode>,
-  vUv: ShaderNodeObject<Node>,
-  centerViewPos: ShaderNodeObject<Node>,
-  centerViewNormal: ShaderNodeObject<Node>,
+  hUv: ShaderNodeObject<Node>,
+  hRawDepth: ShaderNodeObject<Node>,
   uniforms: GtaoAndContactShadowUniforms
 ): ShaderNodeObject<Node> {
-  const { uHalfTexelSize, uProjMatrixInverse } = uniforms;
-  const sampleHalfAo = (uvCoord: ShaderNodeObject<Node>): ShaderNodeObject<Node> =>
-    (
-      (halfResFxRtt as unknown as ShaderNodeObject<TextureNode>).sample(
-        clamp(uvCoord, 0.001, 0.999)
-      ) as unknown as ShaderNodeObject<TextureNode>
-    ).level(float(0)).a;
-
-  const invSigma = float(1.0).div(max(0.014, abs(centerViewPos.z).mul(0.022))).toVar();
-  const centerAo = sampleHalfAo(vUv).toVar();
-  const weightedSum = centerAo.mul(1.5).toVar();
-  const weightTotal = float(1.5).toVar();
-
-  const offsets: readonly ShaderNodeObject<Node>[] = [
-    vec2(uHalfTexelSize.x, 0.0),
-    vec2(uHalfTexelSize.x.negate(), 0.0),
-    vec2(0.0, uHalfTexelSize.y),
-    vec2(0.0, uHalfTexelSize.y.negate()),
-  ];
-
-  for (const off of offsets) {
-    const rawTapUv = vUv.add(off);
-    const inBounds = isUvInSafeViewportNode(rawTapUv);
-    const tapUv = clamp(rawTapUv, 0.001, 0.999);
-    const tapDepth = sampleClampedDepth(depthNode, tapUv);
-    const tapPos = getViewPosition(tapUv, tapDepth, uProjMatrixInverse);
-    const planeDist = abs(dot(tapPos.sub(centerViewPos), centerViewNormal));
-    const zGap = abs(tapPos.z.sub(centerViewPos.z));
-    const w = exp(planeDist.mul(3.5).add(zGap.mul(0.65)).mul(invSigma).negate()).mul(
-      select(inBounds.and(tapDepth.lessThan(0.9999)), float(1.0), float(0.0))
-    );
-    weightedSum.addAssign(sampleHalfAo(tapUv).mul(w));
-    weightTotal.addAssign(w);
-  }
-
-  return clamp(weightedSum.div(max(1e-4, weightTotal)), 0.36, 1.0);
+  const { uProjMatrixInverse, uHalfTexelSize, uIsOrtho, uOrthoEquivDepth } = uniforms;
+  const centerViewPos = getViewPosition(hUv, hRawDepth, uProjMatrixInverse).toVar();
+  const scaleDist = select(
+    uIsOrtho.greaterThan(0.5),
+    uOrthoEquivDepth,
+    max(0.12, centerViewPos.z.negate())
+  ).toVar();
+  const viewNormal = reconstructMinDeltaViewNormal(
+    depthNode,
+    hUv,
+    centerViewPos,
+    uHalfTexelSize,
+    uProjMatrixInverse
+  ).toVar();
+  return evaluateHalfResGtaoWithNormal(depthNode, centerViewPos, viewNormal, scaleDist, uniforms);
 }
 
 /**
- * Full-resolution thickness-bounded Screen-Space Contact Shadows (10 steps covering ~5–20 cm)
- * marching toward `uSunViewDir` so chair legs, table feet, skirting quirks, window mullions,
- * frames, hardware, and cobbles cast crisp grounded micro-shadows without peter-panning or
- * grazing-wall self-shadowing.
+ * Thickness-bounded Screen-Space Contact Shadows (12 steps covering ~3.2–20 cm) marching toward
+ * `uSunViewDir` at half resolution, later denoised by the separable depth-and-normal bilateral passes.
  */
 export function evaluateScreenSpaceContactShadow(
   depthNode: ShaderNodeObject<TextureNode>,
@@ -642,8 +755,6 @@ export function evaluateScreenSpaceContactShadow(
 
   If(activeStrength.greaterThan(0.005).and(scaleDist.lessThan(26.0)), () => {
     const nDotL = dot(centerViewNormal, uSunViewDir).toVar();
-    // Surfaces facing away from or grazing to the sun (`nDotL <= 0.05`) cannot receive direct sun
-    // or cast a sun contact shadow onto themselves.
     If(nDotL.greaterThan(CONTACT_SHADOW_MIN_NDOTL), () => {
       const facingWeight = smoothstep(CONTACT_SHADOW_MIN_NDOTL, 0.2, nDotL).toVar();
       const viewDir = select(
@@ -682,8 +793,6 @@ export function evaluateScreenSpaceContactShadow(
               .add(scaleDist.mul(0.0008))
               .mul(grazingScale);
 
-            // Also require the occluder to rise above the receiver tangent plane so flat oblique
-            // walls never self-shadow along raking rays.
             const planeElev = dot(scenePos.sub(centerViewPos), centerViewNormal);
             const minPlaneElev = max(0.0055, tMeters.mul(0.042)).mul(grazingScale);
             const planeGate = smoothstep(minPlaneElev, minPlaneElev.mul(2.2), planeElev);
@@ -716,6 +825,282 @@ export function evaluateScreenSpaceContactShadow(
   });
 
   return shadowVis;
+}
+
+/**
+ * Evaluates raw half-resolution `(rawAo, rawContact, octNormal.x, octNormal.y)` in a single pass,
+ * reconstructing `viewNormal` once per half-res texel and packing it into `.zw` so the H and V
+ * bilateral passes never re-reconstruct normals across their 18 taps.
+ */
+export function evaluateHalfResAoAndContactRaw(
+  depthNode: ShaderNodeObject<TextureNode>,
+  hUv: ShaderNodeObject<Node>,
+  hRawDepth: ShaderNodeObject<Node>,
+  uniforms: GtaoAndContactShadowUniforms
+): ShaderNodeObject<Node> {
+  const { uProjMatrixInverse, uHalfTexelSize, uIsOrtho, uOrthoEquivDepth } = uniforms;
+  const outPacked = vec4(1.0, 1.0, 0.0, 0.0).toVar();
+
+  If(hRawDepth.lessThan(0.9999), () => {
+    const hCenterViewPos = getViewPosition(hUv, hRawDepth, uProjMatrixInverse).toVar();
+    const hScaleDist = select(
+      uIsOrtho.greaterThan(0.5),
+      uOrthoEquivDepth,
+      max(0.12, hCenterViewPos.z.negate())
+    ).toVar();
+    const hCenterViewNormal = reconstructMinDeltaViewNormal(
+      depthNode,
+      hUv,
+      hCenterViewPos,
+      uHalfTexelSize,
+      uProjMatrixInverse
+    ).toVar();
+
+    const rawAo = evaluateHalfResGtaoWithNormal(
+      depthNode,
+      hCenterViewPos,
+      hCenterViewNormal,
+      hScaleDist,
+      uniforms
+    );
+    const rawContact = evaluateScreenSpaceContactShadow(
+      depthNode,
+      hCenterViewPos,
+      hCenterViewNormal,
+      hScaleDist,
+      uniforms
+    );
+    const octNormal = encodeOctNormalNode(hCenterViewNormal);
+    outPacked.assign(vec4(rawAo, rawContact, octNormal.x, octNormal.y));
+  });
+
+  return outPacked;
+}
+
+/**
+ * Single separable 9-tap (`-4..+4` half-res texels) depth-and-normal-aware bilateral filter pass.
+ * Preserves `.zw` octahedral view normals unchanged and maintains exact `1.0` constant invariance.
+ */
+export function denoiseBilateralAoAndContactPass(
+  srcRtt: ShaderNodeObject<RTTNode>,
+  depthNode: ShaderNodeObject<TextureNode>,
+  centerUv: ShaderNodeObject<Node>,
+  stepDirUv: ShaderNodeObject<Node>,
+  uniforms: Pick<GtaoAndContactShadowUniforms, 'uProjMatrixInverse'>
+): ShaderNodeObject<Node> {
+  const { uProjMatrixInverse } = uniforms;
+  const centerSample = sampleRttLevel0(srcRtt, centerUv).toVar();
+  const centerDepth = sampleClampedDepth(depthNode, centerUv).toVar();
+  const outSample = vec4(centerSample).toVar();
+
+  If(centerDepth.lessThan(0.9999), () => {
+    const centerPos = getViewPosition(centerUv, centerDepth, uProjMatrixInverse).toVar();
+    const centerNormal = decodeOctNormalNode(centerSample.zw).toVar();
+    const invPlaneSigma = float(1.0).div(max(0.012, abs(centerPos.z).mul(0.018))).toVar();
+
+    const sumAo = centerSample.x.toVar();
+    const sumContact = centerSample.y.toVar();
+    const weightTotal = float(1.0).toVar();
+
+    for (let k = -BILATERAL_KERNEL_RADIUS; k <= BILATERAL_KERNEL_RADIUS; k++) {
+      if (k === 0) continue;
+      const wSpatial = Math.exp(
+        -0.5 * (k / BILATERAL_SPATIAL_SIGMA) * (k / BILATERAL_SPATIAL_SIGMA)
+      );
+      const rawTapUv = centerUv.add(stepDirUv.mul(float(k)));
+      const inBounds = isUvInSafeViewportNode(rawTapUv);
+      const tapUv = clamp(rawTapUv, 0.001, 0.999).toVar();
+      const tapDepth = sampleDepthLevel0(depthNode, tapUv).toVar();
+      const tapSample = sampleRttLevel0(srcRtt, tapUv).toVar();
+      const tapPos = getViewPosition(tapUv, tapDepth, uProjMatrixInverse);
+      const tapNormal = decodeOctNormalNode(tapSample.zw);
+
+      const planeDist = abs(dot(tapPos.sub(centerPos), centerNormal));
+      const wPlane = exp(planeDist.mul(invPlaneSigma).negate());
+      const wNormal = pow(max(0.0, dot(centerNormal, tapNormal)), float(16.0));
+      const valid = select(inBounds.and(tapDepth.lessThan(0.9999)), float(1.0), float(0.0));
+      const w = float(wSpatial).mul(wPlane).mul(wNormal).mul(valid);
+
+      sumAo.addAssign(tapSample.x.mul(w));
+      sumContact.addAssign(tapSample.y.mul(w));
+      weightTotal.addAssign(w);
+    }
+
+    outSample.assign(
+      vec4(sumAo.div(weightTotal), sumContact.div(weightTotal), centerSample.z, centerSample.w)
+    );
+  });
+
+  return outSample;
+}
+
+/**
+ * Full-resolution 5-tap depth-and-normal-aware bilateral upsampler for `(denoisedAo, denoisedContact)`
+ * from `halfResAoBlurVRtt`, preventing dark corner/floor occlusion from haloing across silhouettes.
+ */
+export function upsampleBilateralAoAndContact(
+  denoisedHalfRtt: ShaderNodeObject<RTTNode>,
+  depthNode: ShaderNodeObject<TextureNode>,
+  vUv: ShaderNodeObject<Node>,
+  centerViewPos: ShaderNodeObject<Node>,
+  centerViewNormal: ShaderNodeObject<Node>,
+  uniforms: GtaoAndContactShadowUniforms
+): ShaderNodeObject<Node> {
+  const { uHalfTexelSize, uProjMatrixInverse } = uniforms;
+  const invSigma = float(1.0).div(max(0.014, abs(centerViewPos.z).mul(0.022))).toVar();
+
+  const centerSample = sampleRttLevel0(denoisedHalfRtt, vUv).toVar();
+  const centerNormalSim = pow(
+    max(0.0, dot(centerViewNormal, decodeOctNormalNode(centerSample.zw))),
+    float(12.0)
+  );
+  const w0 = float(0.2).add(centerNormalSim.mul(1.3)).toVar();
+  const weightedSum = centerSample.xy.mul(w0).toVar();
+  const weightTotal = float(w0).toVar();
+
+  const offsets: readonly ShaderNodeObject<Node>[] = [
+    vec2(uHalfTexelSize.x, 0.0),
+    vec2(uHalfTexelSize.x.negate(), 0.0),
+    vec2(0.0, uHalfTexelSize.y),
+    vec2(0.0, uHalfTexelSize.y.negate()),
+  ];
+
+  for (const off of offsets) {
+    const rawTapUv = vUv.add(off);
+    const inBounds = isUvInSafeViewportNode(rawTapUv);
+    const tapUv = clamp(rawTapUv, 0.001, 0.999).toVar();
+    const tapDepth = sampleClampedDepth(depthNode, tapUv);
+    const tapSample = sampleRttLevel0(denoisedHalfRtt, tapUv).toVar();
+    const tapPos = getViewPosition(tapUv, tapDepth, uProjMatrixInverse);
+    const tapNormal = decodeOctNormalNode(tapSample.zw);
+
+    const planeDist = abs(dot(tapPos.sub(centerViewPos), centerViewNormal));
+    const zGap = abs(tapPos.z.sub(centerViewPos.z));
+    const wPlane = exp(planeDist.mul(3.5).add(zGap.mul(0.65)).mul(invSigma).negate());
+    const wNormal = pow(max(0.0, dot(centerViewNormal, tapNormal)), float(12.0));
+    const valid = select(inBounds.and(tapDepth.lessThan(0.9999)), float(1.0), float(0.0));
+    const w = wPlane.mul(wNormal).mul(valid);
+
+    weightedSum.addAssign(tapSample.xy.mul(w));
+    weightTotal.addAssign(w);
+  }
+
+  const upsampled = weightedSum.div(max(1e-5, weightTotal));
+  return vec2(clamp(upsampled.x, 0.36, 1.0), clamp(upsampled.y, 0.48, 1.0));
+}
+
+/**
+ * Legacy single-channel bilateral GTAO upsampler preserved for external callers.
+ */
+export function upsampleBilateralGtao(
+  halfResRtt: ShaderNodeObject<RTTNode>,
+  depthNode: ShaderNodeObject<TextureNode>,
+  vUv: ShaderNodeObject<Node>,
+  centerViewPos: ShaderNodeObject<Node>,
+  centerViewNormal: ShaderNodeObject<Node>,
+  uniforms: GtaoAndContactShadowUniforms
+): ShaderNodeObject<Node> {
+  return upsampleBilateralAoAndContact(
+    halfResRtt,
+    depthNode,
+    vUv,
+    centerViewPos,
+    centerViewNormal,
+    uniforms
+  ).x;
+}
+
+/**
+ * Deterministic jitter-free 6-tap full-resolution micro-contact shadow refinement (`0..3 cm` tight
+ * seam range, zero IGN noise). Combined with `denoisedContact` via `min(upsampledContact, microContact)`
+ * so sub-centimetre furniture-leg and skirting-floor contact lines stay razor-crisp while wider
+ * 3-20 cm penumbras remain completely free of stipple grain.
+ */
+export function evaluateDeterministicMicroContactShadow(
+  depthNode: ShaderNodeObject<TextureNode>,
+  centerViewPos: ShaderNodeObject<Node>,
+  centerViewNormal: ShaderNodeObject<Node>,
+  scaleDist: ShaderNodeObject<Node>,
+  uniforms: GtaoAndContactShadowUniforms
+): ShaderNodeObject<Node> {
+  const {
+    uProjMatrix,
+    uProjMatrixInverse,
+    uIsOrtho,
+    uSunViewDir,
+    uContactShadowStrength,
+    uAoIntensity,
+  } = uniforms;
+
+  const microVis = float(1.0).toVar();
+  const activeStrength = uContactShadowStrength.mul(smoothstep(0.0, 0.15, uAoIntensity)).toVar();
+
+  If(activeStrength.greaterThan(0.005).and(scaleDist.lessThan(14.0)), () => {
+    const nDotL = dot(centerViewNormal, uSunViewDir).toVar();
+    If(nDotL.greaterThan(CONTACT_SHADOW_MIN_NDOTL), () => {
+      const facingWeight = smoothstep(CONTACT_SHADOW_MIN_NDOTL, 0.2, nDotL).toVar();
+      const viewDir = select(
+        uIsOrtho.greaterThan(0.5),
+        vec3(0.0, 0.0, 1.0),
+        normalize(centerViewPos.negate())
+      ).toVar();
+      const nDotV = max(0.15, dot(centerViewNormal, viewDir)).toVar();
+      const grazingScale = float(1.0).div(nDotV).toVar();
+
+      const microRayLength = clamp(scaleDist.mul(0.011), 0.008, 0.03).toVar();
+      const maxThickness = float(0.026);
+      const originBias = clamp(scaleDist.mul(0.0014), 0.001, 0.005).mul(grazingScale);
+      const rayOrigin = centerViewPos.add(centerViewNormal.mul(originBias)).toVar();
+      const maxOcclusion = float(0.0).toVar();
+
+      for (let i = 0; i < MICRO_CONTACT_SHADOW_STEPS; i++) {
+        const sNorm = (i + 0.5) / MICRO_CONTACT_SHADOW_STEPS;
+        const tMeters = microRayLength.mul(sNorm * 0.35 + sNorm * sNorm * 0.65);
+        const rayPos = rayOrigin.add(uSunViewDir.mul(tMeters)).toVar();
+        const rayUv = getScreenPosition(rayPos, uProjMatrix).toVar();
+
+        If(isUvInSafeViewportNode(rayUv), () => {
+          const sampleD = sampleDepthLevel0(depthNode, rayUv);
+          If(sampleD.lessThan(0.9999), () => {
+            const scenePos = getViewPosition(rayUv, sampleD, uProjMatrixInverse);
+            const depthDiff = scenePos.z.sub(rayPos.z);
+            const minBias = float(0.0013)
+              .add(tMeters.mul(0.03))
+              .add(scaleDist.mul(0.0006))
+              .mul(grazingScale);
+
+            const planeElev = dot(scenePos.sub(centerViewPos), centerViewNormal);
+            const minPlaneElev = max(0.0055, tMeters.mul(0.06)).mul(grazingScale);
+            const planeGate = smoothstep(minPlaneElev, minPlaneElev.mul(2.1), planeElev);
+
+            const enterHit = smoothstep(minBias, minBias.mul(2.2).add(0.0015), depthDiff);
+            const thicknessExit = float(1.0).sub(
+              smoothstep(maxThickness.mul(0.55), maxThickness, depthDiff)
+            );
+            const stepAtten = 1.0 - sNorm * 0.35;
+            maxOcclusion.assign(
+              max(maxOcclusion, enterHit.mul(thicknessExit).mul(planeGate).mul(stepAtten))
+            );
+          });
+        });
+      }
+
+      const closeFade = select(
+        uIsOrtho.greaterThan(0.5),
+        float(1.0),
+        smoothstep(0.25, 0.7, scaleDist)
+      );
+      const distFade = float(1.0).sub(smoothstep(9.0, 14.0, scaleDist)).mul(closeFade);
+      const contactDarken = maxOcclusion
+        .mul(activeStrength)
+        .mul(facingWeight)
+        .mul(distFade)
+        .mul(0.42);
+      microVis.assign(clamp(float(1.0).sub(contactDarken), 0.5, 1.0));
+    });
+  });
+
+  return microVis;
 }
 
 /**

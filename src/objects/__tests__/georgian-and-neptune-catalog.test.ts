@@ -437,4 +437,30 @@ describe('Catalog builders: Neptune, Lacanche, White Company, Cox & Cox & Georgi
       'showerLadder'
     );
   });
+  it('builds Georgian fireplace and portico key stone profiles with 1.5 mm ExtrudeGeometry bevels while preserving exact outer dimensions', () => {
+    const fireplace = buildGeorgianBolectionFireplace(null, { name: 'testFireplace' });
+    const mantel = fireplace.getObjectByName('testFireplace.carraraMantleShelf') as THREE.Mesh;
+    const hearth = fireplace.getObjectByName('testFireplace.frontHearthSlab') as THREE.Mesh;
+    expect(mantel.geometry.type).toBe('ExtrudeGeometry');
+    expect(hearth.geometry.type).toBe('ExtrudeGeometry');
+    mantel.geometry.computeBoundingBox();
+    const mantelSize = mantel.geometry.boundingBox!.getSize(new THREE.Vector3());
+    expect(mantelSize.x).toBeCloseTo(1.48, 4);
+    expect(mantelSize.y).toBeCloseTo(0.055, 4);
+    expect(mantelSize.z).toBeCloseTo(0.21, 4);
+
+    const portico = buildGeorgianTuscanPorticoAndDoor(null, {
+      name: 'testPortico',
+      includePlanters: false,
+    });
+    const cornice = portico.getObjectByName('testPortico.entablatureCornice') as THREE.Mesh;
+    const lowerStep = portico.getObjectByName('testPortico.yorkstoneLowerStep') as THREE.Mesh;
+    expect(cornice.geometry.type).toBe('ExtrudeGeometry');
+    expect(lowerStep.geometry.type).toBe('ExtrudeGeometry');
+    cornice.geometry.computeBoundingBox();
+    const corniceSize = cornice.geometry.boundingBox!.getSize(new THREE.Vector3());
+    expect(corniceSize.x).toBeCloseTo(2.28, 4);
+    expect(corniceSize.y).toBeCloseTo(0.145, 4);
+    expect(corniceSize.z).toBeCloseTo(1.26, 4);
+  });
 });

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { CutawayWallDescriptor } from 'husjs';
+import { markMirrorSurface } from 'husjs/catalog/furniture';
 import { attachAssetInteraction, attachAssetMetadata, prepGeo, tagCollisionRole, tagCutaway } from 'husjs/objects';
 import type { LightCircuitGroup, SceneBuilderContext } from 'husjs/viewer';
 import { buildFloorToCeilingSlidingWardrobe } from './mcm-bedrooms.ts';
@@ -562,6 +563,7 @@ export function buildBreezewayAndCentralBathCore(
 
   const bath = new THREE.Group();
   bath.name = 'stahl.bathCore.interior';
+  bath.userData.zoneId = 'stahlBathCore';
 
   // Exact `4"x4"` (`TILE_4X4 = 0.816`) glazed ceramic mosaic tile floor & wainscots (`>= 2 mm` proud of walls)
   const tileFloor = addPart(bath, bevelledBox(2.44, 0.0024, 4.18, 0.001, 2, TILE_4X4, TILE_4X4), mcm.mosaicBlue, -5.996, 0.0018, -3.82);
@@ -740,7 +742,9 @@ export function buildBreezewayAndCentralBathCore(
 
   // Bevelled mirror cabinet (`>= 3.0 mm` proud of West mosaic wall) + `32`-seg opal vanity bar luminaire
   addPart(vanity, bevelledBox(0.034, 1.06, 2.12, 0.004, 4, 0.85, 0.85), mcm.walnut, -vDepth * 0.5 + 0.013, 1.54, 0);
-  addPart(vanity, bevelledBox(0.008, 1.01, 2.07, 0.002, 3), mcm.plateMirror, -vDepth * 0.5 + 0.035, 1.54, 0);
+  const vanityMirrorPane = addPart(vanity, bevelledBox(0.008, 1.01, 2.07, 0.002, 3), mcm.plateMirror, -vDepth * 0.5 + 0.035, 1.54, 0);
+  vanityMirrorPane.name = 'stahl.bath.vanityMirrorGlass';
+  markMirrorSurface(vanityMirrorPane, { localNormal: [1, 0, 0], zoneId: 'stahlBathCore' });
   addPart(vanity, bevelledBox(0.004, 1.01, 0.008, 0.001, 2), mcm.dieCastAlum, -vDepth * 0.5 + 0.041, 1.54, 0);
   addPart(vanity, bevelledBox(0.024, 0.058, 2.04, 0.004, 4), mcm.polishedChrome, -vDepth * 0.5 + 0.014, 2.15, 0);
   const barDiffuserMat = new THREE.MeshStandardMaterial({ color: 0xfffcf4, emissive: new THREE.Color(0xffe9c4), emissiveIntensity: 1.4, roughness: 0.28 });

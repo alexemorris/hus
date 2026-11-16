@@ -19,6 +19,7 @@ import {
   buildGeorgianAntiqueCasework,
   buildWhiteCompanyAccessories,
   buildWhiteCompanyBedStyling,
+  markMirrorSurface,
 } from 'husjs/catalog/furniture';
 import { buildHeritageInteriorLighting } from 'husjs/catalog/lighting';
 import {
@@ -278,14 +279,17 @@ export function buildSimpleHouseFirstWestAndLanding(
   }
 
   // Full-height arched brass mirror & Kubu laundry hamper against solid pDress East wall (X = -4.45)
-  const archedMirror = buildCuratedMirrorsArtAndRugs({
-    kind: 'coxArchedBrass',
-    name: 'simpleHouse.dressing.archedBrassMirror',
-    widthM: 0.68,
-    heightM: 1.58,
-    position: [-4.456, FFL_FIRST + 0.165, -2.95],
-    rotationY: -Math.PI / 2,
-  });
+  const archedMirror = markMirrorSurface(
+    buildCuratedMirrorsArtAndRugs({
+      kind: 'coxArchedBrass',
+      name: 'simpleHouse.dressing.archedBrassMirror',
+      widthM: 0.68,
+      heightM: 1.58,
+      position: [-4.456, FFL_FIRST + 0.165, -2.95],
+      rotationY: -Math.PI / 2,
+    }),
+    { localNormal: [0, 0, 1], zoneId: 'housePrincipalBed' }
+  );
 
   const dressingHamper = buildWhiteCompanyAccessories({
     kind: 'kubuLaundryHamper',
@@ -406,13 +410,16 @@ export function buildSimpleHouseFirstWestAndLanding(
     position: [-2.18, FFL_FIRST + 0.001, -3.20],
     rotationY: -Math.PI / 2,
   });
-  const ensuiteMirror = buildCuratedMirrorsArtAndRugs({
-    kind: 'coxRoundBrass',
-    name: 'simpleHouse.ensuite.roundBrassMirror',
-    widthM: 0.78,
-    position: [-1.896, FFL_FIRST + 1.08, -3.20],
-    rotationY: -Math.PI / 2,
-  });
+  const ensuiteMirror = markMirrorSurface(
+    buildCuratedMirrorsArtAndRugs({
+      kind: 'coxRoundBrass',
+      name: 'simpleHouse.ensuite.roundBrassMirror',
+      widthM: 0.78,
+      position: [-1.896, FFL_FIRST + 1.08, -3.20],
+      rotationY: -Math.PI / 2,
+    }),
+    { localNormal: [0, 1, 0], zoneId: 'housePrincipalEnsuite' }
+  );
 
   // Twin IP44 fluted-glass & brass vanity sconces at face height (Y = FFL_FIRST + 1.60 m; 1 PointLight)
   const ensuiteSconceNorth = buildHeritageInteriorLighting(ctx, {

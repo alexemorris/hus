@@ -8,9 +8,11 @@ import {
   add,
   clamp,
   clearcoatNormalView,
+  clearcoatRoughness,
   cos,
   dot,
   float,
+  floor,
   fract,
   int,
   ivec2,
@@ -22,6 +24,7 @@ import {
   positionViewDirection,
   positionWorld,
   renderGroup,
+  roughness,
   screenCoordinate,
   select,
   type ShaderNodeObject,
@@ -43,6 +46,10 @@ import {
   PhysicalLightingModel,
   PointLightNode,
 } from 'three/webgpu';
+import {
+  buildGeometricSpecularRoughnessNode,
+  resolveMaterialSpecularAA,
+} from '../textures/specular-anti-aliasing.ts';
 import {
   SHARED_BAKED_VOLUME_TEXTURE,
   SHARED_CAMERA_WORLD_MATRIX,
@@ -309,13 +316,53 @@ interface VogelDiskTap {
   readonly x: number;
   readonly y: number;
   readonly r: number;
+  readonly weight: number;
 }
 
-const VOGEL_DISK_16: readonly VogelDiskTap[] = Array.from({ length: 16 }, (_, i) => {
-  const r = Math.sqrt((i + 0.5) / 16.0);
+const VOGEL_BILINEAR_COUNT = 12;
+const RAW_VOGEL_TAPS = Array.from({ length: VOGEL_BILINEAR_COUNT }, (_, i) => {
+  const r = Math.sqrt((i + 0.5) / VOGEL_BILINEAR_COUNT);
   const theta = i * 2.399963229728653;
-  return { x: Math.cos(theta) * r, y: Math.sin(theta) * r, r };
+  const rawWeight = 1.0 - 0.62 * r;
+  return { x: Math.cos(theta) * r, y: Math.sin(theta) * r, r, rawWeight };
 });
+const CORE_TAP_RAW_WEIGHT = 1.15;
+const VOGEL_TOTAL_WEIGHT =
+  CORE_TAP_RAW_WEIGHT + RAW_VOGEL_TAPS.reduce((sum, t) => sum + t.rawWeight, 0);
+const CORE_TAP_NORM_WEIGHT = CORE_TAP_RAW_WEIGHT / VOGEL_TOTAL_WEIGHT;
+const VOGEL_DISK_12: readonly VogelDiskTap[] = RAW_VOGEL_TAPS.map((t) => ({
+  x: t.x,
+  y: t.y,
+  r: t.r,
+  weight: t.rawWeight / VOGEL_TOTAL_WEIGHT,
+}));
+
+type ShadowDepthCompareFn = (
+  uv: ShaderNodeObject<Node>,
+  compareZ: ShaderNodeObject<Node>
+) => ShaderNodeObject<Node>;
+
+/**
+ * Evaluates a continuous sub-texel bilinearly interpolated shadow comparison (4 hardware
+ * `textureSampleCompare` fetches blended by `fract(uv * mapSize + 0.5)`), turning binary 0/1
+ * point comparisons into smooth sub-texel gradients with zero stair-stepping.
+ */
+export function sampleSubTexelBilinearShadow(
+  depthCompare: ShadowDepthCompareFn,
+  sampleUv: ShaderNodeObject<Node>,
+  compareZ: ShaderNodeObject<Node>,
+  texelSize: ShaderNodeObject<Node>,
+  mapSize: ShaderNodeObject<Node>
+): ShaderNodeObject<Node> {
+  const scaledUv = sampleUv.mul(mapSize).add(0.5).toVar();
+  const f = fract(scaledUv).toVar();
+  const baseUv = floor(scaledUv).sub(0.5).mul(texelSize).toVar();
+  const s00 = depthCompare(baseUv, compareZ);
+  const s10 = depthCompare(baseUv.add(vec2(texelSize, 0.0)), compareZ);
+  const s01 = depthCompare(baseUv.add(vec2(0.0, texelSize)), compareZ);
+  const s11 = depthCompare(baseUv.add(vec2(texelSize, texelSize)), compareZ);
+  return mix(mix(s00, s10, f.x), mix(s01, s11, f.x), f.y);
+}
 
 type ShadowFilterInputs = {
   readonly depthTexture: THREE.DepthTexture;
@@ -326,14 +373,17 @@ type ShadowFilterInputs = {
 
 /**
  * Zero-recompile TSL directional shadow filter (`sunLight.shadow.filterNode`):
- * - Clear skies (`radius < 1.8` texels): crisp 9-tap weighted PCF matching sharp direct sunlight.
- * - Cloudy / overcast skies (`radius >= 1.8` texels): 16-tap Jimenez Interleaved-Gradient-Noise (IGN)
- *   rotated Vogel-disk PCF with radial slope bias so shadows progressively diffuse up to `~28` texels
- *   (`~35–45 cm` soft penumbra) with zero 5-copy PCF ghost banding and zero roof/wall self-shadow acne.
+ * - Crisp / clear skies (`radius < 1.6` texels): Jimenez / Witness 4x4 smooth sub-texel tent PCF
+ *   (16 hardware `textureSampleCompare` taps with continuous `fract(uv * mapSize + 0.5)` weights)
+ *   for razor-clean angled shadow edges with zero 9-band stair-stepping and zero IGN noise.
+ * - Soft / overcast skies (`radius >= 1.6` texels): deterministic sub-texel bilinear core +
+ *   12-tap radial-tent-weighted sub-texel bilinear Vogel spiral (52 hardware `textureSampleCompare`
+ *   fetches total) with gentle low-discrepancy R2 sector phase so soft penumbras diffuse smoothly
+ *   with zero 1/16 salt-and-pepper IGN stipple grain.
  */
 export const husCloudPenumbraShadowFilter = Fn((inputs: ShadowFilterInputs) => {
   const { depthTexture, shadowCoord, depthLayer } = inputs;
-  const depthCompare = (
+  const depthCompare: ShadowDepthCompareFn = (
     uv: ShaderNodeObject<Node>,
     compareZ: ShaderNodeObject<Node>
   ): ShaderNodeObject<Node> => {
@@ -350,45 +400,92 @@ export const husCloudPenumbraShadowFilter = Fn((inputs: ShadowFilterInputs) => {
 
   const radius = uSunShadowPenumbraNode.x;
   const texel = uSunShadowPenumbraNode.y;
+  const mapSize = float(1.0).div(max(1e-6, texel)).toVar('husShadowMapSize');
   const result = float(1.0).toVar('husSunShadowVis');
 
-  If(radius.lessThan(1.8), () => {
-    const d = texel.mul(radius);
-    const dh = d.mul(0.5);
+  If(radius.lessThan(1.6), () => {
+    const effStep = texel.mul(clamp(radius, 0.85, 1.5)).toVar();
+    const effMapSize = float(1.0).div(max(1e-6, effStep));
+    const f = fract(shadowCoord.xy.mul(effMapSize).add(0.5)).toVar();
+    const baseUv = shadowCoord.xy.sub(f.mul(effStep)).toVar();
+    const dx = effStep;
+    const dy = effStep;
+    const cz = shadowCoord.z;
+
     result.assign(
       add(
-        depthCompare(shadowCoord.xy, shadowCoord.z).mul(2.0),
-        depthCompare(shadowCoord.xy.add(vec2(d.negate(), d.negate())), shadowCoord.z),
-        depthCompare(shadowCoord.xy.add(vec2(d, d.negate())), shadowCoord.z),
-        depthCompare(shadowCoord.xy.add(vec2(d.negate(), d)), shadowCoord.z),
-        depthCompare(shadowCoord.xy.add(vec2(d, d)), shadowCoord.z),
-        depthCompare(shadowCoord.xy.add(vec2(dh.negate(), float(0.0))), shadowCoord.z),
-        depthCompare(shadowCoord.xy.add(vec2(dh, float(0.0))), shadowCoord.z),
-        depthCompare(shadowCoord.xy.add(vec2(float(0.0), dh.negate())), shadowCoord.z),
-        depthCompare(shadowCoord.xy.add(vec2(float(0.0), dh)), shadowCoord.z)
-      ).mul(1.0 / 10.0)
+        depthCompare(baseUv, cz),
+        depthCompare(baseUv.add(vec2(dx, 0.0)), cz),
+        depthCompare(baseUv.add(vec2(0.0, dy)), cz),
+        depthCompare(baseUv.add(vec2(dx, dy)), cz),
+        mix(
+          depthCompare(baseUv.add(vec2(dx.negate(), 0.0)), cz),
+          depthCompare(baseUv.add(vec2(dx.mul(2.0), 0.0)), cz),
+          f.x
+        ),
+        mix(
+          depthCompare(baseUv.add(vec2(dx.negate(), dy)), cz),
+          depthCompare(baseUv.add(vec2(dx.mul(2.0), dy)), cz),
+          f.x
+        ),
+        mix(
+          depthCompare(baseUv.add(vec2(0.0, dy.negate())), cz),
+          depthCompare(baseUv.add(vec2(0.0, dy.mul(2.0))), cz),
+          f.y
+        ),
+        mix(
+          depthCompare(baseUv.add(vec2(dx, dy.negate())), cz),
+          depthCompare(baseUv.add(vec2(dx, dy.mul(2.0))), cz),
+          f.y
+        ),
+        mix(
+          mix(
+            depthCompare(baseUv.add(vec2(dx.negate(), dy.negate())), cz),
+            depthCompare(baseUv.add(vec2(dx.mul(2.0), dy.negate())), cz),
+            f.x
+          ),
+          mix(
+            depthCompare(baseUv.add(vec2(dx.negate(), dy.mul(2.0))), cz),
+            depthCompare(baseUv.add(vec2(dx.mul(2.0), dy.mul(2.0))), cz),
+            f.x
+          ),
+          f.y
+        )
+      ).mul(1.0 / 9.0)
     );
   }).Else(() => {
-    const ign = fract(
-      float(52.9829189).mul(
-        fract(dot(screenCoordinate.xy, vec2(0.06711056, 0.00583715)))
-      )
+    const r2Phase = fract(
+      float(0.5).add(dot(screenCoordinate.xy, vec2(0.7548776662, 0.569840291)))
     );
-    const angle = ign.mul(Math.PI * 2.0).toVar('husVogelAngle');
+    const angle = r2Phase.mul(Math.PI / 3.0).toVar('husVogelAngle');
     const cosA = cos(angle).toVar('husVogelCos');
     const sinA = sin(angle).toVar('husVogelSin');
     const spreadUv = texel.mul(radius).toVar('husVogelSpreadUv');
-    let acc: ShaderNodeObject<Node> | null = null;
-    for (let i = 0; i < VOGEL_DISK_16.length; i++) {
-      const tap = VOGEL_DISK_16[i]!;
+
+    let acc: ShaderNodeObject<Node> = sampleSubTexelBilinearShadow(
+      depthCompare,
+      shadowCoord.xy,
+      shadowCoord.z,
+      texel,
+      mapSize
+    ).mul(CORE_TAP_NORM_WEIGHT);
+
+    for (let i = 0; i < VOGEL_DISK_12.length; i++) {
+      const tap = VOGEL_DISK_12[i]!;
       const rotX = cosA.mul(tap.x).sub(sinA.mul(tap.y));
       const rotY = sinA.mul(tap.x).add(cosA.mul(tap.y));
-      const uv = shadowCoord.xy.add(vec2(rotX, rotY).mul(spreadUv));
-      const tapBias = max(float(0.0), radius.mul(tap.r).sub(1.25)).mul(0.000085);
-      const sampleVis = depthCompare(uv, shadowCoord.z.sub(tapBias));
-      acc = acc === null ? sampleVis : acc.add(sampleVis);
+      const tapUv = shadowCoord.xy.add(vec2(rotX, rotY).mul(spreadUv));
+      const tapBias = max(float(0.0), radius.mul(tap.r).sub(1.1)).mul(0.000082);
+      const sampleVis = sampleSubTexelBilinearShadow(
+        depthCompare,
+        tapUv,
+        shadowCoord.z.sub(tapBias),
+        texel,
+        mapSize
+      );
+      acc = acc.add(sampleVis.mul(tap.weight));
     }
-    result.assign(acc!.mul(1.0 / 16.0));
+    result.assign(acc);
   });
 
   return result;
@@ -491,12 +588,23 @@ function installWebGpuLightVolumeHooks(): void {
   const origDirect = lightingProto.direct;
   if (typeof origStart === 'function') {
     lightingProto.start = function (this: PhysicalLightingModel, builder: NodeBuilder): void {
+      const hasClearcoat = (this as unknown as { clearcoat?: boolean }).clearcoat === true;
       const stack = (builder as unknown as { stack?: { add(node: unknown): void } }).stack;
       if (stack) {
         stack.add(normalView);
         stack.add(positionViewDirection);
-        if ((this as unknown as { clearcoat?: boolean }).clearcoat === true) {
+        if (hasClearcoat) {
           stack.add(clearcoatNormalView);
+        }
+      }
+      const mat = (builder as unknown as { material?: THREE.Material }).material;
+      const specAa = resolveMaterialSpecularAA(mat);
+      if (specAa.enabled) {
+        roughness.assign(buildGeometricSpecularRoughnessNode(roughness, normalView, specAa));
+        if (hasClearcoat) {
+          clearcoatRoughness.assign(
+            buildGeometricSpecularRoughnessNode(clearcoatRoughness, clearcoatNormalView, specAa)
+          );
         }
       }
       origStart.call(this, builder);
@@ -756,6 +864,10 @@ function installWebGpuLightVolumeHooks(): void {
       };
     };
   }
+}
+
+export function installClusteredLightingPatch(): void {
+  installWebGpuLightVolumeHooks();
 }
 
 export function installShaderLightCulling(): void {

@@ -5,6 +5,7 @@ import {
   wireCatalogHingedDoor,
 } from '../shared/catalog-smart-metadata.ts';
 import { createStoneMasonryMaterial } from '../../engine/textures/cobblestone-materials.ts';
+import { applyMetricExtrudeUVs } from '../../engine/textures/metric-masonry-uvs.ts';
 import {
   addNamedBox,
   addNamedCyl,
@@ -18,9 +19,9 @@ import {
   sharedTorusGeometry,
   tagHighLod,
 } from '../shared/neptune-and-georgian-materials.ts';
+import { prepGeo } from '../shared/scene-helpers.ts';
 import type { CatalogInteractionContext } from './neptune-kitchen-joinery.ts';
 import {
-  addMetricMasonryBox,
   getBathStoneMaterial,
   resolveGeorgianRegistry,
 } from "./georgian-shared.ts";
@@ -41,6 +42,62 @@ export interface GeorgianTuscanPorticoAndDoorOptions {
   /** Include twin dark-lead square planters (`480 mm`) w/ clipped standard bay/olive trees (`H 1.75 m`). Default `true`. */
   readonly includePlanters?: boolean;
   readonly treeSpecies?: 'bay' | 'olive';
+}
+
+const PORTICO_STONE_BEVEL_M = 0.0015;
+
+function addBevelledPorticoStoneBlock(
+  parent: THREE.Object3D,
+  name: string,
+  w: number,
+  h: number,
+  d: number,
+  x: number,
+  y: number,
+  z: number,
+  material: THREE.Material,
+  highLod = false
+): THREE.Mesh {
+  const hw = w * 0.5;
+  const hh = h * 0.5;
+  const shape = new THREE.Shape();
+  shape.moveTo(-hw, -hh);
+  shape.lineTo(hw, -hh);
+  shape.lineTo(hw, hh);
+  shape.lineTo(-hw, hh);
+  shape.closePath();
+
+  const b = PORTICO_STONE_BEVEL_M;
+  const rawGeo = new THREE.ExtrudeGeometry(shape, {
+    depth: Math.max(0.004, d - 2 * b),
+    bevelEnabled: true,
+    bevelThickness: b,
+    bevelSize: b,
+    bevelOffset: -b,
+    bevelSegments: 2,
+  });
+  rawGeo.translate(0, 0, -d * 0.5 + b);
+  rawGeo.computeVertexNormals();
+  const geo = prepGeo(
+    applyMetricExtrudeUVs(rawGeo, {
+      tileW: 1.0,
+      tileH: 1.0,
+      ox: x,
+      oy: y,
+      oz: z,
+    })
+  );
+
+  const mesh = new THREE.Mesh(geo, material);
+  mesh.name = name;
+  mesh.position.set(x, y, z);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  if (highLod || Math.max(w, h, d) < 0.25) {
+    tagHighLod(mesh);
+  }
+  parent.add(mesh);
+  return mesh;
 }
 
 /**
@@ -91,7 +148,7 @@ export function buildGeorgianTuscanPorticoAndDoor(
   // 2 bullnose Yorkstone steps (`step1`: H 150 mm, `step2` landing: H 150 mm -> FFL +300 mm)
   const stepH = 0.15;
   const landingY = stepH * 2;
-  addMetricMasonryBox(
+  addBevelledPorticoStoneBlock(
     root,
     `${namePrefix}.yorkstoneLowerStep`,
     porticoW + 0.24,
@@ -117,7 +174,7 @@ export function buildGeorgianTuscanPorticoAndDoor(
   );
   lowerBullnose.rotation.z = Math.PI * 0.5;
 
-  addMetricMasonryBox(
+  addBevelledPorticoStoneBlock(
     root,
     `${namePrefix}.yorkstoneUpperLanding`,
     porticoW + 0.06,
@@ -160,7 +217,7 @@ export function buildGeorgianTuscanPorticoAndDoor(
   ] as const) {
     const cx = sign * colSpanCenterX;
     // Square Tuscan plinth block
-    addNamedBox(
+    addBevelledPorticoStoneBlock(
       root,
       `${namePrefix}.columnPlinth${sideTag}`,
       0.33,
@@ -229,7 +286,7 @@ export function buildGeorgianTuscanPorticoAndDoor(
       bathStoneMat,
       true
     );
-    addNamedBox(
+    addBevelledPorticoStoneBlock(
       root,
       `${namePrefix}.columnAbacus${sideTag}`,
       0.32,
@@ -242,7 +299,7 @@ export function buildGeorgianTuscanPorticoAndDoor(
     );
 
     // Rear Bath-stone respond pilaster against wall (`z = 0..0.095`)
-    addNamedBox(
+    addBevelledPorticoStoneBlock(
       root,
       `${namePrefix}.rearPilasterPlinth${sideTag}`,
       0.3,
@@ -253,7 +310,7 @@ export function buildGeorgianTuscanPorticoAndDoor(
       0.055,
       bathStoneMat
     );
-    addNamedBox(
+    addBevelledPorticoStoneBlock(
       root,
       `${namePrefix}.rearPilasterShaft${sideTag}`,
       0.24,
@@ -264,7 +321,7 @@ export function buildGeorgianTuscanPorticoAndDoor(
       0.0425,
       bathStoneMat
     );
-    addNamedBox(
+    addBevelledPorticoStoneBlock(
       root,
       `${namePrefix}.rearPilasterCapital${sideTag}`,
       0.3,
@@ -283,7 +340,7 @@ export function buildGeorgianTuscanPorticoAndDoor(
   const cornH = 0.145;
   const leadCapH = 0.045;
 
-  addNamedBox(
+  addBevelledPorticoStoneBlock(
     root,
     `${namePrefix}.entablatureArchitrave`,
     porticoW - 0.06,
@@ -294,7 +351,7 @@ export function buildGeorgianTuscanPorticoAndDoor(
     (porticoD - 0.03) * 0.5,
     bathStoneMat
   );
-  addNamedBox(
+  addBevelledPorticoStoneBlock(
     root,
     `${namePrefix}.entablatureFrieze`,
     porticoW - 0.04,
@@ -305,7 +362,7 @@ export function buildGeorgianTuscanPorticoAndDoor(
     (porticoD - 0.02) * 0.5,
     bathStoneMat
   );
-  addNamedBox(
+  addBevelledPorticoStoneBlock(
     root,
     `${namePrefix}.entablatureCornice`,
     porticoW + 0.18,
@@ -377,7 +434,7 @@ export function buildGeorgianTuscanPorticoAndDoor(
   root.add(fanArchRing);
 
   // Keystone at apex of fanlight arch
-  addNamedBox(
+  addBevelledPorticoStoneBlock(
     root,
     `${namePrefix}.fanlightKeystone`,
     0.13,
@@ -648,4 +705,3 @@ export function buildGeorgianTuscanPorticoAndDoor(
     schematicUrl: 'https://www.haddonstone.com/en-gb/technical-library/portico-cad-details.pdf',
   });
 }
-

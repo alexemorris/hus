@@ -21,6 +21,7 @@ import {
   buildCuratedMirrorsArtAndRugs,
   buildGeorgianAntiqueCasework,
   buildNeptuneOakTablesAndBedsides,
+  markMirrorSurface,
 } from 'husjs/catalog/furniture';
 import {
   buildFlutedBrassPictureLight,
@@ -529,13 +530,16 @@ export function buildSimpleHouseFirstInteriors(
   lissaWashstand.position.set(0.55, FFL_FIRST + 0.001, -1.794);
   lissaWashstand.rotation.y = Math.PI;
 
-  const bathMirror = buildCuratedMirrorsArtAndRugs({
-    kind: 'coxRoundBrass',
-    name: 'simpleHouse.bathroom.roundBrassMirror',
-    widthM: 0.65,
-    position: [0.55, FFL_FIRST + 1.18, -1.776],
-    rotationY: Math.PI,
-  });
+  const bathMirror = markMirrorSurface(
+    buildCuratedMirrorsArtAndRugs({
+      kind: 'coxRoundBrass',
+      name: 'simpleHouse.bathroom.roundBrassMirror',
+      widthM: 0.65,
+      position: [0.55, FFL_FIRST + 1.18, -1.776],
+      rotationY: Math.PI,
+    }),
+    { localNormal: [0, 1, 0], zoneId: 'houseBathroom' }
+  );
 
   // Twin IP44 fluted-glass & brass vanity sconces at face height (Y = FFL_FIRST + 1.60 m; 1 PointLight)
   const bathSconceWest = buildHeritageInteriorLighting(ctx, {

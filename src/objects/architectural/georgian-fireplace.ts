@@ -4,6 +4,7 @@ import {
   attachAssetMetadata,
 } from '../shared/catalog-smart-metadata.ts';
 import { createBrickMaterial } from '../../engine/textures/brick-materials.ts';
+import { applyMetricExtrudeUVs } from '../../engine/textures/metric-masonry-uvs.ts';
 import {
   buildHallWoodBurningStoveFirebox,
   type WoodBurningStoveFireController,
@@ -15,7 +16,9 @@ import {
   getAgedBrassMaterial,
   getHonedCarraraCatalogMaterial,
   getMatteCastIronMaterial,
+  tagHighLod,
 } from '../shared/neptune-and-georgian-materials.ts';
+import { prepGeo } from '../shared/scene-helpers.ts';
 import type { CatalogInteractionContext } from './neptune-kitchen-joinery.ts';
 import {
   addMetricMasonryBox,
@@ -29,6 +32,62 @@ export interface GeorgianBolectionFireplaceOptions {
   readonly hearthStyle?: 'slate' | 'herringboneBrick';
   /** Include the Charnwood *C-Five* (`556 x 357 x 560 mm`) cast-iron stove + Ø125 mm flue & animated fire. Default `true`. */
   readonly includeStove?: boolean;
+}
+
+const STONE_MICRO_BEVEL_M = 0.0015;
+
+function addBevelledStoneExtrudeBlock(
+  parent: THREE.Object3D,
+  name: string,
+  w: number,
+  h: number,
+  d: number,
+  x: number,
+  y: number,
+  z: number,
+  material: THREE.Material,
+  highLod = false
+): THREE.Mesh {
+  const hw = w * 0.5;
+  const hh = h * 0.5;
+  const shape = new THREE.Shape();
+  shape.moveTo(-hw, -hh);
+  shape.lineTo(hw, -hh);
+  shape.lineTo(hw, hh);
+  shape.lineTo(-hw, hh);
+  shape.closePath();
+
+  const b = STONE_MICRO_BEVEL_M;
+  const rawGeo = new THREE.ExtrudeGeometry(shape, {
+    depth: Math.max(0.004, d - 2 * b),
+    bevelEnabled: true,
+    bevelThickness: b,
+    bevelSize: b,
+    bevelOffset: -b,
+    bevelSegments: 2,
+  });
+  rawGeo.translate(0, 0, -d * 0.5 + b);
+  rawGeo.computeVertexNormals();
+  const geo = prepGeo(
+    applyMetricExtrudeUVs(rawGeo, {
+      tileW: 1.0,
+      tileH: 1.0,
+      ox: x,
+      oy: y,
+      oz: z,
+    })
+  );
+
+  const mesh = new THREE.Mesh(geo, material);
+  mesh.name = name;
+  mesh.position.set(x, y, z);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  if (highLod || Math.max(w, h, d) < 0.25) {
+    tagHighLod(mesh);
+  }
+  parent.add(mesh);
+  return mesh;
 }
 
 /**
@@ -64,7 +123,7 @@ export function buildGeorgianBolectionFireplace(
   const hearthMat = (opts.hearthStyle ?? 'slate') === 'herringboneBrick' ? firebrickMat : slateMat;
 
   // Front hearth (`z = 0 .. +0.48`) + chamber hearth floor (`z = -0.42 .. 0`) as one continuous non-overlapping slab
-  addMetricMasonryBox(
+  addBevelledStoneExtrudeBlock(
     root,
     `${namePrefix}.frontHearthSlab`,
     hearthW,
@@ -146,7 +205,7 @@ export function buildGeorgianBolectionFireplace(
     ['Left', -1],
     ['Right', 1],
   ] as const) {
-    addNamedBox(
+    addBevelledStoneExtrudeBlock(
       root,
       `${namePrefix}.carraraJambFootBlock${sTag}`,
       legW + 0.024,
@@ -157,7 +216,7 @@ export function buildGeorgianBolectionFireplace(
       (slipsD + 0.02) * 0.5,
       carraraMat
     );
-    addNamedBox(
+    addBevelledStoneExtrudeBlock(
       root,
       `${namePrefix}.carraraJambPilaster${sTag}`,
       legW,
@@ -170,7 +229,7 @@ export function buildGeorgianBolectionFireplace(
     );
   }
 
-  addNamedBox(
+  addBevelledStoneExtrudeBlock(
     root,
     `${namePrefix}.carraraFriezeLintel`,
     surrW,
@@ -204,7 +263,7 @@ export function buildGeorgianBolectionFireplace(
     ['Left', -1],
     ['Right', 1],
   ] as const) {
-    addNamedBox(
+    addBevelledStoneExtrudeBlock(
       root,
       `${namePrefix}.bolectionVerticalRoll${sTag}`,
       bolW,
@@ -216,7 +275,7 @@ export function buildGeorgianBolectionFireplace(
       carraraMat
     );
   }
-  addNamedBox(
+  addBevelledStoneExtrudeBlock(
     root,
     `${namePrefix}.bolectionHeaderRoll`,
     openW + bolW * 2,
@@ -229,7 +288,7 @@ export function buildGeorgianBolectionFireplace(
   );
 
   // Breakfront Honed Carrara mantle shelf (`1480 x 210 x 55 mm`)
-  addNamedBox(
+  addBevelledStoneExtrudeBlock(
     root,
     `${namePrefix}.carraraMantleShelf`,
     surrW + 0.06,
@@ -457,4 +516,3 @@ export function buildGeorgianBolectionFireplace(
     schematicUrl: 'https://www.charnwood.com/wp-content/uploads/C-Five-Dimensions-Spec.pdf',
   });
 }
-

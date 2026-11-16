@@ -34,6 +34,7 @@ export interface FxaaAndCasUniforms {
   readonly uMotionBlurEnabled: ShaderNodeObject<UniformNode<number>>;
   readonly uShutterScale: ShaderNodeObject<UniformNode<number>>;
   readonly uIsWebGPU: ShaderNodeObject<UniformNode<number>>;
+  readonly uMsaaActive?: ShaderNodeObject<UniformNode<number>>;
 }
 
 export function sampleClampedHdrRgb(
@@ -131,9 +132,13 @@ export function evaluateFxaaAndCas(
   colorNode: ShaderNodeObject<TextureNode>,
   vUv: ShaderNodeObject<Node>,
   centerColor: ShaderNodeObject<Node>,
-  uniforms: Pick<FxaaAndCasUniforms, 'uTexelSize' | 'uFxaaEnabled' | 'uSharpenIntensity'>
+  uniforms: Pick<
+    FxaaAndCasUniforms,
+    'uTexelSize' | 'uFxaaEnabled' | 'uSharpenIntensity' | 'uMsaaActive'
+  >
 ): ShaderNodeObject<Node> {
-  const { uTexelSize, uFxaaEnabled, uSharpenIntensity } = uniforms;
+  const { uTexelSize, uFxaaEnabled, uSharpenIntensity, uMsaaActive } = uniforms;
+  const msaaActive = (uMsaaActive ?? float(0.0)).greaterThan(0.5);
   const sampleHdr = (uvCoord: ShaderNodeObject<Node>): ShaderNodeObject<Node> =>
     sampleClampedHdrRgb(colorNode, uvCoord);
 
@@ -154,10 +159,13 @@ export function evaluateFxaaAndCas(
 
   const resultColor = vec3(centerColor).toVar();
 
+  const fxaaAbsThreshold = select(msaaActive, float(0.0833), float(0.0312));
+  const fxaaRelThreshold = select(msaaActive, float(0.24), float(0.125));
+
   If(
     uFxaaEnabled
       .greaterThan(0.5)
-      .and(lumaRange.greaterThanEqual(max(0.0312, lumaMax.mul(0.125)))),
+      .and(lumaRange.greaterThanEqual(max(fxaaAbsThreshold, lumaMax.mul(fxaaRelThreshold)))),
     () => {
       const rgbNW = sampleHdr(vUv.add(vec2(uTexelSize.x.negate(), uTexelSize.y)));
       const rgbNE = sampleHdr(vUv.add(vec2(uTexelSize.x, uTexelSize.y)));
@@ -264,7 +272,8 @@ export function evaluateFxaaAndCas(
         .add(3.0)
         .mul(subPixelOffset1)
         .mul(subPixelOffset1);
-      const subPixelOffsetFinal = subPixelOffset2.mul(subPixelOffset2).mul(0.75);
+      const subPixelScale = select(msaaActive, float(0.28), float(0.75));
+      const subPixelOffsetFinal = subPixelOffset2.mul(subPixelOffset2).mul(subPixelScale);
 
       finalOffset.assign(max(finalOffset, subPixelOffsetFinal));
       const finalUv = vec2(
@@ -277,7 +286,10 @@ export function evaluateFxaaAndCas(
 
   If(uSharpenIntensity.greaterThan(0.001), () => {
     const neighborAvg = rgbN.add(rgbS).add(rgbE).add(rgbW).mul(0.25);
-    const detailWeight = float(1.0).sub(smoothstep(0.25, 0.85, lumaRange)).mul(uSharpenIntensity);
+    const casHighSpan = select(msaaActive, float(0.62), float(0.85));
+    const detailWeight = float(1.0)
+      .sub(smoothstep(0.18, casHighSpan, lumaRange))
+      .mul(uSharpenIntensity);
     resultColor.assign(
       max(vec3(0.0), resultColor.add(centerColor.sub(neighborAvg).mul(detailWeight)))
     );

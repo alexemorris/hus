@@ -3,7 +3,7 @@ import type { CircuitId, InteractiveUserData, RoomZoneId } from 'husjs';
 import { applyMetricBoxUVs, createRoomPaintScheme } from 'husjs/materials';
 import { buildCastIronColumnRadiator, buildCorstonToggleSwitch, buildWindowRomanBlind, createBalustradeRun, createStaircase, prepGeo, registerHingedDoor, sharedCylinderGeometry, sharedSphereGeometry, tagCollisionRole, tagCutaway } from 'husjs/objects';
 import { createHeritageFloorFinishMaterial, getPaleEuropeanOakJoineryMaterial } from 'husjs/catalog/architectural';
-import { buildCuratedMirrorsArtAndRugs, buildGeorgianAntiqueCasework, buildWhiteCompanyAccessories } from 'husjs/catalog/furniture';
+import { buildCuratedMirrorsArtAndRugs, buildGeorgianAntiqueCasework, buildWhiteCompanyAccessories, markMirrorSurface } from 'husjs/catalog/furniture';
 import { buildHeritageInteriorLighting } from 'husjs/catalog/lighting';
 import { getBathroomBrassMaterials } from 'husjs/catalog/sanitaryware';
 import type { SceneBuilderContext } from 'husjs/viewer';
@@ -693,7 +693,10 @@ export function buildSimpleHouseStaircaseAndHall(
 
   // Regency console table + gilt pier mirror centered on West Hall wall at Z = +1.05
   const consoleTable = buildGeorgianAntiqueCasework(ctx, { kind: 'serpentineConsole', name: 'simpleHouse.hall.console', position: [-1.39, FFL_GROUND + 0.002, 1.05], rotationY: Math.PI / 2 });
-  const pierMirror = buildCuratedMirrorsArtAndRugs({ kind: 'regencyGiltPierMirror', name: 'simpleHouse.hall.pierMirror', position: [-1.646, FFL_GROUND + 0.96, 1.05], rotationY: Math.PI / 2 });
+  const pierMirror = markMirrorSurface(
+    buildCuratedMirrorsArtAndRugs({ kind: 'regencyGiltPierMirror', name: 'simpleHouse.hall.pierMirror', position: [-1.646, FFL_GROUND + 0.96, 1.05], rotationY: Math.PI / 2 }),
+    { localNormal: [0, 0, 1], zoneId: 'houseHall' }
+  );
   const hurricane = buildWhiteCompanyAccessories({ kind: 'glassHurricane', name: 'simpleHouse.hall.hurricane', position: [-1.39, FFL_GROUND + 0.759, 0.78] });
   const diffuser = buildWhiteCompanyAccessories({ kind: 'reedDiffuser', name: 'simpleHouse.hall.diffuser', position: [-1.39, FFL_GROUND + 0.759, 1.32] });
 

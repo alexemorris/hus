@@ -10,6 +10,7 @@ import {
   type BatchOptimizerHooks,
   getBoundPropertySceneProfile,
 } from '../../viewer/property-scene-profile.ts';
+import { isLikelyMirrorGlassMesh } from '../mirror-reflector-controller.ts';
 
 /** Userdata flag for helper meshes that must never be batched, deduplicated or shadow-culled. */
 export const SHADOW_PASS_HOOK_FLAG = 'isShadowPassHook';
@@ -119,12 +120,30 @@ export function collectProtectedObjects(
     markSubtree(panel.group);
   }
 
+  const hasMirrorAncestorFlag = (node: THREE.Object3D): boolean => {
+    let cur: THREE.Object3D | null = node;
+    while (cur) {
+      if (cur.userData?.isMirror === true || cur.userData?.mirror === true) {
+        return true;
+      }
+      cur = cur.parent;
+    }
+    return false;
+  };
+
   layers.scene.traverse((obj) => {
-    if (
-      obj instanceof THREE.Mesh &&
-      (obj.userData?.isUfhProtectedFloor === true || hooks.isUfhProtectedFloor?.(obj) === true)
-    ) {
-      protectedSet.add(obj);
+    if (obj instanceof THREE.Mesh) {
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+      const hasMirrorMat = mats.some((m) => m?.userData?.isMirrorMaterial === true);
+      if (
+        obj.userData?.isUfhProtectedFloor === true ||
+        hooks.isUfhProtectedFloor?.(obj) === true ||
+        hasMirrorMat ||
+        hasMirrorAncestorFlag(obj) ||
+        isLikelyMirrorGlassMesh(obj)
+      ) {
+        protectedSet.add(obj);
+      }
     }
     const u = obj.userData;
     if (!u) return;
@@ -314,7 +333,11 @@ export function isNonBatchableMaterial(
   if (!mat) return true;
   if (mat === indicatorMats?.tvScreenMat) return true;
   const matU = mat.userData as Record<string, unknown> | undefined;
-  return Boolean(matU?.isDynamicGolfScreen) || Boolean(matU?.isDynamicGolfStatusLight);
+  return (
+    Boolean(matU?.isDynamicGolfScreen) ||
+    Boolean(matU?.isDynamicGolfStatusLight) ||
+    matU?.isMirrorMaterial === true
+  );
 }
 
 export function isBatchableMesh(

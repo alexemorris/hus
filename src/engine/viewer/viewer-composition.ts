@@ -23,6 +23,7 @@ import { EnvironmentLighting } from '../lighting/environment-lighting.ts';
 import { installShaderLightCulling } from '../lighting/shader-light-culling.ts';
 import { RoomLodController } from '../lod/lod-manager.ts';
 import { applySelectiveBevelModifier } from '../rendering/bevel-modifier.ts';
+import { MirrorReflectorController } from '../rendering/mirror-reflector-controller.ts';
 import {
   isRecordingCanvasStub,
   releaseUploadedStaticCanvases,
@@ -83,6 +84,7 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
   public readonly terrainSculpt: TerrainSculptController;
   public readonly assetInspector: AssetInspectorController;
   public readonly variations: RoomVariationController;
+  public readonly mirrors: MirrorReflectorController;
   public readonly graphics: GraphicsService;
 
   private readonly canvas: HTMLCanvasElement;
@@ -373,12 +375,51 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
     this.environment.weather.indexExteriorMaterials(scene);
     this.syncSceneTimeOfDayIfChanged(this.environment.getTimeOfDay());
     batches.optimize();
+    this.mirrors = new MirrorReflectorController(scene, {
+      resolveZoneAtPoint: (worldPoint) => {
+        let bestId: string | null = null;
+        let bestVol = Number.POSITIVE_INFINITY;
+        for (const reg of profile.lodRegistrations) {
+          if (reg.excludedCutout?.(worldPoint.x, worldPoint.z)) continue;
+          let lx = worldPoint.x;
+          let ly = worldPoint.y;
+          let lz = worldPoint.z;
+          if (reg.obb) {
+            const dx = worldPoint.x - reg.obb.offset[0];
+            const dz = worldPoint.z - reg.obb.offset[2];
+            const c = Math.cos(reg.obb.rotationY);
+            const sn = Math.sin(reg.obb.rotationY);
+            lx = dx * c - dz * sn;
+            ly = worldPoint.y - reg.obb.offset[1];
+            lz = dx * sn + dz * c;
+          }
+          const b = reg.obb ? reg.obb.bounds : reg.bounds;
+          if (
+            lx >= b.minX - 0.12 &&
+            lx <= b.maxX + 0.12 &&
+            ly >= b.minY - 0.15 &&
+            ly <= b.maxY + 0.25 &&
+            lz >= b.minZ - 0.12 &&
+            lz <= b.maxZ + 0.12
+          ) {
+            const vol = (b.maxX - b.minX) * (b.maxY - b.minY) * (b.maxZ - b.minZ);
+            if (vol < bestVol) {
+              bestVol = vol;
+              bestId = reg.zoneId;
+            }
+          }
+        }
+        return bestId;
+      },
+    });
+    this.mirrors.discoverMirrors(scene);
     this.variations = new RoomVariationController({
       groups: content.variations,
       onAfterVariationChange: () => {
         this.staticScene.batchOptimizer.refreshManagedLights();
         this.staticScene.batchOptimizer.stepFades(0);
         this.cutaways.collectDynamicCutawayWalls();
+        this.mirrors.discoverMirrors(scene);
         this.cutaways.invalidateLodCache();
         this.walkthrough.invalidateObstacleCache();
         this.refreshView(true);
@@ -492,6 +533,7 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
       environment: this.environment,
       lodController: this.lodController,
       batchOptimizer: batches,
+      mirrors: this.mirrors,
       refreshView: () => this.refreshView(true),
     });
     this.walkthrough.restoreFromSessionIfActive(this.camera.getPoseSnapshot());
@@ -694,7 +736,10 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
       rig.getActiveCamera(),
       dtSeconds,
       cameraMoved,
-      () => this.annotations.controller.prepareForRender()
+      () => {
+        this.annotations.controller.prepareForRender();
+        this.mirrors.update(rig.getActiveCamera(), this.rooms.getCurrent());
+      }
     );
     if (rendered) {
       this.graphics.recordFrame(dtSeconds * 1000, cameraMoved || this.userInteracting);
@@ -1649,6 +1694,7 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
     this.camera.rig.dispose();
     this.assetInspector.dispose();
     this.terrainSculpt.dispose();
+    this.mirrors.dispose();
     this.environment.dispose();
     this.renderer.dispose();
   }
