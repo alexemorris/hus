@@ -75,9 +75,7 @@ function createHarnessContext(circuitIds: readonly string[]): {
 }
 
 describe('husjs Example Homes', { timeout: 30_000 }, () => {
-  afterEach(async () => {
-    await Promise.resolve();
-  });
+  afterEach(() => new Promise<void>((resolve) => setImmediate(resolve)));
   it('simple-flat: single-floor apartment, 2-way hallway switches & living dimmer', () => {
     expect(simpleFlat.id).toBe('simple-flat');
     expect(simpleFlat.floors).toHaveLength(1);
