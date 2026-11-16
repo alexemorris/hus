@@ -1916,12 +1916,6 @@ export function createStaircase(options: CreateStaircaseOptions): StaircaseBuild
 
     // Flight 2 reversed 180 deg (ascending toward +Z in staircase local coordinates)
     // Because Flight 2 is rotated 180 deg, its local right faces toward Flight 1 when turnDirection === 'right'!
-    const f2LeftStringer =
-      turnSign > 0 ? (innerWellOpen ? sideModes.rightStringer : 'wall') : sideModes.leftStringer;
-    const f2RightStringer =
-      turnSign > 0 ? sideModes.leftStringer : (innerWellOpen ? sideModes.leftStringer : 'wall');
-    const f2LeftOpen = f2LeftStringer !== 'wall';
-    const f2RightOpen = f2RightStringer !== 'wall';
 
     // Wait: when f2.rotation.y = Math.PI, f2's local +X (right) maps to parent -X!
     // For turnSign > 0 (Flight 2 is at +X = width + gap), parent -X is the INNER WELL side!
@@ -1930,8 +1924,6 @@ export function createStaircase(options: CreateStaircaseOptions): StaircaseBuild
     const f2ActualLeftMode = turnSign > 0 ? sideModes.leftStringer : sideModes.rightStringer;
     const f2ActualRightOpen = turnSign > 0 ? sideModes.rightOpenBalustrade : sideModes.leftOpenBalustrade;
     const f2ActualLeftOpen = turnSign > 0 ? sideModes.leftOpenBalustrade : sideModes.rightOpenBalustrade;
-    void f2LeftOpen;
-    void f2RightOpen;
 
     const f2 = buildFlightGroup({
       flightIndex: 2,

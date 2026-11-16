@@ -639,31 +639,6 @@ export function addRearGardenBootDoor(
 }
 
 /** Classical Georgian window-tax architectural blind sash relief for the West Flank (`X = -HALF_W`). */
-export function buildGeorgianBlindSashRelief(
-  name: string,
-  width: number,
-  height: number,
-  trimMat: THREE.Material,
-  stoneMat: THREE.Material,
-  slateBlindMat: THREE.Material
-): THREE.Group {
-  const group = new THREE.Group();
-  group.name = name;
-  // Local frame placed on facade via `placeOnFacade(group, 'west', along, y)`: +Z projects outward
-  box(group, `${name}.yorkstoneSill`, [width + 0.14, 0.075, 0.068], [0, -0.038, 0.034], stoneMat, 1.0);
-  box(group, `${name}.stoneKeystoneLintel`, [width + 0.18, 0.21, 0.036], [0, height + 0.106, 0.018], stoneMat, 1.0);
-  box(group, `${name}.boxFrameOuter`, [width, height, 0.028], [0, height * 0.5, 0.014], trimMat);
-  box(group, `${name}.blindSlateRecess`, [width - 0.12, height - 0.12, 0.016], [0, height * 0.5, 0.022], slateBlindMat);
-  box(group, `${name}.meetingRail`, [width - 0.1, 0.034, 0.026], [0, height * 0.5, 0.028], trimMat);
-  for (const sx of [-width / 6 + 0.02, width / 6 - 0.02] as const) {
-    box(group, `${name}.muntinV_${sx < 0 ? 'a' : 'b'}`, [0.018, height - 0.12, 0.022], [sx, height * 0.5, 0.026], trimMat);
-  }
-  for (const sy of [height * 0.25, height * 0.75] as const) {
-    box(group, `${name}.muntinH_${sy < height * 0.5 ? 'bot' : 'top'}`, [width - 0.12, 0.018, 0.022], [0, sy, 0.026], trimMat);
-  }
-  return group;
-}
-
 export function buildFrontDoorInteriorSurround(
   trimMat: THREE.Material,
   cutaway: CutawayWallDescriptor

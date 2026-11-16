@@ -1,4 +1,4 @@
-import { render, type JSX } from 'preact';
+import type { JSX } from 'preact';
 import {
   annotationCountsByKind,
   annotationTool,
@@ -37,8 +37,4 @@ export function AnnotationSummaryPill(): JSX.Element {
       </div>
     </div>
   );
-}
-
-export function mountAnnotationSummaryPill(container: HTMLElement): void {
-  render(<AnnotationSummaryPill />, container);
 }

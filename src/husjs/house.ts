@@ -645,7 +645,7 @@ function resolveContainerElements(
       ? ((container.getElementById('app') as HTMLElement | null) ?? container.body)
       : container;
   if (!hostEl) {
-    throw new Error('Mount container element not found');
+    throw new Error(`[husjs/mountHouse] Mount container element not found (expected HTMLElement or Document with #app/body, received ${container instanceof Document ? 'Document without #app or body' : typeof container})`);
   }
 
   let canvasEl =
@@ -656,7 +656,7 @@ function resolveContainerElements(
     hostEl.appendChild(canvasEl);
   }
   if (!(canvasEl instanceof HTMLCanvasElement)) {
-    throw new Error('Element #three-canvas not found');
+    throw new Error(`[husjs/mountHouse] Element #three-canvas is not an HTMLCanvasElement (received ${Object.prototype.toString.call(canvasEl)})`);
   }
 
   let shellRoot =
@@ -667,7 +667,7 @@ function resolveContainerElements(
     hostEl.appendChild(shellRoot);
   }
   if (!(shellRoot instanceof HTMLElement)) {
-    throw new Error('Element #shell-root not found');
+    throw new Error(`[husjs/mountHouse] Element #shell-root is not an HTMLElement (received ${Object.prototype.toString.call(shellRoot)})`);
   }
   return { hostEl, canvasEl, shellRoot };
 }

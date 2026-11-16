@@ -293,12 +293,12 @@ function sleep(ms) {
 }
 
 function withDeadline(promise, deadline, what) {
-  const remaining = deadline - Date.now();
+  const remaining = Math.max(0, deadline - Date.now());
   let timer;
   const timeout = new Promise((_, reject) => {
     timer = setTimeout(
-      () => reject(new Error(`Timed out while ${what}`)),
-      Math.max(0, remaining)
+      () => reject(new Error(`Timed out after ${remaining} ms while ${what}`)),
+      remaining
     );
   });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
@@ -329,7 +329,7 @@ function createPipeCdpConnection(child) {
   const reader = child.stdio[4];
   let nextId = 1;
   let closedError = null;
-  /** @type {Map<number, { resolve: (value: any) => void, reject: (err: Error) => void }>} */
+  /** @type {Map<number, { method: string, resolve: (value: any) => void, reject: (err: Error) => void }>} */
   const pending = new Map();
   /** @type {Set<(message: any) => void>} */
   const eventListeners = new Set();
@@ -349,7 +349,11 @@ function createPipeCdpConnection(child) {
       if (!entry) return;
       pending.delete(message.id);
       if (message.error) {
-        entry.reject(new Error(message.error.message ?? 'DevTools protocol error'));
+        entry.reject(
+          new Error(
+            `CDP ${entry.method} (id=${message.id}) failed: ${message.error.message ?? 'DevTools protocol error'}`
+          )
+        );
       } else {
         entry.resolve(message.result);
       }
@@ -374,7 +378,16 @@ function createPipeCdpConnection(child) {
     }
     if (start < chunk.length) partial.push(chunk.subarray(start));
   });
-  reader.on('close', () => fail(new Error('Chrome closed the DevTools pipe')));
+  reader.on('close', () => {
+    const inflight = [...pending.entries()]
+      .map(([id, entry]) => `${entry.method}#${id}`)
+      .join(', ');
+    fail(
+      new Error(
+        `Chrome closed the DevTools pipe${inflight ? ` while waiting on ${inflight}` : ''}`
+      )
+    );
+  });
   reader.on('error', (err) => fail(err));
   writer.on('error', (err) => fail(err));
   child.on('error', (err) => fail(new Error(`Failed to launch Chrome: ${err.message}`)));
@@ -388,7 +401,7 @@ function createPipeCdpConnection(child) {
       if (closedError) return Promise.reject(closedError);
       const id = nextId++;
       const promise = new Promise((resolvePromise, reject) => {
-        pending.set(id, { resolve: resolvePromise, reject });
+        pending.set(id, { method, resolve: resolvePromise, reject });
       });
       writer.write(`${JSON.stringify({ id, method, params, sessionId })}\0`);
       return promise;
@@ -469,9 +482,12 @@ async function launchChromePipeDriver(chromeBin, deadline) {
           sessionId
         );
         if (exceptionDetails) {
-          throw new Error(
-            String(exceptionDetails.exception?.description ?? exceptionDetails.text)
+          const detail = String(
+            exceptionDetails.exception?.description ??
+              exceptionDetails.text ??
+              'Unknown evaluation error'
           );
+          throw new Error(`CDP Runtime.evaluate failed: ${detail}`);
         }
         return result.value;
       },
@@ -545,7 +561,7 @@ function buildPageExportExpression(exporterModulePath, maxTextureSize) {
         );
   const raw = result instanceof Uint8Array || result instanceof ArrayBuffer ? result : result.glbBytes;
   const bytes = raw instanceof ArrayBuffer ? new Uint8Array(raw) : raw;
-  if (!(bytes instanceof Uint8Array)) throw new Error('In-page export did not return .glb bytes');
+  if (!(bytes instanceof Uint8Array)) throw new Error(\`In-page export did not return .glb bytes (received \${bytes === null ? 'null' : typeof bytes === 'object' ? bytes.constructor?.name ?? 'object' : typeof bytes})\`);
   window.__husjsLastGlbBytes = bytes;
   return {
     byteLength: bytes.byteLength,
@@ -570,7 +586,14 @@ function buildPageSliceExpression(offset, length) {
 
 function assertValidGlb(bytes) {
   if (bytes.byteLength < 20 || bytes.readUInt32LE(0) !== GLB_MAGIC || bytes.readUInt32LE(4) !== 2) {
-    throw new Error('Exported data is not a binary glTF 2.0 (.glb) file');
+    const magicHex =
+      bytes.byteLength >= 4
+        ? `0x${bytes.readUInt32LE(0).toString(16).padStart(8, '0')}`
+        : '<too short>';
+    const version = bytes.byteLength >= 8 ? bytes.readUInt32LE(4) : '<too short>';
+    throw new Error(
+      `Exported data is not a binary glTF 2.0 (.glb) file (byteLength=${bytes.byteLength}, magic=${magicHex}, version=${version})`
+    );
   }
   if (bytes.readUInt32LE(8) !== bytes.byteLength) {
     throw new Error(

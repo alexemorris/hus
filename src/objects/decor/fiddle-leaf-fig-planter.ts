@@ -1,39 +1,5 @@
 import * as THREE from 'three';
 import { createHouseplant } from '../vegetation/houseplants.ts';
-import { OrganCollector } from '../vegetation/organ-geometry.ts';
-
-/**
- * Constructs a sculpted lyrate (`Ficus lyrata`) leaf blade `BufferGeometry`
- * with baked `aVegPivot` and `aVegMeta` phenology attributes.
- */
-export function createFiddleLeafGeometry(
-  length: number,
-  maxWidth: number,
-  archDrop: number,
-  cupDepth: number
-): THREE.BufferGeometry {
-  const collector = new OrganCollector();
-  collector.addCuppedLeafBlade({
-    pivot: new THREE.Vector3(0, 0, 0),
-    direction: new THREE.Vector3(0, 0, 1),
-    upHint: new THREE.Vector3(0, 1, 0),
-    length,
-    width: maxWidth,
-    archDrop,
-    cupDepth,
-    shape: 'lyrate-fiddle',
-    segsLength: 8,
-    segsWidth: 4,
-    color: new THREE.Color(0x2d5a27),
-    meta: {
-      organ: 'evergreen-leaf',
-      jitter: 0.35,
-      reactivity: 0.06,
-      variant: 0.15,
-    },
-  });
-  return collector.toBufferGeometry('husjs.catalog.fiddleLeafBladeGeo');
-}
 
 export interface FiddleLeafFigPlanterOptions {
   readonly namePrefix?: string;

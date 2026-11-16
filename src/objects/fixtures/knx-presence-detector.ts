@@ -9,13 +9,6 @@ import { prepGeo, tagHighLod } from '../shared/scene-helpers.ts';
  * green activity LED. Home-agnostic — position, address and detection field come from the caller.
  */
 
-export interface PresenceCoverageShape {
-  /** XZ polygon vertices `[x, z]` (same space as the detector position). */
-  readonly polygon: readonly (readonly [number, number])[];
-  readonly minY: number;
-  readonly maxY: number;
-}
-
 export interface KnxPresenceDetectorOptions {
   readonly name: string;
   readonly presenceDetectorPa: string;
@@ -110,30 +103,4 @@ export function buildKnxPresenceDetector(
       ledMaterial.emissiveIntensity = detected ? LED_ON_INTENSITY : LED_OFF_INTENSITY;
     },
   };
-}
-
-/**
- * Dev overlay: outline of a detector's field on its floor plane plus vertical edges up to
- * `maxY`. Not added to the scene — the caller decides (e.g. a "show PIR coverage" toggle).
- */
-export function createPresenceCoverageOutline(
-  coverage: PresenceCoverageShape,
-  color = 0x32c864,
-): THREE.LineSegments {
-  const pts: THREE.Vector3[] = [];
-  const poly = coverage.polygon;
-  for (let i = 0; i < poly.length; i++) {
-    const [ax, az] = poly[i];
-    const [bx, bz] = poly[(i + 1) % poly.length];
-    pts.push(new THREE.Vector3(ax, coverage.minY, az), new THREE.Vector3(bx, coverage.minY, bz));
-    pts.push(new THREE.Vector3(ax, coverage.maxY, az), new THREE.Vector3(bx, coverage.maxY, bz));
-    pts.push(new THREE.Vector3(ax, coverage.minY, az), new THREE.Vector3(ax, coverage.maxY, az));
-  }
-  const geo = new THREE.BufferGeometry().setFromPoints(pts);
-  const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.6, depthTest: false });
-  const lines = new THREE.LineSegments(geo, mat);
-  lines.name = 'knx.presenceCoverage';
-  lines.renderOrder = 999;
-  lines.userData = { isDevOverlay: true, excludeFromRaycast: true };
-  return lines;
 }

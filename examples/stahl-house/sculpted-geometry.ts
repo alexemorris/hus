@@ -15,12 +15,11 @@ export function bevelledBox(
   h: number,
   d: number,
   radius = 0.008,
-  segments = 4,
+  _segments = 4,
   tileW = 0.85,
   tileH = 0.85
 ): THREE.BufferGeometry {
   const safeR = Math.max(0.0008, Math.min(radius, w * 0.42, h * 0.42, d * 0.42));
-  void segments;
   const effSegs = 1;
   const key = `${w.toFixed(4)}|${h.toFixed(4)}|${d.toFixed(4)}|${safeR.toFixed(4)}|${effSegs}|${tileW.toFixed(3)}|${tileH.toFixed(3)}`;
   const hit = BEVELLED_BOX_CACHE.get(key);
@@ -702,98 +701,6 @@ export function buildArchitecturalPotteryPlanterGeo(
   const geo = new THREE.LatheGeometry(pts, radialSegments);
   geo.computeVertexNormals();
   return prepGeo(geo);
-}
-
-/**
- * Multi-frond *Agave attenuata* (Foxtail Agave) rosette (`>= 24` fleshy leaves with true double curvature
- * + central furled bud cone). Origin at rosette crown `y = 0`.
- */
-export function buildAgaveAttenuataRosetteGeo(leafCount = 24, scale = 1.0): THREE.BufferGeometry {
-  const parts: THREE.BufferGeometry[] = [];
-  const goldenAngle = 2.39996323; // 137.508 deg phyllotaxis
-
-  // Central furled bud cone
-  const bud = new THREE.ConeGeometry(0.052 * scale, 0.28 * scale, 18, 4);
-  bud.translate(0, 0.16 * scale, 0);
-  bud.deleteAttribute('normal');
-  bud.deleteAttribute('uv');
-  parts.push(bud);
-
-  const lenSegs = 10;
-  const widSegs = 6; // 7 cross-section vertices per leaf
-
-  for (let i = 0; i < leafCount; i++) {
-    const rank = i / Math.max(1, leafCount - 1); // 0 = inner upright leaves, 1 = outer recurved leaves
-    const azimuth = i * goldenAngle;
-    const leafLen = (0.34 + rank * 0.26) * scale;
-    const maxHalfW = (0.044 + rank * 0.026) * scale;
-    const pitch0 = 1.24 - rank * 0.88; // inner upright, outer gracefully arching
-    const archDroop = (0.14 + rank * 0.34) * scale;
-
-    const cols = widSegs + 1;
-    const rows = lenSegs + 1;
-    const positions = new Float32Array(cols * rows * 3);
-    const indices: number[] = [];
-
-    for (let il = 0; il < rows; il++) {
-      const s = il / lenSegs; // 0 base -> 1 tip
-      // Spoon-shaped Agave attenuata blade width: narrow neck -> wide mid-blade -> soft acuminate tip
-      const widthEnv =
-        s < 0.18
-          ? 0.45 + (s / 0.18) * 0.32
-          : Math.sin(Math.pow(Math.max(0, 1 - (s - 0.18) / 0.82), 0.72) * Math.PI * 0.5) * 1.05;
-      const hw = maxHalfW * Math.max(0.015, widthEnv);
-
-      // Spine curve in local radial-vertical plane
-      const rDist = (0.032 * scale + s * leafLen * Math.cos(pitch0 * 0.55)) * (1 + rank * 0.08);
-      const ySpine =
-        0.04 * scale +
-        s * leafLen * Math.sin(pitch0) -
-        Math.pow(s, 2.25) * archDroop;
-
-      const cosA = Math.cos(azimuth);
-      const sinA = Math.sin(azimuth);
-
-      for (let iw = 0; iw < cols; iw++) {
-        const u = (iw / widSegs - 0.5) * 2; // -1..1 across leaf blade
-        // Double curvature: concave upper channel + fleshy keel thickness
-        const cup = Math.pow(Math.abs(u), 1.85) * 0.014 * scale * (1 - s * 0.65);
-        const fleshy = (1 - u * u) * 0.008 * scale * (1 - s * 0.75);
-        const lateral = u * hw;
-
-        const wx = cosA * rDist - sinA * lateral;
-        const wz = sinA * rDist + cosA * lateral;
-        const wy = ySpine + cup + fleshy;
-
-        const vIdx = (il * cols + iw) * 3;
-        positions[vIdx] = wx;
-        positions[vIdx + 1] = wy;
-        positions[vIdx + 2] = wz;
-      }
-    }
-
-    for (let il = 0; il < lenSegs; il++) {
-      for (let iw = 0; iw < widSegs; iw++) {
-        const a = il * cols + iw;
-        const b = a + 1;
-        const c = a + cols;
-        const d = c + 1;
-        indices.push(a, c, b, b, c, d);
-        // Backface for thick fleshy double-sided shading
-        indices.push(a, b, c, b, d, c);
-      }
-    }
-
-    const leafGeo = new THREE.BufferGeometry();
-    leafGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    leafGeo.setIndex(indices);
-    parts.push(leafGeo);
-  }
-
-  const merged = mergeGeometries(parts, false);
-  for (const p of parts) p.dispose();
-  merged.computeVertexNormals();
-  return prepGeo(merged);
 }
 
 /**

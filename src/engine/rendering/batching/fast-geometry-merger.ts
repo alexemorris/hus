@@ -94,8 +94,6 @@ export class FastGeometryMerger {
     const colorOut = anyColor ? new Float32Array(totalVerts * 3) : null;
     const vegPivotOut = anyVegPivot ? new Float32Array(totalVerts * 3) : null;
     const vegMetaOut = anyVegMeta ? new Float32Array(totalVerts * 4) : null;
-    let minUv = Number.POSITIVE_INFINITY;
-    let maxUv = Number.NEGATIVE_INFINITY;
     const idxOut =
       totalVerts > 65535
         ? new Uint32Array(totalIndices)
@@ -180,11 +178,6 @@ export class FastGeometryMerger {
       let sMaxX = Number.NEGATIVE_INFINITY;
       let sMaxY = Number.NEGATIVE_INFINITY;
       let sMaxZ = Number.NEGATIVE_INFINITY;
-
-      if (!uvArr && count > 0) {
-        if (0 < minUv) minUv = 0;
-        if (0 > maxUv) maxUv = 0;
-      }
 
       for (let v = 0; v < count; v++) {
         const srcV = usedSrcVerts ? usedSrcVerts[v]! : v;
@@ -278,10 +271,6 @@ export class FastGeometryMerger {
           const w = uvAttr!.normalized ? uvAttr!.getY(srcV) : uvArr[v2 + 1]!;
           uvOut[out2] = u;
           uvOut[out2 + 1] = w;
-          if (u < minUv) minUv = u;
-          if (u > maxUv) maxUv = u;
-          if (w < minUv) minUv = w;
-          if (w > maxUv) maxUv = w;
         }
 
         if (colorOut) {
@@ -348,8 +337,6 @@ export class FastGeometryMerger {
       vOffset += count;
     }
 
-    void minUv;
-    void maxUv;
     const uvBufferAttr = new THREE.BufferAttribute(uvOut, 2);
 
     const merged = new THREE.BufferGeometry();

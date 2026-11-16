@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { addBox as addGroundBox, deconflictRomanBlind } from './interiors-ground-helpers.ts';
 import type { CircuitId, InteractiveUserData, RoomZoneId } from 'husjs';
 import { applyMetricBoxUVs, createRoomPaintScheme } from 'husjs/materials';
 import { buildCastIronColumnRadiator, buildCorstonToggleSwitch, buildWindowRomanBlind, createBalustradeRun, createStaircase, prepGeo, registerHingedDoor, sharedCylinderGeometry, sharedSphereGeometry, tagCollisionRole, tagCutaway } from 'husjs/objects';
@@ -101,25 +102,14 @@ export function sampleSimpleHouseStairY(x: number, z: number): number | null {
   return samplerStair.sampleWalkableY(x, z);
 }
 
-function addBox(
+const addBox = (
   parent: THREE.Object3D,
   name: string,
   size: readonly [number, number, number],
   pos: readonly [number, number, number],
   mat: THREE.Material,
   castShadow = true
-): THREE.Mesh {
-  const mesh = new THREE.Mesh(
-    prepGeo(applyMetricBoxUVs(new THREE.BoxGeometry(size[0], size[1], size[2]), { tileW: 1.0, tileH: 1.0 })),
-    mat
-  );
-  mesh.name = name;
-  mesh.position.set(pos[0], pos[1], pos[2]);
-  mesh.castShadow = castShadow;
-  mesh.receiveShadow = true;
-  parent.add(mesh);
-  return mesh;
-}
+): THREE.Mesh => addGroundBox(parent, name, size, pos, mat, { castShadow, tileW: 1.0, tileH: 1.0 });
 
 /** Extrudes a 2D `(z, y)` polygon across `[xMin, xMax]` in world coordinates. */
 function addZYPrism(
@@ -152,18 +142,6 @@ function addZYPrism(
   mesh.receiveShadow = true;
   parent.add(mesh);
   return mesh;
-}
-
-function deconflictRomanBlind(blind: THREE.Group, facingZ: 1 | -1): THREE.Group {
-  for (const child of blind.children) {
-    if (child.name.endsWith('.hemBar')) {
-      child.position.y -= 0.0015;
-      child.position.z += facingZ * 0.002;
-    } else if (child.name.endsWith('.pleat')) {
-      child.position.z += facingZ * 0.005;
-    }
-  }
-  return blind;
 }
 
 function buildStairwellSteelTrimmer(): THREE.Group {

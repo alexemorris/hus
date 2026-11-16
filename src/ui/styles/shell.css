@@ -1085,7 +1085,6 @@ button:disabled {
 /* Normal mode keeps the inspector focused on the active note/measurement. */
 .shell-inspector .annotator-top-row,
 .shell-inspector .annotator-list,
-.shell-inspector #annotator-reactive-summary-mount,
 .shell-inspector .annotator-reactive-summary,
 .shell-inspector .annotator-actions-row {
   display: none;
@@ -1101,10 +1100,6 @@ body:not(.is-dev-mode) .shell-inspector .annotator-move-box {
 }
 
 /* Developer drawer (hosts legacy KNX HUD DOM) */
-
-#dev-legacy-host[hidden] {
-  display: none;
-}
 
 .shell-dev {
   right: var(--shell-gap);
@@ -1152,27 +1147,6 @@ body:not(.is-dev-mode) .shell-inspector .annotator-move-box {
   display: flex;
   flex-direction: column;
   gap: 10px;
-}
-
-.dev-legacy-panel {
-  display: block;
-  border-radius: 10px;
-  border: 1px solid var(--shell-line);
-  background: rgba(0, 0, 0, 0.25);
-  overflow: hidden;
-}
-
-.dev-legacy-panel.is-collapsed .hud-body {
-  display: none;
-}
-
-.dev-legacy-panel .hud-body {
-  max-height: none;
-  overflow: visible;
-}
-
-.hud-titlebar.is-static {
-  cursor: default;
 }
 
 /* Modals: settings & help */
@@ -1834,20 +1808,6 @@ body.is-annotating .shell-toast {
     font-size: max(16px, 1rem);
   }
 
-  .shell-slider {
-    height: 8px;
-  }
-
-  .shell-slider::-webkit-slider-thumb {
-    width: 22px;
-    height: 22px;
-  }
-
-  .shell-slider::-moz-range-thumb {
-    width: 22px;
-    height: 22px;
-  }
-
   .shell-switch {
     width: 42px;
     height: 24px;
@@ -1865,7 +1825,6 @@ body.is-annotating .shell-toast {
 
 /* Tablet & unfolded foldable (~641px .. 1040px): single overlay drawer at a time */
 @media (max-width: 1040px) {
-  .shell-btn-label,
   .shell-brand .shell-badge {
     display: none;
   }
@@ -2376,7 +2335,6 @@ body.is-annotating .shell-toast {
 .shell-topbar,
 .shell-dock,
 .shell-walk,
-.shell-walk-room-chip,
 .shell-walk-prompt,
 .shell-walk-touch-actions,
 .shell-walk-touch-btn,
@@ -2384,10 +2342,7 @@ body.is-annotating .shell-toast {
   touch-action: none;
 }
 
-.shell-nav-body,
-.shell-panel-body,
-.shell-modal-body,
-.shell-dev-body {
+.shell-modal-body {
   touch-action: pan-y;
 }
 
@@ -3466,10 +3421,4 @@ body.is-annotating .shell-toast {
   flex-wrap: wrap;
   justify-content: center;
   gap: 4px;
-}
-
-@media (max-width: 720px) {
-  .shell-var-topbar-btn .shell-btn-label {
-    display: none;
-  }
 }

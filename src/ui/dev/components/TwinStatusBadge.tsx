@@ -1,4 +1,4 @@
-import { render, type JSX } from 'preact';
+import type { JSX } from 'preact';
 import { devStore } from '../dev-store.ts';
 
 export function TwinStatusBadge(): JSX.Element {
@@ -32,8 +32,4 @@ export function TwinStatusBadge(): JSX.Element {
       </div>
     </div>
   );
-}
-
-export function mountTwinStatusBadge(container: HTMLElement): void {
-  render(<TwinStatusBadge />, container);
 }

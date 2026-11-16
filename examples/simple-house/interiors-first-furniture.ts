@@ -1,9 +1,6 @@
 import * as THREE from 'three';
 import type { CircuitId } from 'husjs';
-import {
-  applyMetricBoxUVs,
-  getOrCreateCachedTexture,
-} from 'husjs/materials';
+import { getOrCreateCachedTexture } from 'husjs/materials';
 import {
   attachAssetMetadata,
   attachDrawerBoxBehindFront,
@@ -19,86 +16,24 @@ import {
   createSculptedCushionGeometry,
 } from 'husjs/catalog/furniture';
 import type { SceneBuilderContext } from 'husjs/viewer';
+import { addBox as addGroundBox, registerCircuitEmissive } from './interiors-ground-helpers.ts';
 
 
-export function deconflictRomanBlind(blind: THREE.Group, facingZ: 1 | -1): THREE.Group {
-  for (const child of blind.children) {
-    if (child.name.endsWith('.hemBar')) {
-      child.position.y -= 0.0015;
-      child.position.z += facingZ * 0.002;
-    } else if (child.name.endsWith('.pleat')) {
-      child.position.z += facingZ * 0.005;
-    }
-  }
-  return blind;
-}
 
-export function deconflictCurtainBrackets(curtains: THREE.Group, inwardSignX: 1 | -1): THREE.Group {
-  let idx = 0;
-  for (const child of curtains.children) {
-    if (child.name.endsWith('.bracket')) {
-      const mod = idx % 3;
-      if (mod === 0) {
-        child.scale.y = 0.86;
-      } else if (mod === 1) {
-        child.position.x += inwardSignX * 0.0012;
-      }
-      idx++;
-    }
-  }
-  return curtains;
-}
 
-export function registerCircuitEmissive(
-  ctx: SceneBuilderContext,
-  circuitId: CircuitId,
-  mat: THREE.MeshStandardMaterial
-): void {
-  const maybeReg = (
-    ctx as unknown as {
-      registerEmissive?: (id: CircuitId, m: THREE.MeshStandardMaterial) => void;
-    }
-  ).registerEmissive;
-  if (typeof maybeReg === 'function') {
-    maybeReg.call(ctx, circuitId, mat);
-    return;
-  }
-  ctx.lightGroups[circuitId]?.emissives.push(mat);
-}
 
-export function createWarm2700kLedMaterial(
-  name: string,
-  emissiveIntensity = 1.4
-): THREE.MeshStandardMaterial {
-  return new THREE.MeshStandardMaterial({
-    name,
-    color: 0xfff1d6,
-    emissive: new THREE.Color(0xffb86b),
-    emissiveIntensity,
-    roughness: 0.3,
-  });
-}
 
 export const NEPTUNE_SALT = 0xe8e3d7;
 export const FB_MIZZLE = 0xc0c6b8;
 
-export function addBox(
+
+const addBox = (
   parent: THREE.Object3D,
   name: string,
   size: readonly [number, number, number],
   center: readonly [number, number, number],
   material: THREE.Material
-): THREE.Mesh {
-  const geo = prepGeo(new THREE.BoxGeometry(size[0], size[1], size[2]));
-  applyMetricBoxUVs(geo, { tileW: 0.9 });
-  const mesh = new THREE.Mesh(geo, material);
-  mesh.name = name;
-  mesh.position.set(center[0], center[1], center[2]);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  parent.add(mesh);
-  return mesh;
-}
+): THREE.Mesh => addGroundBox(parent, name, size, center, material, { tileW: 0.9 });
 
 export function stripBuiltInDanicaBedding(bedGroup: THREE.Group): void {
   const suffixes = [

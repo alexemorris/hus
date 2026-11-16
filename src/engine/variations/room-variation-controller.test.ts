@@ -328,7 +328,7 @@ describe('RoomVariationController & Engine Invariants', () => {
       },
     });
 
-    // 1. Raycasting across (0, 1, -2 -> +2): hits blockingCabinet in Option A
+    // Raycasting across (0, 1, -2 -> +2): hits blockingCabinet in Option A
     const raycaster = new THREE.Raycaster(
       new THREE.Vector3(0, 1.0, -2.0),
       new THREE.Vector3(0, 0, 1)
@@ -337,7 +337,7 @@ describe('RoomVariationController & Engine Invariants', () => {
     let hits = intersectVisibleObjects(raycaster, [scene], true);
     expect(hits.map((h) => h.object)).toContain(blockingCabinet);
 
-    // 2. Walkthrough collision across z = -0.8 -> z = +0.8 at x = 0: blocked when Option A is active
+    // Walkthrough collision across z = -0.8 -> z = +0.8 at x = 0: blocked when Option A is active
     expect(
       solver.isBlockedByWallOrCabinet(
         new THREE.Vector3(0, 0, -0.8),
@@ -349,11 +349,11 @@ describe('RoomVariationController & Engine Invariants', () => {
       )
     ).toBe(true);
 
-    // 3. Inactive door in Option B must NOT auto-barge when walking through (-3, 0, -0.35)
+    // Inactive door in Option B must NOT auto-barge when walking through (-3, 0, -0.35)
     interactions.bargeNearbyWalkthroughDoors(-3.0, 0, -0.35, 0, 1, true);
     expect(interactions.isInteractableOpenOrMoving(doorId)).toBe(false);
 
-    // 4. Platform in Option A raises walkable elevation to ~0.4m at (3, 0)
+    // Platform in Option A raises walkable elevation to ~0.4m at (3, 0)
     expect(elevation.sampleWalkableElevation(3, 0.1, 0, () => 0)).toBeCloseTo(0.4, 2);
 
     // Switch live to Option B ('open-passage')!

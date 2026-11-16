@@ -145,7 +145,7 @@ function createTurnedBalusterRoseGeometry(
   return prepGeo(new THREE.LatheGeometry(pts, 28));
 }
 
-function buildHorizontalToDownwardArmCurve(
+export function buildHorizontalToDownwardArmCurve(
   startY: number,
   startZ: number,
   reachZ: number,

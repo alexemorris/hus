@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { detectMobile } from '../perf/device-tier.ts';
 import {
-  getOrCreateCachedCanvas,
   getOrCreateCachedCanvasPair,
   isRecordingCanvasStub,
 } from './texture-registry.ts';
@@ -336,7 +335,6 @@ export function derivePbrNormalAndRoughnessMaps(
   const effectiveNormalStrength = normalStrength * Math.sqrt(targetW / srcW);
   const cacheId = `${key}:pbr-nr:${targetW}x${targetH}`;
 
-  void getOrCreateCachedCanvas;
   let surfaceEntry = pbrSurfaceDataCache.get(cacheId);
   if (!surfaceEntry) {
     const heights = readDownsampledHeights(heightCanvas, targetW, targetH);

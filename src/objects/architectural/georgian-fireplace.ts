@@ -36,7 +36,7 @@ export interface GeorgianBolectionFireplaceOptions {
 
 const STONE_MICRO_BEVEL_M = 0.0015;
 
-function addBevelledStoneExtrudeBlock(
+export function addBevelledStoneExtrudeBlock(
   parent: THREE.Object3D,
   name: string,
   w: number,

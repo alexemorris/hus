@@ -704,7 +704,7 @@ export function createAgedTimberBeamGeometry(
 
     const pts2D: [number, number][] = [];
 
-    // 1. Top face (+v): Left -> Right
+    // Top face (+v): Left -> Right
     pts2D.push(
       [uTopMin, vTopFace],
       [uTopInnerL, vTopFace + (omitTop ? 0 : adzeTopA)],
@@ -712,7 +712,7 @@ export function createAgedTimberBeamGeometry(
       [uTopMax, vTopFace]
     );
 
-    // 2. Right face (+u): Top -> Bottom
+    // Right face (+u): Top -> Bottom
     pts2D.push(
       [uRightFace, vRightMax],
       [uRightFace + (omitRight ? 0 : adzeRightA), vRightInnerT]
@@ -738,7 +738,7 @@ export function createAgedTimberBeamGeometry(
       [uRightFace, vRightMin]
     );
 
-    // 3. Bottom face (-v): Right -> Left
+    // Bottom face (-v): Right -> Left
     pts2D.push(
       [uBotMax, vBottomFace],
       [uBotInnerR, vBottomFace + (omitBottom ? 0 : adzeBottomA)]
@@ -764,7 +764,7 @@ export function createAgedTimberBeamGeometry(
       [uBotMin, vBottomFace]
     );
 
-    // 4. Left face (-u): Bottom -> Top
+    // Left face (-u): Bottom -> Top
     pts2D.push(
       [uLeftFace, vLeftMin],
       [uLeftFace + (omitLeft ? 0 : adzeLeftA), vLeftInnerB]

@@ -1,12 +1,5 @@
 import * as THREE from 'three';
-import type { CutawayWallDescriptor } from '../../core/types/scene.ts';
-import {
-  createSkirtingRun,
-  type RoomSide,
-  type SkirtingGapSpec,
-  type SkirtingProfilePoint,
-  type SkirtingRunResult,
-} from '../cad/skirting-run.ts';
+import { createSkirtingRun, type SkirtingProfilePoint } from '../cad/skirting-run.ts';
 import { sharedCylinderGeometry, sharedTorusGeometry } from '../shared/geometry-cache.ts';
 import { prepGeo, tagHighLod } from '../shared/scene-helpers.ts';
 
@@ -22,96 +15,6 @@ export function getGeorgianPlasterMouldingMaterial(): THREE.MeshStandardMaterial
     });
   }
   return cachedLimePlasterMouldingMat;
-}
-
-export interface GeorgianCeilingCorniceOptions {
-  readonly name?: string;
-  /** Closed or open room perimeter path `[x, z]` along interior plaster wall faces. */
-  readonly path: readonly (readonly [number, number] | readonly [number, number, number])[];
-  readonly closed?: boolean;
-  /** Which side of the directed path faces into the room (`'left'` for CCW `[x, z]` loops in X-right, Z-down/south). */
-  readonly roomSide?: RoomSide;
-  /** Finished ceiling soffit Y in world/floor coordinates (cornice hangs `[ceilingY - heightM, ceilingY]`). */
-  readonly ceilingY: number;
-  /** Vertical drop of the cornice (default `0.125` m = `125 mm`). */
-  readonly heightM?: number;
-  /** Horizontal projection onto ceiling soffit (default `0.120` m = `120 mm`). */
-  readonly projectionM?: number;
-  readonly material?: THREE.Material;
-  readonly gaps?: readonly SkirtingGapSpec[];
-  readonly cutawayWalls?: readonly CutawayWallDescriptor[];
-  readonly floor?: string;
-  readonly cutawayToleranceM?: number;
-  readonly zone?: string;
-}
-
-/**
- * Creates a classical Georgian plaster cornice profile (`125 mm H × 120 mm D` default):
- * lower astragal bead, dentil/fillet step, deep scotia cove, and upper cyma-recta crown fillet.
- * Offset by `0.8 mm` from wall (`u >= 0.0008`) and `0.6 mm` from ceiling (`v <= H - 0.0006`)
- * so swept runs never z-fight with host wall or ceiling planes.
- */
-export function createGeorgianCorniceProfile(
-  heightM = 0.125,
-  projectionM = 0.12
-): readonly SkirtingProfilePoint[] {
-  const h = Math.max(0.06, heightM);
-  const d = Math.max(0.05, projectionM);
-  const u0 = 0.0008;
-  const v0 = 0.0006;
-  const vTop = h - 0.0006;
-
-  return [
-    { u: u0, v: v0, sharp: true },
-    { u: d * 0.14, v: v0, sharp: true },
-    { u: d * 0.18, v: h * 0.07 },
-    { u: d * 0.15, v: h * 0.14, sharp: true },
-    // Dentil / fillet projection step
-    { u: d * 0.28, v: h * 0.16, sharp: true },
-    { u: d * 0.28, v: h * 0.28, sharp: true },
-    { u: d * 0.23, v: h * 0.30, sharp: true },
-    // Deep Georgian cove (scotia) sweeping upward & outward
-    { u: d * 0.30, v: h * 0.44 },
-    { u: d * 0.43, v: h * 0.58 },
-    { u: d * 0.60, v: h * 0.69 },
-    //Quirk fillet before upper cyma-recta
-    { u: d * 0.68, v: h * 0.72, sharp: true },
-    { u: d * 0.68, v: h * 0.77, sharp: true },
-    // Upper cyma-recta ogee & ceiling fascia fillet
-    { u: d * 0.80, v: h * 0.83 },
-    { u: d * 0.92, v: h * 0.90 },
-    { u: d, v: h * 0.94, sharp: true },
-    { u: d, v: vTop, sharp: true },
-    { u: u0, v: vTop, sharp: true },
-  ];
-}
-
-/**
- * Sweeps a 45°-mitred Georgian plaster ceiling cornice (`125 mm H × 120 mm D` default) around a room
- * perimeter (including external chimney-breast returns), automatically splitting exterior-wall runs
- * so exterior cornice segments cut away cleanly with their host `cutawayWall`.
- */
-export function buildGeorgianCeilingCornice(
-  opts: GeorgianCeilingCorniceOptions
-): SkirtingRunResult {
-  const heightM = opts.heightM ?? 0.125;
-  const projectionM = opts.projectionM ?? 0.12;
-  const profile = createGeorgianCorniceProfile(heightM, projectionM);
-
-  return createSkirtingRun({
-    name: opts.name ?? 'georgianCeilingCornice',
-    path: opts.path,
-    closed: opts.closed ?? true,
-    roomSide: opts.roomSide ?? 'left',
-    elevationY: opts.ceilingY - heightM,
-    profile,
-    material: opts.material ?? getGeorgianPlasterMouldingMaterial(),
-    gaps: opts.gaps,
-    cutawayWalls: opts.cutawayWalls,
-    floor: opts.floor,
-    cutawayToleranceM: opts.cutawayToleranceM ?? 0.24,
-    zone: opts.zone,
-  });
 }
 
 export interface GeorgianCeilingPanelMouldingOptions {

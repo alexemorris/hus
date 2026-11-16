@@ -627,6 +627,8 @@ export class WeatherController {
   private manualOverrideVersion = 0;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private disposed = false;
+  private lastLiveWeatherError: string | null = null;
+  private liveWeatherWarned = false;
   private hostScene: THREE.Scene | null = null;
   private elapsedSec = 0;
   private readonly lastCamPos = new THREE.Vector3(Number.NaN, Number.NaN, Number.NaN);
@@ -1351,13 +1353,27 @@ export class WeatherController {
         liveFeedEnabled: this.state.liveFeedEnabled,
         surfaceWetness: this.state.surfaceWetness,
       };
+      this.lastLiveWeatherError = null;
+      this.liveWeatherWarned = false;
       this.recomputeDerivedState();
       this.syncCloudInstances();
       this.onWeatherChanged?.();
-    } catch {
-      // Graceful offline fallback: keep current deterministic weather state without console noise
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      this.lastLiveWeatherError = detail;
+      if (!this.liveWeatherWarned) {
+        this.liveWeatherWarned = true;
+        console.warn(
+          `[weather-controller] Live weather fetch failed for ${url} (keeping cached state): ${detail}`
+        );
+      }
     }
     return this.getState();
+  }
+
+  /** Returns the diagnostic reason from the most recent failed live weather refresh, if any. */
+  public getLastLiveWeatherError(): string | null {
+    return this.lastLiveWeatherError;
   }
 
   /**

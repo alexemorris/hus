@@ -54,8 +54,6 @@ export interface TimberPieceUvOptions {
 }
 
 function mixUint32(h: number, k: number): number {
-  let x = (k >>> 0) * 0xcc9e2d51;
-  x = Math.imul(x >>> 0, 1) >>> 0;
   let k1 = Math.imul(k >>> 0, 0xcc9e2d51) >>> 0;
   k1 = ((k1 << 15) | (k1 >>> 17)) >>> 0;
   k1 = Math.imul(k1, 0x1b873593) >>> 0;
@@ -63,7 +61,6 @@ function mixUint32(h: number, k: number): number {
   let h1 = (h ^ k1) >>> 0;
   h1 = ((h1 << 13) | (h1 >>> 19)) >>> 0;
   h1 = (Math.imul(h1, 5) + 0xe6546b64) >>> 0;
-  void x;
   return h1;
 }
 

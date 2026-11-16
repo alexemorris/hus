@@ -1071,27 +1071,6 @@ export function upsampleBilateralAoAndContact(
 }
 
 /**
- * Legacy single-channel bilateral GTAO upsampler preserved for external callers.
- */
-export function upsampleBilateralGtao(
-  halfResRtt: ShaderNodeObject<RTTNode>,
-  depthNode: ShaderNodeObject<TextureNode>,
-  vUv: ShaderNodeObject<Node>,
-  centerViewPos: ShaderNodeObject<Node>,
-  centerViewNormal: ShaderNodeObject<Node>,
-  uniforms: GtaoAndContactShadowUniforms
-): ShaderNodeObject<Node> {
-  return upsampleBilateralAoAndContact(
-    halfResRtt,
-    depthNode,
-    vUv,
-    centerViewPos,
-    centerViewNormal,
-    uniforms
-  ).x;
-}
-
-/**
  * Applies Jimenez multi-bounce colored ambient occlusion (preserving warm plaster & cornice bounce
  * instead of grey corner soot), Specular AO highlight damping, Screen-Space Contact Shadows,
  * and subtle close-up (< 1.95 m) world-space triplanar plaster micro-relief.

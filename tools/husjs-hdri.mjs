@@ -591,27 +591,41 @@ export function decodeRadianceHdr(input) {
   } else {
     const scanline = new Uint8Array(width * 4);
     for (let y = 0; y < height; y++) {
-      if (pos + 4 > bytes.length) throw new Error('Truncated HDR scanline header');
+      if (pos + 4 > bytes.length) {
+        throw new Error(`Truncated HDR scanline header at row ${y} (pos=${pos}, bytes=${bytes.length})`);
+      }
       const b0 = bytes[pos++];
       const b1 = bytes[pos++];
       const b2 = bytes[pos++];
       const b3 = bytes[pos++];
       if (b0 !== 2 || b1 !== 2 || ((b2 << 8) | b3) !== width) {
-        throw new Error(`Bad HDR RLE scanline header at row ${y}`);
+        throw new Error(
+          `Bad HDR RLE scanline header at row ${y} (pos=${pos - 4}, header=[${b0}, ${b1}, ${b2}, ${b3}], expected width=${width})`
+        );
       }
       let ptr = 0;
       const end = width * 4;
       while (ptr < end) {
-        if (pos >= bytes.length) throw new Error('Truncated HDR RLE stream');
+        if (pos >= bytes.length) {
+          throw new Error(`Truncated HDR RLE stream at row ${y} (pos=${pos}, ptr=${ptr}, end=${end})`);
+        }
         let count = bytes[pos++];
         if (count > 128) {
           count -= 128;
-          if (count === 0 || ptr + count > end) throw new Error('Bad HDR RLE run count');
+          if (count === 0 || ptr + count > end) {
+            throw new Error(
+              `Bad HDR RLE run count at row ${y} (pos=${pos}, count=${count}, ptr=${ptr}, end=${end})`
+            );
+          }
           const val = bytes[pos++];
           scanline.fill(val, ptr, ptr + count);
           ptr += count;
         } else {
-          if (count === 0 || ptr + count > end) throw new Error('Bad HDR literal run count');
+          if (count === 0 || ptr + count > end) {
+            throw new Error(
+              `Bad HDR literal run count at row ${y} (pos=${pos}, count=${count}, ptr=${ptr}, end=${end})`
+            );
+          }
           scanline.set(bytes.subarray(pos, pos + count), ptr);
           ptr += count;
           pos += count;
@@ -802,13 +816,19 @@ export function writeRgbWebpFile(rgbBytes, width, height, outWebpPath, quality =
       { input: inputBuf, stdio: ['pipe', 'pipe', 'pipe'] }
     );
     return;
-  } catch {
+  } catch (ffmpegErr) {
     const tmpPng = `${outWebpPath}.tmp.png`;
     try {
       writeFileSync(tmpPng, encodeRgbPng(rgbBytes, width, height));
       execFileSync('convert', [tmpPng, '-quality', String(quality), outWebpPath], {
         stdio: 'pipe',
       });
+    } catch (convertErr) {
+      const ffMsg = ffmpegErr instanceof Error ? ffmpegErr.message : String(ffmpegErr);
+      const cvMsg = convertErr instanceof Error ? convertErr.message : String(convertErr);
+      throw new Error(
+        `Failed to encode WebP '${outWebpPath}' (${width}x${height}, q=${quality}): ffmpeg failed (${ffMsg}); convert fallback also failed (${cvMsg})`
+      );
     } finally {
       rmSync(tmpPng, { force: true });
     }
@@ -1862,8 +1882,10 @@ export function decodeImageBufferToRgb(bytes, tmpDir) {
   if (isPng) {
     try {
       return decodePng(u8);
-    } catch {
-      // Fall through
+    } catch (pngErr) {
+      console.warn(
+        `husjs hdri: inline PNG decoder failed (${pngErr instanceof Error ? pngErr.message : String(pngErr)}); falling back to ffmpeg/convert`
+      );
     }
   }
 
@@ -1880,8 +1902,16 @@ export function decodeImageBufferToRgb(bytes, tmpDir) {
         ['-y', '-loglevel', 'error', '-i', inFile, '-pix_fmt', 'rgb24', outPng],
         { stdio: 'pipe' }
       );
-    } catch {
-      execFileSync('convert', [inFile, '-depth', '8', `PNG24:${outPng}`], { stdio: 'pipe' });
+    } catch (ffmpegErr) {
+      try {
+        execFileSync('convert', [inFile, '-depth', '8', `PNG24:${outPng}`], { stdio: 'pipe' });
+      } catch (convertErr) {
+        const ffMsg = ffmpegErr instanceof Error ? ffmpegErr.message : String(ffmpegErr);
+        const cvMsg = convertErr instanceof Error ? convertErr.message : String(convertErr);
+        throw new Error(
+          `Failed to decode image buffer (${u8.length} bytes): ffmpeg failed (${ffMsg}); convert fallback also failed (${cvMsg})`
+        );
+      }
     }
     return decodePng(readFileSync(outPng));
   } finally {
@@ -1923,8 +1953,13 @@ function detectGcpProject(explicitProject) {
       encoding: 'utf8',
     }).trim();
     if (out && out !== '(unset)') return out;
-  } catch {
-    // ignore
+  } catch (err) {
+    const code = /** @type {NodeJS.ErrnoException} */ (err)?.code;
+    if (code !== 'ENOENT') {
+      console.warn(
+        `husjs hdri: gcloud project detection failed: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
   }
   return process.env.GOOGLE_CLOUD_PROJECT || '';
 }
@@ -1999,7 +2034,7 @@ export async function generateGeminiImageRest({
       return new Uint8Array(Buffer.from(b64, 'base64'));
     }
   }
-  throw new Error('Gemini image REST response did not include an inlineData image part');
+  throw new Error(`Gemini image REST response for model '${model}' did not include an inlineData image part (parts=${candParts.length})`);
 }
 
 export async function generateGeminiImageCli({
@@ -2071,7 +2106,7 @@ export async function generateGeminiImageCli({
       rmSync(outDir, { recursive: true, force: true });
     }
   }
-  throw lastError ?? new Error('Gemini image CLI failed across candidate models');
+  throw lastError ?? new Error(`Gemini image CLI failed across candidate models [${modelsToTry.join(', ')}]`);
 }
 
 export async function generatePanoramaSourceBytes({
@@ -2137,7 +2172,7 @@ export async function generatePanoramaSourceBytes({
       scratchRoot,
     });
   }
-  throw new Error('No Gemini image generation backend available');
+  throw new Error(`No Gemini image generation backend available (set GEMINI_API_KEY for REST or install '${getGeminiImageCliBin()}' / set GEMINI_IMAGE_CLI_BIN for CLI)`);
 }
 
 function detailSuffixForRes(detailRes) {
@@ -2226,7 +2261,7 @@ async function generateWithRetry(fn, attempts = 4) {
       }
     }
   }
-  throw lastErr ?? new Error('Generation failed');
+  throw lastErr ?? new Error(`Generation failed after ${attempts} attempt(s)`);
 }
 
 function selectAnchorCellIndex(cells, preset) {
@@ -2506,7 +2541,7 @@ export async function runHdriCli(argv, io = {}) {
         });
         recordCellManifestAndLog(anchorCell, `1/${cells.length} anchor`, anchorResInfo);
       } else {
-        throw new Error('Failed to select Master Anchor cell');
+        throw new Error(`Failed to select Master Anchor cell for preset '${opts.preset}' (cells=${cells.length}, anchorIdx=${anchorIdx})`);
       }
 
       // Precompute Master Anchor low-pass band once for 8K horizon micro-detail transfer

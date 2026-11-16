@@ -10,24 +10,24 @@ import { Icon } from './icons.tsx';
 
 const SHEEN_LABELS: Readonly<Record<PaintSheen, string>> = {
   limewash: 'Limewash',
-  'dead-flat': 'Dead Flat',
-  'estate-emulsion': 'Estate Emulsion',
-  'modern-emulsion': 'Modern Emulsion',
-  'estate-eggshell': 'Estate Eggshell',
-  'exterior-eggshell': 'Exterior Eggshell',
+  'dead-flat': 'Dead flat',
+  'estate-emulsion': 'Estate emulsion',
+  'modern-emulsion': 'Modern emulsion',
+  'estate-eggshell': 'Estate eggshell',
+  'exterior-eggshell': 'Exterior eggshell',
   satinwood: 'Satinwood',
-  'modern-eggshell': 'Modern Eggshell',
-  'full-gloss': 'Full Gloss',
+  'modern-eggshell': 'Modern eggshell',
+  'full-gloss': 'Full gloss',
 };
 
 export function formatPaintSheenLabel(sheen: string | undefined): string | undefined {
   if (!sheen) return undefined;
   const known = (SHEEN_LABELS as Readonly<Record<string, string>>)[sheen];
   if (known) return known;
-  return sheen
-    .split(/[-_\s]+/)
-    .filter(Boolean)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+  const words = sheen.split(/[-_\s]+/).filter(Boolean);
+  if (words.length === 0) return undefined;
+  return words
+    .map((w, idx) => (idx === 0 ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : w.toLowerCase()))
     .join(' ');
 }
 
@@ -50,7 +50,7 @@ function collectPaintRows(finishes: RoomFinishSpec | undefined): readonly PaintR
   const wallSpecs = normalizeWallSpecs(finishes.walls);
   wallSpecs.forEach((spec, idx) => {
     rows.push({
-      surface: wallSpecs.length > 1 && idx > 0 ? 'Feature / Secondary' : 'Walls',
+      surface: wallSpecs.length > 1 && idx > 0 ? 'Feature / secondary' : 'Walls',
       spec,
     });
   });
@@ -58,7 +58,7 @@ function collectPaintRows(finishes: RoomFinishSpec | undefined): readonly PaintR
     rows.push({ surface: 'Ceiling', spec: finishes.ceiling });
   }
   if (finishes.trim) {
-    rows.push({ surface: 'Trim & Woodwork', spec: finishes.trim });
+    rows.push({ surface: 'Trim & woodwork', spec: finishes.trim });
   }
   return rows;
 }
@@ -70,7 +70,7 @@ function collectSpecRows(
   const out: { label: string; value: string }[] = [];
   if (finishes.flooring) out.push({ label: 'Flooring', value: finishes.flooring });
   if (finishes.tilingOrWallpaper) {
-    out.push({ label: 'Tiling / Wallpaper', value: finishes.tilingOrWallpaper });
+    out.push({ label: 'Tiling / wallpaper', value: finishes.tilingOrWallpaper });
   }
   if (finishes.joinery) out.push({ label: 'Joinery', value: finishes.joinery });
   if (finishes.doors) out.push({ label: 'Doors', value: finishes.doors });

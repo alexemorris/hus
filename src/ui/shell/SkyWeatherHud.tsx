@@ -43,12 +43,12 @@ const WEATHER_PRESETS: readonly {
   readonly icon: IconName;
 }[] = [
   { id: 'clear', label: 'Clear', icon: 'sun' },
-  { id: 'partly_cloudy', label: 'Partly Cloudy', icon: 'cloud' },
+  { id: 'partly_cloudy', label: 'Partly cloudy', icon: 'cloud' },
   { id: 'overcast', label: 'Overcast', icon: 'cloud' },
-  { id: 'light_rain', label: 'Light Rain', icon: 'rain' },
-  { id: 'heavy_storm', label: 'Heavy Storm', icon: 'rain' },
-  { id: 'morning_mist', label: 'Morning Mist', icon: 'mist' },
-  { id: 'winter_snow', label: 'Winter Snow', icon: 'snow' },
+  { id: 'light_rain', label: 'Light rain', icon: 'rain' },
+  { id: 'heavy_storm', label: 'Heavy storm', icon: 'rain' },
+  { id: 'morning_mist', label: 'Morning mist', icon: 'mist' },
+  { id: 'winter_snow', label: 'Winter snow', icon: 'snow' },
 ];
 
 const SEASON_SELECTIONS: readonly { readonly id: SeasonSelection; readonly label: string }[] = [
@@ -122,7 +122,7 @@ export function formatHudWeatherBadge(weather: SkyWeatherSnapshot['weather']): s
   const isDryClearAir = weather.precipType === 'none' && !weather.fogEnabled;
   if (isDryClearAir) {
     if (effCloud < 15) return 'Clear';
-    if (effCloud <= 77) return `${effCloud}% Clouds`;
+    if (effCloud <= 77) return `${effCloud}% clouds`;
     return 'Overcast';
   }
   return weatherConditionShortLabel(weather.condition);
@@ -403,27 +403,27 @@ function SkyDomeSection({ snap }: { readonly snap: SkyWeatherSnapshot }): JSX.El
 
       <div class="skyhud-ephem-grid">
         <div class="skyhud-kv">
-          <span>View Heading</span>
+          <span>View heading</span>
           <strong ref={headingStrongRef}>
             {initialIntDeg}° {bearingToCardinal16(initialBearing)}
           </strong>
         </div>
         <div class="skyhud-kv">
-          <span>Sun Position</span>
+          <span>Sun position</span>
           <strong>
             {solar.altitudeDeg >= 0 ? '+' : ''}
             {solar.altitudeDeg.toFixed(1)}° · {Math.round(solar.azimuthFromNorthDeg)}° {sunCard}
           </strong>
         </div>
         <div class="skyhud-kv">
-          <span>Rise · Noon · Set</span>
+          <span>Rise · noon · set</span>
           <strong>
             {formatCivilHourHHMM(solar.sunriseHour)} · {formatCivilHourHHMM(solar.solarNoonHour)} ·{' '}
             {formatCivilHourHHMM(solar.sunsetHour)}
           </strong>
         </div>
         <div class="skyhud-kv">
-          <span>Daylight · Moon</span>
+          <span>Daylight · moon</span>
           <strong>
             {formatDurationHoursHM(solar.dayLengthHours)} · {lunar.phaseName} ({Math.round(lunar.illuminatedFraction * 100)}%)
           </strong>
@@ -749,7 +749,7 @@ export function SkyWeatherHud(): JSX.Element | null {
           <div class="skyhud-pop-head">
             <div>
               <div class="skyhud-eyebrow">{sunEyebrow}</div>
-              <div class="skyhud-pop-title">Sun &amp; Moon</div>
+              <div class="skyhud-pop-title">Sun &amp; moon</div>
             </div>
             <button
               type="button"
@@ -758,7 +758,7 @@ export function SkyWeatherHud(): JSX.Element | null {
               onClick={() => ctl.setLiveClockSync(!liveClockSync)}
             >
               <span class="skyhud-dot" />
-              {liveClockSync ? 'LIVE TIME ON' : 'LIVE CLOCK'}
+              {liveClockSync ? 'Live time on' : 'Live clock'}
             </button>
           </div>
 
@@ -784,7 +784,7 @@ export function SkyWeatherHud(): JSX.Element | null {
           <div class="skyhud-slider-group skyhud-sun-cloud-group">
             <div class="skyhud-cloud-quick-head">
               <label class="skyhud-slider-label">
-                <span>Cloud Cover</span>
+                <span>Cloud cover</span>
                 <strong data-testid="sun-cloud-pct">{effCloudPct}%</strong>
               </label>
               <div class="skyhud-season-chips" role="group" aria-label="Quick cloud cover">
@@ -830,7 +830,7 @@ export function SkyWeatherHud(): JSX.Element | null {
 
           <div class="skyhud-slider-group">
             <label class="skyhud-slider-label">
-              <span>Local Civil Time ({tzLabel})</span>
+              <span>Local civil time ({tzLabel})</span>
               <strong>{timeStr}</strong>
             </label>
             <input
@@ -918,7 +918,7 @@ export function SkyWeatherHud(): JSX.Element | null {
                 }}
               >
                 <span class="skyhud-dot" />
-                {weather.liveFeedEnabled ? 'LIVE WEATHER ON' : 'LIVE WEATHER'}
+                {weather.liveFeedEnabled ? 'Live weather on' : 'Live weather'}
               </button>
             </div>
           </div>
@@ -941,7 +941,7 @@ export function SkyWeatherHud(): JSX.Element | null {
               <strong>{weather.humidityPct}%</strong>
             </div>
             <div class="skyhud-stat">
-              <span>Vis / Wet</span>
+              <span>Vis / wet</span>
               <strong>
                 {weather.visibilityKm.toFixed(1)} km · {Math.round(weather.surfaceWetness * 100)}%
               </strong>
@@ -982,7 +982,7 @@ export function SkyWeatherHud(): JSX.Element | null {
               <div class="skyhud-layer-head">
                 <span class="skyhud-layer-title">
                   <Icon name="cloud" size={14} />
-                  <span>Cloud Cover</span>
+                  <span>Cloud cover</span>
                 </span>
                 <div class="skyhud-layer-right">
                   <span class="skyhud-layer-val" data-testid="weather-cloud-pct">{effCloudPct}%</span>
@@ -1068,7 +1068,7 @@ export function SkyWeatherHud(): JSX.Element | null {
               <div class="skyhud-layer-head">
                 <span class="skyhud-layer-title">
                   <Icon name="mist" size={14} />
-                  <span>Mist &amp; Haze</span>
+                  <span>Mist &amp; haze</span>
                 </span>
                 <div class="skyhud-layer-right">
                   <span class="skyhud-layer-val">{weather.fogEnabled ? `${fogPct}%` : 'Off'}</span>

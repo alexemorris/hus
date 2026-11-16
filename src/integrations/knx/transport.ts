@@ -101,6 +101,7 @@ export class WebSocketKNXGatewayTransport implements KNXBusTransport {
   private ws: WebSocket | null = null;
   private reconnectTimer: number | null = null;
   private intentionalClose = false;
+  private malformedFrameCount = 0;
   private readonly frameHandlers = new Set<InboundFrameHandler>();
   private readonly statusHandlers = new Set<TransportStatusHandler>();
 
@@ -162,8 +163,12 @@ export class WebSocketKNXGatewayTransport implements KNXBusTransport {
                   fn(parsed.hex);
                 }
               }
-            } catch {
-              // Ignore malformed JSON frames
+            } catch (err) {
+              this.malformedFrameCount += 1;
+              const detail = err instanceof Error ? err.message : String(err);
+              console.warn(
+                `[knx/transport] Ignoring malformed JSON frame #${this.malformedFrameCount} from ${this.endpointUrl}: ${detail}`
+              );
             }
           } else {
             for (const fn of this.frameHandlers) {
@@ -184,7 +189,11 @@ export class WebSocketKNXGatewayTransport implements KNXBusTransport {
             this.scheduleReconnect();
           }
         });
-      } catch {
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        console.warn(
+          `[knx/transport] Failed to open WebSocket gateway at ${this.endpointUrl}: ${detail}`
+        );
         this.setStatus('error');
         resolve();
       }

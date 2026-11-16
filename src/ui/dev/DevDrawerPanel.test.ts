@@ -449,7 +449,7 @@ describe('<DevDrawerPanel /> self-contained Preact dev HUD', () => {
     const { api, hub } = h.deps;
     let root = renderToHostTree(DevDrawerPanel, h.ctl);
 
-    button(root, 'All Off').props.onClick();
+    button(root, 'All off').props.onClick();
     expect(api.lighting.allOff).toHaveBeenCalledTimes(1);
     button(root, 'Hall switch: short press up').props.onClick();
     expect(api.lighting.pressZoneSwitch).toHaveBeenCalledWith('hall', 'up');

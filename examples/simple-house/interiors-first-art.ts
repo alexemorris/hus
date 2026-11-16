@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { CircuitId, RoomZoneId } from 'husjs';
+import type { CircuitId } from 'husjs';
 import { getOrCreateCachedTexture } from 'husjs/materials';
 import {
   attachAssetMetadata,
@@ -10,11 +10,8 @@ import {
 import { buildCuratedMirrorsArtAndRugs } from 'husjs/catalog/furniture';
 import type { SceneBuilderContext } from 'husjs/viewer';
 import { FFL_FIRST } from './electrical-and-rooms.ts';
-import {
-  addBox,
-  createTurnedWalnutMaterial,
-  registerCircuitEmissive,
-} from './interiors-first-furniture.ts';
+import { createTurnedWalnutMaterial } from './interiors-first-furniture.ts';
+import { addBox, registerCircuitEmissive } from './interiors-ground-helpers.ts';
 
 function getSepiaFamilyPhotoTexture(variantIdx: number): THREE.DataTexture {
   return getOrCreateCachedTexture(`simpleHouse.landing.familyPhoto.${variantIdx}`, () => {
@@ -227,9 +224,8 @@ export function buildAntiquarianMapDiptych(options: {
   readonly name: string;
   readonly position: readonly [number, number, number];
   readonly rotationY: number;
-  readonly brassMat: THREE.Material;
 }): THREE.Group {
-  const { name, position, rotationY, brassMat } = options;
+  const { name, position, rotationY } = options;
   const root = new THREE.Group();
   root.name = name;
   root.position.set(position[0], position[1], position[2]);
@@ -259,7 +255,6 @@ export function buildAntiquarianMapDiptych(options: {
     const innerH = h - rim * 2;
     addBox(mg, `${mg.name}.backing`, [innerW - 0.004, innerH - 0.004, 0.007], [0, 0, 0.0035], walnutMat);
     addBox(mg, `${mg.name}.engraving`, [innerW - 0.004, innerH - 0.004, 0.003], [0, 0, 0.0105], mapMat);
-    void brassMat;
     addBox(mg, `${mg.name}.railTop`, [w, rim, d], [0, h * 0.5 - rim * 0.5, d * 0.5], walnutMat);
     addBox(mg, `${mg.name}.railBottom`, [w, rim, d], [0, -(h * 0.5 - rim * 0.5), d * 0.5], walnutMat);
     addBox(mg, `${mg.name}.stileLeft`, [rim, innerH, d], [-(w * 0.5 - rim * 0.5), 0, d * 0.5], walnutMat);
@@ -448,63 +443,3 @@ export function buildAiringCupboardFittings(
     );
   }
 }
-
-export function buildFirstFloorRotaryDimmerPlate(
-  ctx: SceneBuilderContext,
-  opts: {
-    readonly name: string;
-    readonly zoneId: RoomZoneId;
-    readonly x: number;
-    readonly y: number;
-    readonly z: number;
-    readonly facing: 'east' | 'west' | 'north' | 'south';
-    readonly brassMat: THREE.Material;
-    readonly knurledBrassMat: THREE.Material;
-    readonly dimmerId: string;
-    readonly circuitId: CircuitId;
-    readonly label: string;
-    readonly parent: THREE.Object3D;
-  }
-): THREE.Group {
-  const group = new THREE.Group();
-  group.name = opts.name;
-  group.position.set(opts.x, opts.y, opts.z);
-  const rotByFacing: Record<'north' | 'south' | 'east' | 'west', number> = {
-    south: 0,
-    north: Math.PI,
-    east: Math.PI * 0.5,
-    west: -Math.PI * 0.5,
-  };
-  group.rotation.y = rotByFacing[opts.facing];
-  opts.parent.add(group);
-
-  addBox(group, `${opts.name}.plate`, [0.086, 0.086, 0.005], [0, 0, 0.0035], opts.brassMat);
-
-  const collar = new THREE.Mesh(
-    prepGeo(new THREE.CylinderGeometry(0.022, 0.024, 0.004, 18)),
-    opts.brassMat
-  );
-  collar.name = `${opts.name}.collar`;
-  collar.rotation.x = Math.PI * 0.5;
-  collar.position.set(0, 0, 0.0085);
-  group.add(collar);
-
-  const knob = new THREE.Mesh(
-    prepGeo(new THREE.CylinderGeometry(0.017, 0.019, 0.018, 18)),
-    opts.knurledBrassMat
-  );
-  knob.name = opts.dimmerId;
-  knob.rotation.x = Math.PI * 0.5;
-  knob.position.set(0, 0, 0.02);
-  knob.userData = {
-    type: 'dimmer',
-    electricalDimmerId: opts.dimmerId,
-    zoneId: opts.zoneId,
-    circuitId: opts.circuitId,
-    label: opts.label,
-  };
-  ctx.interactiveMeshes.push(knob);
-  group.add(knob);
-  return group;
-}
-

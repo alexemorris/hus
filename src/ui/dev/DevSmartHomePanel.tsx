@@ -131,7 +131,7 @@ function TransportStatus({ deps: { api } }: { readonly deps: DevToolsDeps }): JS
     <div class="shell-row" role="status">
       <span class="shell-muted">KNX transport</span>
       <span class={`twin-status-pill${live ? ' is-active' : ''}`} title={`Transport ${transport.status}`}>
-        {live ? 'Live Gateway' : 'Simulation'} · {transport.status}
+        {live ? 'Live gateway' : 'Simulation'} · {transport.status}
       </span>
     </div>
   );
@@ -180,7 +180,7 @@ function ScenesAndSwitchesCard({ deps, refresh }: PanelProps): JSX.Element {
           </button>
         ))}
         <button type="button" class="shell-chip" onClick={act(() => api.lighting.allOff())}>
-          All Off
+          All off
         </button>
       </div>
 
@@ -552,7 +552,7 @@ function BusInspector({ deps: { knx } }: PanelProps): JSX.Element {
         {eeprom.length > 0 && (
           <div class="shell-row">
             <span class="shell-muted">EEPROM image · {eeprom.length} bytes</span>
-            {knx.getIsDirty() && <span class="hud-dirty-tag">UNFLASHED</span>}
+            {knx.getIsDirty() && <span class="hud-dirty-tag">Unflashed</span>}
           </div>
         )}
         {eeprom.length > 0 && <EepromHex bytes={eeprom} />}

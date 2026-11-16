@@ -43,14 +43,16 @@ import { IN_X, IN_Z, type SimpleHouseShell } from './architecture.ts';
 import { FFL_FIRST, FIRST_CEILING_SOFFIT_Y } from './electrical-and-rooms.ts';
 import {
   FB_MIZZLE,
-  addBox,
   buildEnglishLibraryLoveseat,
   buildWalnutLibrarySideTableAndLamp,
+} from './interiors-first-furniture.ts';
+import {
+  addBox,
   createWarm2700kLedMaterial,
   deconflictCurtainBrackets,
   deconflictRomanBlind,
   registerCircuitEmissive,
-} from './interiors-first-furniture.ts';
+} from './interiors-ground-helpers.ts';
 import {
   buildAiringCupboardFittings,
   buildAntiquarianMapDiptych,
@@ -316,7 +318,6 @@ export function buildSimpleHouseFirstInteriors(
     name: 'simpleHouse.study.antiquarianMapPrints',
     position: [6.706, FFL_FIRST + 1.46, -1.64],
     rotationY: -Math.PI / 2,
-    brassMat: brassMats.primary,
   });
 
   const pictureLightGlowMat = createWarm2700kLedMaterial(

@@ -35,16 +35,18 @@ import { IN_X, IN_Z, type SimpleHouseShell } from './architecture.ts';
 import { FFL_FIRST, FIRST_CEILING_SOFFIT_Y } from './electrical-and-rooms.ts';
 import {
   NEPTUNE_SALT,
-  addBox,
   buildPrincipalEndOfBedBench,
   buildWideChichesterBedsideChest,
-  deconflictCurtainBrackets,
-  deconflictRomanBlind,
   stripBuiltInDanicaBedding,
 } from './interiors-first-furniture.ts';
 import {
+  addBox,
+  buildCorstonRotaryDimmerPlate,
+  deconflictCurtainBrackets,
+  deconflictRomanBlind,
+} from './interiors-ground-helpers.ts';
+import {
   buildFamilyPhotoGalleryCluster,
-  buildFirstFloorRotaryDimmerPlate,
   buildSingleBotanicalWatercolourFrame,
 } from './interiors-first-art.ts';
 
@@ -532,7 +534,7 @@ export function buildSimpleHouseFirstWestAndLanding(
     ],
   });
 
-  buildFirstFloorRotaryDimmerPlate(ctx, {
+  buildCorstonRotaryDimmerPlate(ctx, {
     name: 'simpleHouse.dimmer.principalLamps',
     zoneId: 'housePrincipalBed' as RoomZoneId,
     x: -1.892,
@@ -541,10 +543,14 @@ export function buildSimpleHouseFirstWestAndLanding(
     facing: 'west',
     brassMat: brassMats.primary,
     knurledBrassMat: brassMats.knurled,
-    dimmerId: 'dimmer-principal-lamps',
-    circuitId: principalLampsCircuit,
-    label: 'Principal Alabaster Bedside Dimmer',
     parent: principalGroup,
+    dimmers: [
+      {
+        dimmerId: 'dimmer-principal-lamps',
+        circuitId: principalLampsCircuit,
+        label: 'Principal Alabaster Bedside Dimmer',
+      },
+    ],
   });
 
   buildCorstonToggleSwitch(ctx, {

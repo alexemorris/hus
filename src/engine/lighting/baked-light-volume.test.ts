@@ -436,8 +436,7 @@ describe('BakedLightVolumeController', () => {
         maxIntensity: 13.0,
       },
     } as unknown as LightGroupMap;
-    const fx = new FittingEffects({ lightGroups, sceneRoot: root });
-    void fx;
+    new FittingEffects({ lightGroups, sceneRoot: root });
 
     const haloSprite = root.children.find((c) => c.name === 'fx.halo.bedroom4Pendant') as
       | (THREE.Sprite & { count?: number })

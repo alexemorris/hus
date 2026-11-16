@@ -606,7 +606,7 @@ export interface RgbaDataTextureOptions extends ScalarDataTextureOptions {
  * Eliminates deferred Skia 2D canvas flushes and `copyExternalImageToTexture` main-thread stalls.
  */
 export function createRgbaDataTextureFromCanvas(
-  key: string,
+  _key: string,
   sourceCanvas: HTMLCanvasElement,
   options: RgbaDataTextureOptions = {}
 ): THREE.DataTexture | null {
@@ -624,7 +624,6 @@ export function createRgbaDataTextureFromCanvas(
   const targetH =
     scale < 1 ? Math.max(4, Math.round((srcH * scale) / 4) * 4) : srcH;
 
-  void key;
   const dimKey = `${targetW}x${targetH}`;
   let perCanvas = rgbaDataCache.get(sourceCanvas);
   if (!perCanvas) {

@@ -40,7 +40,6 @@ import { detectIOS, detectMobile } from '../perf/device-tier.ts';
 import {
   clampPixelRatioForViewport,
   getTierSettings,
-  isGraphicsTier,
 } from '../perf/tier-settings.ts';
 import { BloomPass } from './bloom-pass.ts';
 import {
@@ -497,8 +496,7 @@ export class PostProcessingPipeline {
     } catch {
       // Ignore malformed stored settings
     }
-    void isGraphicsTier;
-  }
+    }
 
   private ensurePostProcessing(
     renderer: WebGPURenderer,

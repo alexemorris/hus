@@ -1660,7 +1660,6 @@ function emitScribedStepPieceIntoAccumulator(
   if (s1 - s0 <= EPS) return;
 
   const slopeY = (seg.to[1] - seg.from[1]) / fullHLen;
-  const rakedT = new THREE.Vector3(hVec.x, slopeY, hVec.z);
 
   const startRing: THREE.Vector3[] = [];
   const startShifts: number[] = [];
@@ -1954,7 +1953,6 @@ function emitScribedStepPieceIntoAccumulator(
       }
     }
   }
-  void rakedT;
 }
 
 function emitPieceIntoAccumulator(

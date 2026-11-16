@@ -16,9 +16,6 @@ export const DEFAULT_HUS_LONGITUDE_DEG = -1.7924;
 
 /** Default True-North compass bearing (degrees clockwise from True North) of scene `+X` (`90°` East, `-Z` = True North). */
 export const DEFAULT_HUS_PLUS_X_BEARING_DEG = 90;
-export const DEFAULT_HUS_MINUS_X_BEARING_DEG = 270;
-export const DEFAULT_HUS_PLUS_Z_BEARING_DEG = 180;
-export const DEFAULT_HUS_MINUS_Z_BEARING_DEG = 0;
 
 /** Geodetic site location & compass orientation for solar/lunar ephemeris and Open-Meteo live weather. */
 export interface HouseLocation {
@@ -214,96 +211,4 @@ export interface SkyWeatherSnapshot {
   readonly solar: SolarEphemerisSummary;
   readonly lunar: LunarEphemerisSummary;
   readonly weather: LiveWeatherState;
-}
-
-const CARDINAL_16: readonly string[] = [
-  'N',
-  'NNE',
-  'NE',
-  'ENE',
-  'E',
-  'ESE',
-  'SE',
-  'SSE',
-  'S',
-  'SSW',
-  'SW',
-  'WSW',
-  'W',
-  'WNW',
-  'NW',
-  'NNW',
-];
-
-/** Converts a compass bearing `[0, 360)` into a 16-wind cardinal label (`N`, `NNE`, …, `SSE`, …). */
-export function bearingToCardinal16(bearingDeg: number): string {
-  const norm = ((bearingDeg % 360) + 360) % 360;
-  const idx = Math.round(norm / 22.5) % 16;
-  return CARDINAL_16[idx] ?? 'N';
-}
-
-/** Formats a fractional clock hour `[0, 24)` as `HH:MM` (e.g. `13.5` -> `"13:30"`). */
-export function formatHourClock(hour: number): string {
-  const norm = ((hour % 24) + 24) % 24;
-  const totalMinutes = Math.round(norm * 60) % (24 * 60);
-  const hh = Math.floor(totalMinutes / 60);
-  const mm = totalMinutes % 60;
-  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
-}
-
-const MONTH_SHORT: readonly string[] = [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'May',
-  'Jun',
-  'Jul',
-  'Aug',
-  'Sep',
-  'Oct',
-  'Nov',
-  'Dec',
-];
-
-/** Formats a `dayOfYear` (`1..366`) in a given `year` as e.g. `"21 Jun"`. */
-export function formatDayOfYear(dayOfYear: number, year = 2026): string {
-  const d = new Date(Date.UTC(year, 0, Math.max(1, Math.min(366, Math.round(dayOfYear)))));
-  const day = d.getUTCDate();
-  const mon = MONTH_SHORT[d.getUTCMonth()] ?? 'Jan';
-  return `${day} ${mon}`;
-}
-
-/**
- * Converts a horizontal camera look vector `(fx, fz)` (from `cameraPosition` toward `target`)
- * into a True-North compass bearing `[0, 360)` using the estate's `+X` True bearing.
- */
-export function cameraForwardToTrueBearingDeg(
-  fx: number,
-  fz: number,
-  plusXTrueBearingDeg = DEFAULT_HUS_PLUS_X_BEARING_DEG
-): number {
-  if (Math.hypot(fx, fz) < 1e-6) {
-    return ((plusXTrueBearingDeg % 360) + 360) % 360;
-  }
-  const relDeg = (Math.atan2(fz, fx) * 180) / Math.PI;
-  return (((plusXTrueBearingDeg + relDeg) % 360) + 360) % 360;
-}
-
-/**
- * Computes the exact SVG `<path d="...">` for the illuminated portion of a
- * `32x32` lunar phase disc (`cx = 16, cy = 16, r = 12.5`) matching the Moon's
- * selenocentric illumination fraction and waxing/waning limb orientation.
- */
-export function buildMoonTerminatorSvgPath(illuminatedFraction: number, isWaxing: boolean): string {
-  const k = Math.max(0, Math.min(1, illuminatedFraction));
-  if (k <= 0.012) return '';
-  if (k >= 0.988) {
-    return 'M 16 3.5 A 12.5 12.5 0 1 1 16 28.5 A 12.5 12.5 0 1 1 16 3.5 Z';
-  }
-  const outerSweep = isWaxing ? 1 : 0;
-  const isGibbous = k >= 0.5;
-  const terminatorSweep = isWaxing === isGibbous ? 1 : 0;
-  const rx = Math.max(0.08, 12.5 * Math.abs(2.0 * k - 1.0));
-  return `M 16 3.5 A 12.5 12.5 0 0 ${outerSweep} 16 28.5 A ${rx.toFixed(2)} 12.5 0 0 ${terminatorSweep} 16 3.5 Z`;
 }

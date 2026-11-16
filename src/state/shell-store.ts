@@ -30,7 +30,6 @@ export const NOTE_TRADES: readonly NoteTrade[] = ['architect', 'builder', 'elect
 const LS_DEV_MODE = 'hus.ui.devMode';
 const LS_UNITS = 'hus.ui.units';
 const LS_HELP_SEEN = 'hus.ui.helpSeen.v1';
-const LS_NOTE_META = 'hus.ui.noteMeta.v1';
 
 /**
  * Below 1040 px (tablets in portrait/square, Pixel Fold unfolded ~760-840 px, phones),
@@ -246,57 +245,6 @@ export function showToast(text: string, durationMs = 2600): void {
 export interface NoteMeta {
   readonly trade?: NoteTrade;
   readonly resolved?: boolean;
-}
-
-function isNoteTrade(value: unknown): value is NoteTrade {
-  return typeof value === 'string' && NOTE_TRADES.some((t) => t === value);
-}
-
-function loadNoteMeta(): Readonly<Record<string, NoteMeta>> {
-  const raw = readLocal(LS_NOTE_META);
-  if (!raw) return {};
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== 'object' || parsed === null) return {};
-    const out: Record<string, NoteMeta> = {};
-    for (const [key, value] of Object.entries(parsed)) {
-      if (typeof value !== 'object' || value === null) continue;
-      const trade: unknown = Reflect.get(value, 'trade');
-      const resolved: unknown = Reflect.get(value, 'resolved');
-      out[key] = {
-        ...(isNoteTrade(trade) ? { trade } : {}),
-        ...(resolved === true ? { resolved: true } : {}),
-      };
-    }
-    return out;
-  } catch {
-    return {};
-  }
-}
-
-export const noteMeta: Signal<Readonly<Record<string, NoteMeta>>> = signal(loadNoteMeta());
-
-export function updateNoteMeta(id: number, patch: Partial<NoteMeta>): void {
-  const key = String(id);
-  const prev = noteMeta.value[key] ?? {};
-  const merged: NoteMeta = { ...prev, ...patch };
-  const next: Record<string, NoteMeta> = { ...noteMeta.value, [key]: merged };
-  noteMeta.value = next;
-  writeLocal(LS_NOTE_META, JSON.stringify(next));
-}
-
-export function pruneNoteMeta(liveIds: readonly number[]): void {
-  const live = new Set(liveIds.map(String));
-  const current = noteMeta.value;
-  const keys = Object.keys(current);
-  if (keys.every((k) => live.has(k))) return;
-  const next: Record<string, NoteMeta> = {};
-  for (const k of keys) {
-    const meta = current[k];
-    if (live.has(k) && meta) next[k] = meta;
-  }
-  noteMeta.value = next;
-  writeLocal(LS_NOTE_META, JSON.stringify(next));
 }
 
 interface BeforeInstallPromptEvent extends Event {

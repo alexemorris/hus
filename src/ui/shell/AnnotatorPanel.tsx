@@ -215,7 +215,7 @@ export function AnnotatorPanel({ annotator }: AnnotatorPanelProps): JSX.Element 
             >
               <span class={`hud-rocker-dot${!isActive ? ' off-state' : ''}`} />
               <span class="hud-rocker-label">
-                {isActive ? `Annotate: On · ${toolLabel}` : 'Annotate mode: Off'}
+                {isActive ? `Annotate: on · ${toolLabel}` : 'Annotate mode: off'}
               </span>
               <span class="hud-rocker-hint">Shift+Click / A</span>
             </button>
@@ -292,7 +292,7 @@ export function AnnotatorPanel({ annotator }: AnnotatorPanelProps): JSX.Element 
             <div class="annotator-sub-box annotator-move-box">
               <div class="annotator-sub-head">
                 <span class="annotator-sub-title">
-                  {gizmoMode === 'rotate' ? 'ROTATE / MOVE OBJECT' : 'MOVE / ROTATE OBJECT'}
+                  {gizmoMode === 'rotate' ? 'Rotate / move object' : 'Move / rotate object'}
                 </span>
                 <div class="annotator-gizmo-switch">
                   <button
@@ -442,7 +442,7 @@ export function AnnotatorPanel({ annotator }: AnnotatorPanelProps): JSX.Element 
           {showMeasureBox && (
             <div class="annotator-sub-box annotator-measure-box">
               <div class="annotator-sub-head">
-                <span class="annotator-sub-title">3D MEASURE SPAN</span>
+                <span class="annotator-sub-title">3D measure span</span>
                 <div class="annotator-measure-opts">
                   <label
                     class="annotator-snap-label"
@@ -462,7 +462,7 @@ export function AnnotatorPanel({ annotator }: AnnotatorPanelProps): JSX.Element 
                       title="Cancel active measurement"
                       onClick={() => annotator.cancelMeasurement()}
                     >
-                      Cancel Pt A
+                      Cancel point A
                     </button>
                   )}
                 </div>
@@ -486,7 +486,7 @@ export function AnnotatorPanel({ annotator }: AnnotatorPanelProps): JSX.Element 
                         </span>
                       </div>
                       <div class="annotator-editor-meta">
-                        {`Pt A [${liveMeasure.startPoint?.join(', ')}] → Pt B [${liveMeasure.currentEndPoint.join(', ')}] · ΔX=${liveMeasure.deltaXYZ[0]}m, ΔY=${liveMeasure.deltaXYZ[1]}m, ΔZ=${liveMeasure.deltaXYZ[2]}m`}
+                        {`Point A [${liveMeasure.startPoint?.join(', ')}] → Point B [${liveMeasure.currentEndPoint.join(', ')}] · ΔX=${liveMeasure.deltaXYZ[0]}m, ΔY=${liveMeasure.deltaXYZ[1]}m, ΔZ=${liveMeasure.deltaXYZ[2]}m`}
                       </div>
                     </div>
                   </>
@@ -592,7 +592,7 @@ export function AnnotatorPanel({ annotator }: AnnotatorPanelProps): JSX.Element 
                   kind === 'measure' && r.measurement
                     ? r.note.trim() ||
                       (r.measurement.targetMeasurement?.trim()
-                        ? `Span ${r.measurement.distanceM}m → Real/Target: ${r.measurement.targetMeasurement.trim()}`
+                        ? `Span ${r.measurement.distanceM}m → Real / target: ${r.measurement.targetMeasurement.trim()}`
                         : `Measured span: ${r.measurement.distanceM}m (${(r.measurement.distanceM * 100).toFixed(1)}cm)`)
                     : r.note.trim() || '(Click to add a note)';
                 const metaText =

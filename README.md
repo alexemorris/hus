@@ -21,7 +21,7 @@ Hus (`husjs`) is a TypeScript library for modelling buildings, rooms, lighting, 
 | [![Georgian Country House](./docs/images/georgian-house.webp)](https://alexemorris.github.io/hus/) | [![Stahl House](./docs/images/stahl-house.webp)](https://alexemorris.github.io/hus/?house=stahl-house) | [![Apartment](./docs/images/apartment.webp)](https://alexemorris.github.io/hus/?house=simple-flat) |
 | `examples/simple-house` | `examples/stahl-house` | `examples/simple-flat` |
 
-## Getting started
+## Quick start
 
 ```bash
 git clone https://github.com/alexemorris/hus.git

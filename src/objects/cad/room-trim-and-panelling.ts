@@ -8,7 +8,6 @@ import {
   createMeshAccumulator,
   createSkirtingProfile,
   cutawayDescriptorKey,
-  emitOrientedTri,
   emitQuad3D,
   evaluateJointMiterPoint,
   normalizeMouldingProfilePoints,
@@ -1415,7 +1414,6 @@ export function createPanellingRun(options: PanellingRunOptions): PanellingRunRe
   }
 
   tagCollisionRole(rootGroup, collisionRole);
-  void emitOrientedTri;
 
   return Object.assign(rootGroup, {
     cutawayMeshes: cutawayMeshes as readonly THREE.Mesh[],

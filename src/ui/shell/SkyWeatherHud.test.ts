@@ -187,7 +187,7 @@ describe('SkyWeatherHud Preact widget & popovers (jsdom-lite check)', () => {
     expect(isWeatherPresetActive('partly_cloudy', clearWeather)).toBe(false);
 
     expect(effectiveCloudCoverPct(partly42)).toBe(42);
-    expect(formatHudWeatherBadge(partly42)).toBe('42% Clouds');
+    expect(formatHudWeatherBadge(partly42)).toBe('42% clouds');
     expect(isWeatherPresetActive('partly_cloudy', partly42)).toBe(true);
     expect(isWeatherPresetActive('clear', partly42)).toBe(false);
     expect(isWeatherPresetActive('overcast', partly42)).toBe(false);
@@ -364,8 +364,8 @@ describe('SkyWeatherHud Preact widget & popovers (jsdom-lite check)', () => {
       skyHudPopover.value = 'sun';
       const sunJson = JSON.stringify(evalComponent());
       expect(sunJson).toContain('34.100°N, 118.370°W · PDT');
-      expect(sunJson).toContain('Local Civil Time');
-      expect(sunJson).toContain('LIVE CLOCK');
+      expect(sunJson).toContain('Local civil time');
+      expect(sunJson).toContain('Live clock');
       expect(sunJson).not.toContain('Cotswolds');
       expect(sunJson).not.toContain('OX7');
       expect(sunJson).not.toContain('LIVE UK');
@@ -375,7 +375,7 @@ describe('SkyWeatherHud Preact widget & popovers (jsdom-lite check)', () => {
       const weatherJson = JSON.stringify(evalComponent());
       expect(weatherJson).toContain('Open-Meteo Live');
       expect(weatherJson).toContain('Clear Sky');
-      expect(weatherJson).toContain('LIVE WEATHER');
+      expect(weatherJson).toContain('Live weather');
       expect(weatherJson).not.toContain('Cotswolds');
       expect(weatherJson).not.toContain('OX7');
       expect(weatherJson).not.toContain('UKV');

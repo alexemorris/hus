@@ -525,7 +525,7 @@ export function createAgedRoofTruss(options: CreateAgedRoofTrussOptions): AgedRo
     return res.mesh;
   };
 
-  // 1. Tie-beam (for 'king-post') or raised collar (for 'collar')
+  // Tie-beam (for 'king-post') or raised collar (for 'collar')
   const rafterBaseY = kind === 'king-post' ? tieH * 0.85 : 0;
   const apexY = (kind === 'king-post' ? tieH : 0) + rise;
 
@@ -578,7 +578,7 @@ export function createAgedRoofTruss(options: CreateAgedRoofTrussOptions): AgedRo
     );
   }
 
-  // 2. Principal rafters meeting at vertical plumb cut (or abutting king-post cheeks)
+  // Principal rafters meeting at vertical plumb cut (or abutting king-post cheeks)
   const kpHalfU = kind === 'king-post' ? kpWidth * 0.46 : 0;
   const eaveInU = Math.max(0.2, halfSpan - rafDepth * 0.35);
 
@@ -606,7 +606,7 @@ export function createAgedRoofTruss(options: CreateAgedRoofTrussOptions): AgedRo
     }
   );
 
-  // 3. King-post & diagonal raking struts
+  // King-post & diagonal raking struts
   if (kind === 'king-post') {
     const kpBotY = tieH - 0.004;
     const kpTopY = Math.max(kpBotY + 0.16, apexY - rafDepth * 0.12);
@@ -665,7 +665,7 @@ export function createAgedRoofTruss(options: CreateAgedRoofTrussOptions): AgedRo
     }
   }
 
-  // 4. Optional wall-post knee braces under tie-beam ends
+  // Optional wall-post knee braces under tie-beam ends
   if (options.includeKneeBraces && kind === 'king-post') {
     const drop = Math.max(0.28, options.kneeBraceDropM ?? 0.55);
     const run = drop * 0.88;

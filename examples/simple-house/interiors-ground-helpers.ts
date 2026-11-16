@@ -80,12 +80,18 @@ export function addBox(
   name: string,
   size: readonly [number, number, number],
   center: readonly [number, number, number],
-  material: THREE.Material
+  material: THREE.Material,
+  options?: { readonly castShadow?: boolean; readonly tileW?: number; readonly tileH?: number }
 ): THREE.Mesh {
-  const mesh = new THREE.Mesh(prepGeo(new THREE.BoxGeometry(size[0], size[1], size[2])), material);
+  const rawGeo = new THREE.BoxGeometry(size[0], size[1], size[2]);
+  const geo =
+    options?.tileW !== undefined || options?.tileH !== undefined
+      ? applyMetricBoxUVs(rawGeo, { tileW: options.tileW ?? 1, tileH: options.tileH ?? 1 })
+      : rawGeo;
+  const mesh = new THREE.Mesh(prepGeo(geo), material);
   mesh.name = name;
   mesh.position.set(center[0], center[1], center[2]);
-  mesh.castShadow = true;
+  mesh.castShadow = options?.castShadow ?? true;
   mesh.receiveShadow = true;
   parent.add(mesh);
   return mesh;

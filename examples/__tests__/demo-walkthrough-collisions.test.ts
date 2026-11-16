@@ -245,11 +245,9 @@ function buildPostBatchWalkthroughRig(house: Pick<typeof simpleHouse, 'createSce
       }
       // Face target directly: camera forward is (-sin(yaw), -cos(yaw))
       const desiredYaw = Math.atan2(-dx, -dz);
-      const curYaw = (walkthrough as unknown as { yawRad: number }).yawRad;
       (walkthrough as unknown as { yawRad: number; targetYawRad: number }).yawRad = desiredYaw;
       (walkthrough as unknown as { yawRad: number; targetYawRad: number }).targetYawRad =
         desiredYaw;
-      void curYaw;
       walkthrough.setTouchMoveVector(0, 1, false);
       stepFrame();
     }

@@ -8,6 +8,7 @@ import {
   getVitreousChinaMaterial,
 } from './bathroom-materials.ts';
 import { prepGeo } from '../shared/scene-helpers.ts';
+import { buildHorizontalToDownwardArmCurve } from './perrin-rowe-taps.ts';
 import type {
   ArmstrongConcealedShowerSetOptions,
   ArmstrongDeck3HoleBasinMixerOptions,
@@ -35,69 +36,6 @@ import type {
  * starting horizontally along `+Z` at `(0, startY, startZ)` and turning cleanly straight down
  * to `(0, endY, reachZ)`. Avoids spline overshoot on machined cylindrical spouts and arms.
  */
-function buildHorizontalToDownwardArmCurve(
-  startY: number,
-  startZ: number,
-  reachZ: number,
-  bendRadius: number,
-  endY: number
-): THREE.CurvePath<THREE.Vector3> {
-  const path = new THREE.CurvePath<THREE.Vector3>();
-  const r = Math.min(
-    bendRadius,
-    Math.max(0.008, (reachZ - startZ) * 0.48),
-    Math.max(0.008, (startY - endY) * 0.85)
-  );
-  const tangentZ = reachZ - r;
-  const arcCenterY = startY - r;
-
-  if (tangentZ > startZ + 0.001) {
-    path.add(
-      new THREE.LineCurve3(
-        new THREE.Vector3(0, startY, startZ),
-        new THREE.Vector3(0, startY, tangentZ)
-      )
-    );
-  }
-
-  // Approximate exact circular quarter-arc with two cubic Beziers (max radial error < 0.03%)
-  const k = 0.5522847498 * r * 0.5;
-  const midAngle = Math.PI * 0.25;
-  const sin45 = Math.sin(midAngle);
-  const cos45 = Math.cos(midAngle);
-  const p0 = new THREE.Vector3(0, startY, tangentZ);
-  const pMid = new THREE.Vector3(0, arcCenterY + r * cos45, tangentZ + r * sin45);
-  const pEnd = new THREE.Vector3(0, arcCenterY, reachZ);
-
-  // Tangent unit vectors along quarter-arc from top (0,+1) -> 45° (-sin45,+cos45) -> vertical (-1,0)
-  const t45Y = -sin45;
-  const t45Z = cos45;
-  const bez1 = new THREE.CubicBezierCurve3(
-    p0,
-    new THREE.Vector3(0, startY, tangentZ + k * 0.92),
-    new THREE.Vector3(0, pMid.y - t45Y * k * 0.92, pMid.z - t45Z * k * 0.92),
-    pMid
-  );
-  const bez2 = new THREE.CubicBezierCurve3(
-    pMid,
-    new THREE.Vector3(0, pMid.y + t45Y * k * 0.92, pMid.z + t45Z * k * 0.92),
-    new THREE.Vector3(0, arcCenterY + k * 0.92, reachZ),
-    pEnd
-  );
-  path.add(bez1);
-  path.add(bez2);
-
-  if (arcCenterY > endY + 0.001) {
-    path.add(
-      new THREE.LineCurve3(
-        new THREE.Vector3(0, arcCenterY, reachZ),
-        new THREE.Vector3(0, endY, reachZ)
-      )
-    );
-  }
-  return path;
-}
-
 /**
  * Builds a stepped circular wall rose (back face at `y = 0`, front at `y = totalDepth` before rotation;
  * rotate `rotation.x = Math.PI / 2` to sit flush on `z = 0` projecting along `+Z`).
