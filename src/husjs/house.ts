@@ -710,11 +710,9 @@ export async function mountHouse<TSecurity extends SecurityOverlay3D = SecurityO
   const [
     { DevDrawer, mountDevTools },
     { mountAppShell },
-    { hasSeenHelp, openHelp },
   ] = await Promise.all([
     import('../ui/dev/mount-dev-tools.ts'),
     import('../ui/shell/mount-shell.tsx'),
-    import('../state/shell-store.ts'),
   ]);
 
   await progress.advancePhase('preflight', 0.85, 'Connecting to the smart-home bus…');
@@ -1085,13 +1083,6 @@ export async function mountHouse<TSecurity extends SecurityOverlay3D = SecurityO
   }
   loading.finish();
   let disposed = false;
-  let helpRafId = 0;
-  if (!hasSeenHelp()) {
-    helpRafId = window.requestAnimationFrame(() => {
-      helpRafId = 0;
-      if (!disposed) openHelp(0);
-    });
-  }
 
   const IDLE_TICKS_BEFORE_SLEEP = 3;
   const PRECIP_PACE_INTERVAL_MS = 33;
@@ -1200,10 +1191,6 @@ export async function mountHouse<TSecurity extends SecurityOverlay3D = SecurityO
       if (rafId !== 0) {
         cancelAnimationFrame(rafId);
         rafId = 0;
-      }
-      if (helpRafId !== 0) {
-        cancelAnimationFrame(helpRafId);
-        helpRafId = 0;
       }
       disposeZoomGuard();
       removeRenderListener();

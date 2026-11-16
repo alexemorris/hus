@@ -1,5 +1,5 @@
 import type { JSX } from 'preact';
-import { useEffect, useRef } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { RoomZoneId } from '../../core/types/topology.ts';
 import type { RoomVariationGroupInfo } from '../../core/types/variations.ts';
 import {
@@ -17,9 +17,10 @@ function VariationGroupCard(props: {
   readonly group: RoomVariationGroupInfo;
   readonly showFocusButton: boolean;
   readonly compact?: boolean;
+  readonly onAfterSelect?: () => void;
 }): JSX.Element {
   const ctl = useShell();
-  const { group, showFocusButton, compact = false } = props;
+  const { group, showFocusButton, compact = false, onAfterSelect } = props;
   const activeOption = group.options.find((o) => o.id === group.activeOptionId) ?? group.options[0];
   const isModified = group.activeOptionId !== group.defaultOptionId;
 
@@ -50,6 +51,7 @@ function VariationGroupCard(props: {
               onClick={() => {
                 ctl.highlightRoom(null);
                 ctl.selectRoom(group.zoneId!);
+                onAfterSelect?.();
               }}
             >
               <Icon name="target" size={13} />
@@ -91,7 +93,10 @@ function VariationGroupCard(props: {
               aria-checked={isActive}
               class={`shell-var-pill${isActive ? ' is-active' : ''}`}
               title={opt.description ? `${opt.label} — ${opt.description}` : opt.label}
-              onClick={() => ctl.selectVariationOption(group.id, opt.id)}
+              onClick={() => {
+                ctl.selectVariationOption(group.id, opt.id);
+                onAfterSelect?.();
+              }}
             >
               {opt.label}
             </button>
@@ -227,6 +232,9 @@ export function VariationsPopover(): JSX.Element | null {
             key={group.id}
             group={group}
             showFocusButton={Boolean(group.zoneId && group.zoneId !== roomId)}
+            onAfterSelect={() => {
+              variationsPopoverOpen.value = false;
+            }}
           />
         ))}
       </div>
@@ -291,15 +299,17 @@ export function RoomVariationsSection(props: {
  */
 export function FloatingRoomVariationHud(): JSX.Element | null {
   const ctl = useShell();
+  const [dismissedRoomId, setDismissedRoomId] = useState<RoomZoneId | null>(null);
   const groups = roomVariations.value;
   if (groups.length === 0) return null;
 
   const roomId = currentRoomId.value;
   if (!roomId) return null;
 
-  // Hide when RoomPanel is already open on screen or the TopBar popover is open
-  if (variationsPopoverOpen.value) return null;
-  if (roomPanelOpen.value && viewMode.value !== 'walk') return null;
+  // Keep 1st-person walkthrough unobstructed; also hide when RoomPanel or TopBar popover is open
+  if (viewMode.value === 'walk') return null;
+  if (variationsPopoverOpen.value || roomPanelOpen.value) return null;
+  if (dismissedRoomId === roomId) return null;
 
   const roomGroups = groups.filter((g) => g.zoneId === roomId);
   if (roomGroups.length === 0) return null;
@@ -358,6 +368,15 @@ export function FloatingRoomVariationHud(): JSX.Element | null {
           +{roomGroups.length - 1}
         </button>
       )}
+      <button
+        type="button"
+        class="shell-icon-btn shell-icon-btn-sm"
+        title="Dismiss variation switcher"
+        aria-label="Dismiss variation switcher"
+        onClick={() => setDismissedRoomId(roomId)}
+      >
+        <Icon name="close" size={13} />
+      </button>
     </div>
   );
 }

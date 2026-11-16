@@ -95,10 +95,17 @@ describe('Viewer Variations UI (<TopBarVariationsButton />, <VariationsPopover /
       expect(topBtn?.getAttribute('title')).toContain('Full Cupboards');
       expect(topBtn?.getAttribute('aria-label')).toContain('Full Cupboards');
 
-      // Clicking TopBar button opens popover
+      // Clicking TopBar button opens popover, and selecting an option inside the popover auto-closes it
       topBtn!.dispatchClick();
       await flushMicrotasks();
-      expect(rootWithVars.querySelector('.shell-var-popover')).not.toBeNull();
+      const pop = rootWithVars.querySelector('.shell-var-popover');
+      expect(pop).not.toBeNull();
+      const popPills = pop?.querySelectorAll('.shell-var-pill') ?? [];
+      expect(popPills).toHaveLength(2);
+      popPills[0]!.dispatchClick();
+      await flushMicrotasks();
+      expect(varApi.variations?.getActiveOptionId('gallery-east-wall')).toBe('shelves');
+      expect(rootWithVars.querySelector('.shell-var-popover')).toBeNull();
 
       varCtl.dispose();
       render(null, rootWithVars as unknown as HTMLElement);

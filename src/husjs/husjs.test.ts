@@ -199,6 +199,7 @@ describe('mountHouse, PropertyScene & WalkthroughController lifecycle & async sa
       const canvasEl = hostDiv.querySelector('#three-canvas') as FakeCanvasElement;
       expect(createdScene).not.toBeNull();
       expect(shellRoot.children.length).toBeGreaterThan(0);
+      expect(shellRoot.querySelector('.shell-help-backdrop')).toBeNull();
       expect(dom.resizeObserver.observes).toBe(1);
       expect(fakeWin.countListeners()).toBeGreaterThan(0);
       expect(fakeDoc.countListeners()).toBeGreaterThan(0);

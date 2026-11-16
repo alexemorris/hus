@@ -3233,7 +3233,7 @@ body.is-annotating .shell-toast {
   position: fixed;
   top: calc(var(--shell-topbar-h, 52px) + 10px);
   right: 12px;
-  z-index: 48;
+  z-index: 62;
   width: min(352px, calc(100vw - 24px));
   max-height: min(72vh, 540px);
   display: flex;
