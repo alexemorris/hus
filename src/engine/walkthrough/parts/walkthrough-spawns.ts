@@ -69,9 +69,9 @@ export interface WalkthroughCutsceneController {
 
 /** Scene callbacks a house's cutscenes may drive. */
 export interface WalkthroughCutsceneHost {
-  readonly triggerGolfSimulatorShot?: () => boolean;
-  readonly getGolfSimulatorShotElapsedSec?: () => number | null;
-  readonly getGolfSimulatorPrompt?: () => string | null;
+  readonly triggerCustomInteraction?: (id: string) => boolean;
+  readonly getCustomInteractionElapsedSec?: (id: string) => number | null;
+  readonly getCustomInteractionPrompt?: (id: string) => string | null;
 }
 
 /** How a house wants one candidate mesh treated by the walkthrough collision solver. */

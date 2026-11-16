@@ -150,7 +150,7 @@ const CATEGORY_TOKENS: Readonly<Record<Exclude<TradeCategory, 'other'>, Category
       'glassware', 'mug', 'book', 'books', 'magazine', 'fruit', 'lemon', 'lemons', 'apple',
       'orange', 'flower', 'flowers', 'bouquet', 'houseplant', 'certificate', 'certificates', 'photo',
       'photograph', 'whiteboard', 'towel', 'towels', 'basket', 'trophy', 'helmet', 'ball', 'balls',
-      'club', 'clubs', 'golfbag', 'tourbag', 'bag', 'headcover', 'wine', 'champagne', 'pellegrino',
+      'club', 'clubs', 'tourbag', 'bag', 'headcover', 'wine', 'champagne', 'pellegrino',
       'water', 'tray', 'bowl', 'tapestry', 'mirror', 'decanter', 'pint', 'foam', 'glasses', 'teapot',
       'plates', 'cutlery', 'cookbook', 'hat', 'coat', 'shoes', 'boots', 'umbrella', 'tablecloth',
       'napkin', 'duvet', 'quilt', 'blanket', 'linen', 'sheet', 'figurine', 'globe', 'records', 'vinyl',
@@ -432,7 +432,7 @@ function classifyUserData(u: Readonly<Record<string, unknown>>): TradeCategory |
   ) {
     return 'external';
   }
-  if (readBool(u, 'isFrameTV') || readBool(u, 'isGolfSimulatorDynamic')) return 'furniture';
+  if (readBool(u, 'isFrameTV') || readBool(u, 'isDynamicInteractionObject') || readBool(u, 'isDynamicObject')) return 'furniture';
   if (readBool(u, 'circuitId')) return 'lighting';
   if (readBool(u, 'isBifoldDoor') || u['bifoldRole'] !== undefined) return 'envelope';
   return undefined;

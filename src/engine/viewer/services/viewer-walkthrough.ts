@@ -47,9 +47,9 @@ export function createViewerWalkthrough(host: ViewerWalkthroughHost): Walkthroug
     describeInteractable: (mesh) =>
       host.getInteractions().describeInteractable(mesh, host.isBifoldsOpen()),
     onInteractWithMesh: (mesh) => host.onInteractWithMesh(mesh),
-    onTriggerGolfSimulatorShot: () => rendered(host.getInteractions().triggerGolfSimulatorShot()),
-    getGolfSimulatorShotElapsedSec: () => host.getInteractions().getGolfSimulatorShotElapsedSec(),
-    getGolfSimulatorPrompt: () => host.getInteractions().getGolfSimulatorPromptLabel(),
+    onTriggerCustomInteraction: (id) => rendered(host.getInteractions().triggerCustomInteraction(id)),
+    getCustomInteractionElapsedSec: (id) => host.getInteractions().getCustomInteractionElapsedSec(id),
+    getCustomInteractionPrompt: (id) => host.getInteractions().getCustomInteractionPromptLabel(id),
     getActiveFirstPersonPose: () => host.getInteractions().getActiveFirstPersonPose(),
     cancelActiveFirstPerson: () => rendered(host.getInteractions().cancelActiveFirstPerson()),
     getProximityAnimatedInteractable: (footX, footY, footZ) => {

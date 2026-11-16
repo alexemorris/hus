@@ -457,7 +457,7 @@ export class RoomLodController {
       /wall|ceiling|roof|window|sill|lintel|beam|joist|rafter|purlin|truss|brick|plaster|cladding|fascia|soffit|gutter|downpipe|casement|glazing|mullion|frame|threshold|plinth|doorheader/i.test(
         obj.name
       ) &&
-      !/sideboard|wardrobe|cabinet|cupboard|bookcase|shelf|shelving|sofa|bed|table|island|piano|roland|golf|pooltable|stove|radiator|curtain|rug|tv|mirror|picture|art|lamp|chandelier|pendant/i.test(
+      !/sideboard|wardrobe|cabinet|cupboard|bookcase|shelf|shelving|sofa|bed|table|island|piano|roland|simulator|pooltable|stove|radiator|curtain|rug|tv|mirror|picture|art|lamp|chandelier|pendant/i.test(
         obj.name
       );
 

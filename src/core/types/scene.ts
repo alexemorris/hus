@@ -67,7 +67,7 @@ export interface InteractiveUserData {
   readonly ufhZoneId?: 'ufhZone1' | 'ufhZone2' | 'ufhZone3' | 'ufhZone4';
   readonly isKnxTempSensor?: boolean;
   readonly isClimbableLadder?: boolean;
-  readonly isGolfSimulatorShot?: boolean;
+  readonly isCustomInteraction?: boolean;
   readonly zoneSceneSwitchZoneId?: RoomZoneId;
 }
 

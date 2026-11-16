@@ -863,7 +863,7 @@ export function batchContainerSubtree(
 
 /**
  * Batches static child meshes inside rigid-body dynamic assemblies:
- * - Sliding drawers (`drawerRole === 'group'`, excluding fade-out golf bag materials)
+ * - Sliding drawers (`drawerRole === 'group'`, excluding dynamic opacity fade materials)
  * - Hinged multi-panel doors (`doorRole === 'pivot'`)
  * - Bifold door leaves (`bifoldPanels[i].group`)
  * - Rigid dining-table sub-groups (`chair.*`, `placeSetting.*`, `extendedSeats`)
@@ -960,7 +960,8 @@ export function batchRigidDynamicGroups(
 
       const u = (node.userData ?? {}) as Record<string, unknown>;
       if (
-        u.isGolfSimulatorDynamic ||
+        u.isDynamicInteractionObject ||
+        u.isDynamicObject ||
         u.pulleyMaidRole === 'pulleyWheel' ||
         u.pulleyMaidRole === 'vertRope'
       ) {
@@ -999,10 +1000,10 @@ export function batchRigidDynamicGroups(
               !mat.transparent &&
               mat !== indicatorMats?.tvScreenMat &&
               !Boolean(
-                (mat.userData as Record<string, unknown> | undefined)?.isDynamicGolfScreen
+                (mat.userData as Record<string, unknown> | undefined)?.isDynamicScreenMaterial
               ) &&
               !Boolean(
-                (mat.userData as Record<string, unknown> | undefined)?.isDynamicGolfStatusLight
+                (mat.userData as Record<string, unknown> | undefined)?.isDynamicEmissiveMaterial
               )
             ) {
               const key = `${mat.uuid}|${intKey}`;
@@ -1037,10 +1038,10 @@ export function batchRigidDynamicGroups(
                 m.transparent ||
                 m === indicatorMats?.tvScreenMat ||
                 Boolean(
-                  (m.userData as Record<string, unknown> | undefined)?.isDynamicGolfScreen
+                  (m.userData as Record<string, unknown> | undefined)?.isDynamicScreenMaterial
                 ) ||
                 Boolean(
-                  (m.userData as Record<string, unknown> | undefined)?.isDynamicGolfStatusLight
+                  (m.userData as Record<string, unknown> | undefined)?.isDynamicEmissiveMaterial
                 )
               ) {
                 allValid = false;

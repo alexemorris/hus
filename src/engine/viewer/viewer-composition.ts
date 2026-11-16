@@ -300,7 +300,7 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
       content,
       profile,
       invalidator: renderer,
-      startGolfSimulatorShot: () => this.startGolfSimulatorShot(),
+      startCutscene: (cutsceneId) => this.startCutscene(cutsceneId),
       startFirstPersonInteractable: (interactableId) =>
         this.startFirstPersonInteractable(interactableId),
       onObjectInteraction,
@@ -803,14 +803,14 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
     );
   }
 
-  private startGolfSimulatorShot(): void {
-    const cutsceneSpawn = this.profile.cutsceneEntrySpawns?.['golfSimulatorShot'];
+  private startCutscene(cutsceneId: string): void {
+    const cutsceneSpawn = this.profile.cutsceneEntrySpawns?.[cutsceneId];
     if (!this.walkthrough.isActive()) {
       if (this.annotations.isActive()) this.annotations.controller.setAnnotationMode(false);
       this.renderer.resetHistory();
       this.walkthrough.enter(this.camera.getPoseSnapshot(), cutsceneSpawn);
     }
-    this.walkthrough.beginCutscene('golfSimulatorShot');
+    this.walkthrough.beginCutscene(cutsceneId);
   }
 
   private startFirstPersonInteractable(_interactableId: string): void {
@@ -1415,7 +1415,9 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
 
     this.scene.traverse((obj) => {
       if (!(obj instanceof THREE.Mesh)) return;
-      const meshDynamic = Boolean(obj.userData?.isGolfSimulatorDynamic);
+      const meshDynamic = Boolean(
+        obj.userData?.isDynamicInteractionObject || obj.userData?.isDynamicObject
+      );
       const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
       for (let i = 0; i < mats.length; i++) {
         const m = mats[i];
@@ -1602,11 +1604,11 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
       registerWarmupMaterial(desc, mat);
 
       // Materials whose transparency/depthWrite toggles at runtime (ceiling cutaway light fade or
-      // sliding golf bag fade) need BOTH opaque and transparent blend GPURenderPipelines precompiled.
+      // dynamic opacity fade props) need BOTH opaque and transparent blend GPURenderPipelines precompiled.
       const matU = mat.userData as Record<string, unknown> | undefined;
       if (
         matU?.cutawayLightOpacity !== undefined ||
-        matU?.isDynamicGolfBagMaterial === true
+        matU?.isDynamicOpacityMaterial === true
       ) {
         const toggled = mat.clone();
         toggled.userData = { ...mat.userData };

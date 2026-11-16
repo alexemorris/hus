@@ -19,8 +19,8 @@ export interface DeviceServiceHost<TSecurity extends SecurityOverlay3D> {
   readonly content: PropertySceneContent<TSecurity>;
   readonly profile: PropertySceneProfile<TSecurity>;
   readonly invalidator: RenderInvalidator;
-  /** Enters walkthrough at the golf bay and starts the first-person shot. */
-  startGolfSimulatorShot(): void;
+  /** Enters walkthrough if needed and starts a registered cutscene. */
+  startCutscene?(cutsceneId: string): void;
   /** Enters walkthrough if needed when a first-person workout interactable starts. */
   startFirstPersonInteractable?(interactableId: string): void;
   /** Home / integration click hook; KNX-backed pseudo-devices route through it. */
@@ -87,13 +87,6 @@ export class DeviceService<TSecurity extends SecurityOverlay3D = SecurityOverlay
   }
 
   public handleInteractable(interactableId: string): boolean {
-    if (interactableId === 'golf-simulator-shot') {
-      if (!this.interactions.triggerGolfSimulatorShot()) return false;
-      this.host.startGolfSimulatorShot();
-      this.host.invalidator.requestRender();
-      this.changed.emit();
-      return true;
-    }
     // KNX-backed pseudo-devices (car-gates, kitchen-bifolds, frame-tv) take the same
     // path as a 3D click so the bus stays the source of truth.
     const pseudo = this.interactions.getPseudoDeviceUserData(interactableId);
@@ -105,6 +98,10 @@ export class DeviceService<TSecurity extends SecurityOverlay3D = SecurityOverlay
     }
     const handled = this.interactions.handleInteractableClick(interactableId);
     if (handled) {
+      const cutsceneId = this.interactions.getCustomInteractionCutsceneId(interactableId);
+      if (cutsceneId) {
+        this.host.startCutscene?.(cutsceneId);
+      }
       if (this.interactions.getActiveFirstPersonPose() !== null) {
         this.host.startFirstPersonInteractable?.(interactableId);
       }

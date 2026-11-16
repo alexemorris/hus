@@ -231,7 +231,7 @@ export class SceneBatchOptimizer {
         prebuildGeometryBvh(obj.geometry, 64);
         return;
       }
-      if (!obj.userData?.isGolfSimulatorDynamic) {
+      if (!obj.userData?.isDynamicInteractionObject && !obj.userData?.isDynamicObject) {
         if (accelerateStaticMeshRaycast(obj, 64)) {
           this.store.registerBvhAcceleratedMesh(obj);
         }

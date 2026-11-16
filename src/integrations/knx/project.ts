@@ -65,7 +65,7 @@ export interface KnxActuatorChannelParams {
 export interface KnxLightingZone {
   readonly id: RoomZoneId;
   readonly name: string;
-  /** Extra natural-language names ("barn", "golf room") for the AI assistant resolver. */
+  /** Extra natural-language names ("barn", "games room") for the AI assistant resolver. */
   readonly aliases?: readonly string[];
   /** Channels recalled by the zone scenes / night / full objects. */
   readonly circuits: readonly CircuitId[];

@@ -52,7 +52,6 @@ export type OutbuildingCircuitId =
   | 'gymWallAndCoveLights'
   | 'garageHighBayLights'
   | 'garageBenchAndShower'
-  | 'barnTrussAndSimHalo'
   | 'barnBarsAndLamps5A'
   | 'mezzanineSconcesAndAmbient'
   | 'mezzanineLamps5A'
@@ -66,7 +65,6 @@ export type OutbuildingCircuitId =
   | 'garageShowerLights'
   | 'garageTrussSpots'
   | 'storeLoftLeds'
-  | 'golfSimHalo'
   | 'barnCoveLeds'
   | 'barnWallSconces'
   | 'barnStairLeds'
@@ -93,7 +91,8 @@ export type CircuitId =
   | 'entranceHallUplights'
   | OutdoorCircuitId
   | ExteriorFeatureCircuitId
-  | OutbuildingCircuitId;
+  | OutbuildingCircuitId
+  | (string & {});
 
 export type SceneCircuitLevels = Record<KitchenSceneCircuitId, number>;
 export type OutdoorCircuitLevels = Record<OutdoorCircuitId, number>;

@@ -297,8 +297,8 @@ export function isDynamicMaterial(
   const matU = mat.userData as Record<string, unknown> | undefined;
   if (
     mutableMaterials.has(mat) ||
-    Boolean(matU?.isDynamicGolfScreen) ||
-    Boolean(matU?.isDynamicGolfStatusLight) ||
+    Boolean(matU?.isDynamicScreenMaterial) ||
+    Boolean(matU?.isDynamicEmissiveMaterial) ||
     matU?.cutawayLightOpacity !== undefined
   ) {
     return true;
@@ -334,8 +334,8 @@ export function isNonBatchableMaterial(
   if (mat === indicatorMats?.tvScreenMat) return true;
   const matU = mat.userData as Record<string, unknown> | undefined;
   return (
-    Boolean(matU?.isDynamicGolfScreen) ||
-    Boolean(matU?.isDynamicGolfStatusLight) ||
+    Boolean(matU?.isDynamicScreenMaterial) ||
+    Boolean(matU?.isDynamicEmissiveMaterial) ||
     matU?.isMirrorMaterial === true
   );
 }

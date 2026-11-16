@@ -220,7 +220,6 @@ function shouldSkipSubtree(node: THREE.Object3D): boolean {
     if (
       name.endsWith('.groundCeiling') ||
       name.endsWith('.roof') ||
-      name.includes('turfMat') ||
       name.includes('ufh') ||
       name.includes('grapeVineCanopy') ||
       name.includes('dryStoneRelief') ||
@@ -945,7 +944,7 @@ export class WalkthroughDoorBargeAndCollisionSolver {
     if (rule?.ignore === true) return;
     if (
       typeof name === 'string' &&
-      (name.includes('turfMat') || /romanBlind|thresholdStep/i.test(name))
+      /romanBlind|thresholdStep/i.test(name)
     ) {
       return;
     }

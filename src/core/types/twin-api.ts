@@ -291,7 +291,7 @@ export interface TwinUfhZone {
 }
 
 export interface TwinDevicesApi {
-  /** Generic device action (doors, gates, golf shot, …) by stable interactable id. */
+  /** Generic device action (doors, gates, custom interactions, …) by stable interactable id. */
   handleInteractable(interactableId: string): boolean;
   /** Fires after any device state change (gates, bifolds, TV, UFH, motion). */
   onChanged(listener: () => void): Unsubscribe;

@@ -4,7 +4,6 @@ import type { InteractiveUserData } from '../../../core/types/scene.ts';
 export interface FlagPromptState {
   readonly isBifoldsOpen: boolean;
   readonly isCarGatesOpen: boolean;
-  golfPrompt(): string;
 }
 
 /**
@@ -15,9 +14,6 @@ export function describeFlagInteractable(
   data: InteractiveUserData,
   state: FlagPromptState
 ): string {
-  if (data.isGolfSimulatorShot) {
-    return state.golfPrompt();
-  }
   if (data.isBifoldDoor) {
     return `${state.isBifoldsOpen ? 'Close' : 'Open'} Bifold Patio Doors`;
   }

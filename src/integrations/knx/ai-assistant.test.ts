@@ -80,17 +80,17 @@ const PROJECT: KnxAssistantProject = {
   circuits: [
     circuit('islandPendants', 'kitchen', 'Blue Island Pendants', 'Island Pendants'),
     circuit('spotlights', 'kitchen', 'Kitchen Ceiling Spotlights', 'Kitchen Spots'),
-    circuit('barnTrussAndSimHalo', 'outbuildingBarn', 'Barn Truss Spotlights & Pool Light', 'Barn Truss', ['barn downlights']),
-    circuit('golfSimHalo', 'outbuildingBarn', 'Golf Simulator LED Halo', 'Sim Halo'),
+    circuit('barnTrussSpots', 'outbuildingBarn', 'Barn Truss Spotlights & Pool Light', 'Barn Truss', ['barn downlights']),
+    circuit('studioTrackHalo', 'outbuildingBarn', 'Studio Track LED Halo', 'Track Halo'),
     circuit('mezzanineLamps5A', 'outbuildingMezzanine', 'Barn Mezzanine 5V/5A Lamp Sockets', 'Mezz Lamps'),
     circuit('stableOfficeSpotlights', 'outbuildingStableOffice', 'Stable Office Spotlights', 'Office Spots'),
     circuit('studyPendant', 'study', 'Plant Room Pendant', 'Plant Pendant'),
   ],
   zones: [
     zone('kitchen', 'Kitchen', ['islandPendants', 'spotlights'], [], { usesCentralSceneTable: true }),
-    zone('outbuildingBarn', 'Barn', ['barnTrussAndSimHalo', 'golfSimHalo'], [
+    zone('outbuildingBarn', 'Barn', ['barnTrussSpots', 'studioTrackHalo'], [
       { id: 'bright', label: 'Bright', levels: {} },
-      { id: 'golf', label: 'Golf Sim', levels: {} },
+      { id: 'cinema', label: 'Cinema', levels: {} },
     ]),
     zone('outbuildingMezzanine', 'Mezzanine', ['mezzanineLamps5A']),
     zone('outbuildingStableOffice', 'Stable Office', ['stableOfficeSpotlights']),
@@ -121,7 +121,7 @@ type BusCall = readonly [string, ...unknown[]];
 
 class FakeBus implements KnxAssistantBus {
   public readonly calls: BusCall[] = [];
-  public levels: Partial<Record<CircuitId, number>> = { islandPendants: 50, golfSimHalo: 90 };
+  public levels: Partial<Record<CircuitId, number>> = { islandPendants: 50, studioTrackHalo: 90 };
   private readonly zoneStates = new Map<RoomZoneId, { mode: ZoneLightingMode; sceneIndex: number | null }>();
 
   public recallZoneScene(zoneId: RoomZoneId, sceneIndex: number, sourcePa?: string, location?: string): void {
@@ -245,24 +245,24 @@ describe('generated tool schema', () => {
     expect(zoneMode?.parameters.properties.zone.enum).toEqual(PROJECT.zones.map((z) => z.id));
     const recall = tools.find((t) => t.name === 'recall_zone_scene');
     expect(recall?.parameters.properties.zone.enum).toEqual(['outbuildingBarn']);
-    expect(recall?.description).toContain('2=Golf Sim');
+    expect(recall?.description).toContain('2=Cinema');
     expect(tools.find((t) => t.name === 'recall_scene')?.description).toContain('6=Wine & Intimate');
   });
 
   it('system prompt names zones, scenes and circuits with live levels', () => {
     const prompt = assistant.buildSystemPrompt();
     expect(prompt).toContain('Test Farm');
-    expect(prompt).toContain('outbuildingBarn "Barn": 1 "Bright", 2 "Golf Sim"');
-    expect(prompt).toContain('golfSimHalo "Golf Simulator LED Halo" [outbuildingBarn] — 90%');
+    expect(prompt).toContain('outbuildingBarn "Barn": 1 "Bright", 2 "Cinema"');
+    expect(prompt).toContain('studioTrackHalo "Studio Track LED Halo" [outbuildingBarn] — 90%');
     expect(prompt).toContain('study "Plant Room" (aka study)');
   });
 });
 
 describe('coerceRawFunctionCall', () => {
   it('resolves zone and scene names', () => {
-    expect(assistant.coerceRawFunctionCall('recall_zone_scene', { zone: 'games barn', scene: 'golf sim' })).toEqual({
+    expect(assistant.coerceRawFunctionCall('recall_zone_scene', { zone: 'games barn', scene: 'cinema' })).toEqual({
       name: 'recall_zone_scene',
-      args: { zone: 'outbuildingBarn', sceneIndex: 1, sceneId: 'golf' },
+      args: { zone: 'outbuildingBarn', sceneIndex: 1, sceneId: 'cinema' },
     });
     expect(assistant.coerceRawFunctionCall('recall_zone_scene', { zone: 'outbuildingBarn', scene: 1 })).toMatchObject({
       args: { sceneIndex: 0 },
@@ -279,10 +279,10 @@ describe('coerceRawFunctionCall', () => {
   it('accepts nested or flat level maps with fuzzy circuit keys', () => {
     expect(
       assistant.coerceRawFunctionCall('set_circuit_levels', { levels: { islandPendants: 140, 'barn downlights': '40' } }),
-    ).toEqual({ name: 'set_circuit_levels', args: { levels: { islandPendants: 100, barnTrussAndSimHalo: 40 } } });
-    expect(assistant.coerceRawFunctionCall('set_circuit_levels', { golfSimHalo: 10, reason: 'r' })).toEqual({
+    ).toEqual({ name: 'set_circuit_levels', args: { levels: { islandPendants: 100, barnTrussSpots: 40 } } });
+    expect(assistant.coerceRawFunctionCall('set_circuit_levels', { studioTrackHalo: 10, reason: 'r' })).toEqual({
       name: 'set_circuit_levels',
-      args: { levels: { golfSimHalo: 10 }, reason: 'r' },
+      args: { levels: { studioTrackHalo: 10 }, reason: 'r' },
     });
     expect(assistant.coerceRawFunctionCall('set_circuit_levels', { nonsense: 10 })).toBeNull();
   });
@@ -290,7 +290,7 @@ describe('coerceRawFunctionCall', () => {
   it('adjust falls back to all circuits of a zone', () => {
     expect(assistant.coerceRawFunctionCall('adjust_circuit_levels', { zone: 'barn', deltaPct: -10 })).toEqual({
       name: 'adjust_circuit_levels',
-      args: { circuits: ['barnTrussAndSimHalo', 'golfSimHalo'], deltaPct: -10 },
+      args: { circuits: ['barnTrussSpots', 'studioTrackHalo'], deltaPct: -10 },
     });
   });
 
@@ -305,7 +305,7 @@ describe('coerceRawFunctionCall', () => {
 
 describe('invokeToolCall', () => {
   it('drives zone objects with the AI bridge PA', () => {
-    assistant.invokeToolCall({ name: 'recall_zone_scene', args: { zone: 'outbuildingBarn', sceneIndex: 1, sceneId: 'golf' } });
+    assistant.invokeToolCall({ name: 'recall_zone_scene', args: { zone: 'outbuildingBarn', sceneIndex: 1, sceneId: 'cinema' } });
     assistant.invokeToolCall({ name: 'set_zone_mode', args: { zone: 'study', mode: 'night' } });
     assistant.invokeToolCall({ name: 'set_zone_mode', args: { zone: 'study', mode: 'off' } });
     assistant.invokeToolCall({ name: 'set_zone_mode', args: { zone: 'study', mode: 'full' } });
@@ -320,10 +320,10 @@ describe('invokeToolCall', () => {
   it('adjusts relative to target levels and clamps', () => {
     const summary = assistant.invokeToolCall({
       name: 'adjust_circuit_levels',
-      args: { circuits: ['golfSimHalo', 'islandPendants'], deltaPct: 20 },
+      args: { circuits: ['studioTrackHalo', 'islandPendants'], deltaPct: 20 },
     });
-    expect(bus.levels).toMatchObject({ golfSimHalo: 100, islandPendants: 70 });
-    expect(summary).toBe('Sim Halo 100%, Island Pendants 70%');
+    expect(bus.levels).toMatchObject({ studioTrackHalo: 100, islandPendants: 70 });
+    expect(summary).toBe('Track Halo 100%, Island Pendants 70%');
   });
 
   it('environment changes go through the environment and notify', () => {
@@ -339,13 +339,13 @@ describe('invokeToolCall', () => {
 
 describe('offline parser', () => {
   it.each<[string, unknown]>([
-    ['barn downlights 40%', { name: 'set_circuit_levels', args: { levels: { barnTrussAndSimHalo: 40 } } }],
+    ['barn downlights 40%', { name: 'set_circuit_levels', args: { levels: { barnTrussSpots: 40 } } }],
     ['turn the mezzanine lamps off', { name: 'set_circuit_levels', args: { levels: { mezzanineLamps5A: 0 } } }],
     ['office off', { name: 'set_zone_mode', args: { zone: 'outbuildingStableOffice', mode: 'off' } }],
     ['plant room night mode', { name: 'set_zone_mode', args: { zone: 'study', mode: 'night' } }],
     ['study lights on', { name: 'set_zone_mode', args: { zone: 'study', mode: 'full' } }],
-    ['golf sim scene in the barn', { name: 'recall_zone_scene', args: { zone: 'outbuildingBarn', sceneIndex: 1, sceneId: 'golf' } }],
-    ['dim the golf sim', { name: 'adjust_circuit_levels', args: { circuits: ['golfSimHalo'], deltaPct: -20 } }],
+    ['cinema scene in the barn', { name: 'recall_zone_scene', args: { zone: 'outbuildingBarn', sceneIndex: 1, sceneId: 'cinema' } }],
+    ['dim the track halo', { name: 'adjust_circuit_levels', args: { circuits: ['studioTrackHalo'], deltaPct: -20 } }],
     ['kitchen dining', { name: 'recall_scene', args: { sceneNumber: 2 } }],
     ['something romantic', { name: 'recall_scene', args: { sceneNumber: 6 } }],
     ['open the gates', { name: 'set_environment', args: { carGatesOpen: true } }],

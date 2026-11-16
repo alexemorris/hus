@@ -205,9 +205,9 @@ export class WalkthroughController {
     readonly getInteractiveMeshes: () => readonly THREE.Object3D[];
     readonly describeInteractable: (mesh: THREE.Object3D) => string;
     readonly onInteractWithMesh: (mesh: THREE.Object3D) => void;
-    readonly onTriggerGolfSimulatorShot?: () => boolean;
-    readonly getGolfSimulatorShotElapsedSec?: () => number | null;
-    readonly getGolfSimulatorPrompt?: () => string | null;
+    readonly onTriggerCustomInteraction?: (id: string) => boolean;
+    readonly getCustomInteractionElapsedSec?: (id: string) => number | null;
+    readonly getCustomInteractionPrompt?: (id: string) => string | null;
     readonly getActiveFirstPersonPose?: () => FirstPersonPoseSample | null;
     readonly cancelActiveFirstPerson?: () => boolean;
     readonly getProximityAnimatedInteractable?: (
@@ -227,9 +227,9 @@ export class WalkthroughController {
     this.climbable = hooks.createClimbableController?.() ?? new NoopWalkthroughClimbableController();
     this.cutscenes =
       hooks.createCutscenes?.({
-        triggerGolfSimulatorShot: options.onTriggerGolfSimulatorShot,
-        getGolfSimulatorShotElapsedSec: options.getGolfSimulatorShotElapsedSec,
-        getGolfSimulatorPrompt: options.getGolfSimulatorPrompt,
+        triggerCustomInteraction: options.onTriggerCustomInteraction,
+        getCustomInteractionElapsedSec: options.getCustomInteractionElapsedSec,
+        getCustomInteractionPrompt: options.getCustomInteractionPrompt,
       }) ?? [];
     const firstSpawn = hooks.spawns?.[0];
     if (firstSpawn) {

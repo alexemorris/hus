@@ -43,7 +43,16 @@ export {
   type HingedDoorState,
 } from '../engine/interaction/handlers/hinged-doors.ts';
 export { SceneInteractionManager } from '../engine/interaction/interaction-manager.ts';
-export { InteractionRegistry } from '../engine/interaction/interaction-registry.ts';
+export {
+  InteractionRegistry,
+  type CustomInteractionHandler,
+} from '../engine/interaction/interaction-registry.ts';
+export { wrapInHingePivot } from '../engine/interaction/handlers/hinge-pivot.ts';
+export { easeInOutCubic } from '../engine/interaction/interaction-math.ts';
+export {
+  prepareFadeMaterialsForGroup,
+  applyGroupFadeAlpha,
+} from '../engine/interaction/handlers/sliding-drawers.ts';
 export { intersectVisibleObjects, isObjectVisibleInHierarchy } from '../engine/util/object-utils.ts';
 export {
   WalkthroughController,

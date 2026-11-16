@@ -874,7 +874,6 @@ export function auditDoorSwings(
 
   // Sweep hinged & linear-slide doors
   for (const door of doors) {
-    if (door.isFoldingFloorMat) continue;
     const doorMeshes = collectDynamicMeshes(door.pivot);
     if (doorMeshes.length === 0) continue;
 
@@ -975,7 +974,6 @@ export function auditDoorSwings(
 
   // Sweep sliding drawers
   for (const drawer of drawers) {
-    if (drawer.fadeOutWhenOpen) continue;
     const drawerMeshes = collectDynamicMeshes(drawer.group);
     if (drawerMeshes.length === 0) continue;
 
@@ -1413,7 +1411,6 @@ export function auditWalkthroughReachability(
 
   try {
     for (const door of doors) {
-      if (door.isFoldingFloorMat) continue;
       const overrideAngle = resolveDoorPolicyOverride(door, options?.doorPolicy);
       const hasLinearSlide = Boolean(door.pivot.userData?.linearSlideOffset);
       const effectiveOpen = hasLinearSlide

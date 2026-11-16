@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { soundEngine } from '../../audio/sound-engine.ts';
 import { easeInOutCubic, stepProgress } from '../interaction-math.ts';
 
-/** Sliding pan/warming drawer, or a fade-out prop (golf bag) linked to a door. */
+/** Sliding pan/warming drawer. */
 export interface SlidingDrawerState {
   readonly id: string;
   group: THREE.Group;
@@ -11,9 +11,6 @@ export interface SlidingDrawerState {
   isOpen: boolean;
   progress: number;
   readonly speed: number;
-  linkedDoorId?: string;
-  fadeOutWhenOpen?: boolean;
-  fadeMaterials?: THREE.Material[];
 }
 
 export function createSlidingDrawerState(
@@ -42,7 +39,7 @@ export function prepareFadeMaterialsForGroup(root: THREE.Object3D): THREE.Materi
     let cloned = clonedBySource.get(m);
     if (!cloned) {
       cloned = m.clone();
-      cloned.userData = { ...cloned.userData, isDynamicGolfBagMaterial: true };
+      cloned.userData = { ...cloned.userData, isDynamicOpacityMaterial: true };
       clonedBySource.set(m, cloned);
       result.push(cloned);
     }
@@ -83,11 +80,7 @@ export function applyGroupFadeAlpha(
 
 function applyDrawerPose(dr: SlidingDrawerState): void {
   const smooth = easeInOutCubic(dr.progress);
-  if (dr.fadeOutWhenOpen) {
-    applyGroupFadeAlpha(dr.group, dr.fadeMaterials, 1 - smooth);
-  } else {
-    dr.group.position.lerpVectors(dr.closedPos, dr.openPos, smooth);
-  }
+  dr.group.position.lerpVectors(dr.closedPos, dr.openPos, smooth);
 }
 
 /** Steps a drawer animation. Returns true if it moved. */

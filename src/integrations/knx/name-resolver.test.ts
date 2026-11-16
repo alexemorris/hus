@@ -68,15 +68,15 @@ const PROJECT: KnxNameResolverProject = {
     circuit('familyRoomSpots', 'familyRoom', 'Dining Room Recessed Downlights', 'Dining Spots', '6 Recessed Downlights'),
     circuit('studyPendant', 'study', 'Study & South Lobby Ceiling Pendant', 'Study Pendant', 'Brass Globe Pendant'),
     circuit(
-      'barnTrussAndSimHalo',
+      'barnTrussSpots',
       'outbuildingBarn',
-      'Barn Truss Spotlights, Pool Light & Golf Sim LED Ring',
+      'Barn Truss Spotlights, Pool Light & Studio Track LED Ring',
       'Barn & Sim Ring',
       'Oak Truss Spotlights + Pool Table Canopy',
       ['barn downlights', 'barn spots'],
     ),
     circuit('barnCoveLeds', 'outbuildingBarn', 'Barn Cove LEDs & Wall Sconces', 'Barn Cove', 'Eave cove strips'),
-    circuit('golfSimHalo', 'outbuildingBarn', 'Golf Simulator LED Halo', 'Sim Halo', 'Inner LED halo ring around the golf sim'),
+    circuit('studioTrackHalo', 'outbuildingBarn', 'Studio Track LED Halo', 'Track Halo', 'Inner LED halo ring around the studio track'),
     circuit(
       'mezzanineSconcesAndAmbient',
       'outbuildingMezzanine',
@@ -95,9 +95,9 @@ const PROJECT: KnxNameResolverProject = {
     ]),
     zone('familyRoom', 'Dining Room', ['familyRoomSpots']),
     zone('study', 'Plant Room', ['studyPendant'], [], ['study']),
-    zone('outbuildingBarn', 'Barn', ['barnTrussAndSimHalo', 'barnCoveLeds', 'golfSimHalo'], [
+    zone('outbuildingBarn', 'Barn', ['barnTrussSpots', 'barnCoveLeds', 'studioTrackHalo'], [
       { id: 'bright', label: 'Bright', levels: {} },
-      { id: 'golf', label: 'Golf Sim', levels: {} },
+      { id: 'cinema', label: 'Cinema', levels: {} },
       { id: 'evening', label: 'Evening Bar', levels: {} },
     ], ['games barn']),
     zone('outbuildingMezzanine', 'Mezzanine', ['mezzanineSconcesAndAmbient', 'mezzanineLamps5A', 'mezzanineDownlights']),
@@ -126,10 +126,10 @@ describe('tokeniseKnxName', () => {
 
 describe('resolveCircuit', () => {
   it.each<[string, CircuitId]>([
-    ['barn downlights', 'barnTrussAndSimHalo'],
+    ['barn downlights', 'barnTrussSpots'],
     ['mezzanine lamps', 'mezzanineLamps5A'],
     ['island pendants', 'islandPendants'],
-    ['golf sim', 'golfSimHalo'],
+    ['track halo', 'studioTrackHalo'],
     ['Island Pendants', 'islandPendants'],
     ['islandPendants', 'islandPendants'],
     ['mezzanine downlights', 'mezzanineDownlights'],
@@ -171,7 +171,7 @@ describe('resolveZone', () => {
 
 describe('resolveScene', () => {
   it('matches by label, id and number', () => {
-    expect(resolver.resolveScene('outbuildingBarn', 'golf sim')).toMatchObject({ id: 'golf', index: 1 });
+    expect(resolver.resolveScene('outbuildingBarn', 'cinema')).toMatchObject({ id: 'cinema', index: 1 });
     expect(resolver.resolveScene('outbuildingBarn', 'evening')).toMatchObject({ id: 'evening', index: 2 });
     expect(resolver.resolveScene('outbuildingBarn', 'bright')).toMatchObject({ id: 'bright', index: 0 });
     expect(resolver.resolveScene('kitchen', '2')).toMatchObject({ id: 'dining', index: 1 });

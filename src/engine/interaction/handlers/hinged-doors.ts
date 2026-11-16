@@ -16,8 +16,8 @@ export interface ClosedDoorwayGeometry {
 }
 
 /**
- * Animation state of a hinged leaf: room/cupboard/appliance doors, the overhead garage doors
- * (`overheadTrackZ`) and the golf simulator sliding mat (`isFoldingFloorMat`).
+ * Animation state of a hinged leaf: room/cupboard/appliance doors and overhead garage doors
+ * (`overheadTrackZ`).
  */
 export interface HingedDoorState {
   readonly id: string;
@@ -30,10 +30,7 @@ export interface HingedDoorState {
   speed: number;
   overheadTrackZ?: number;
   closedPosZ?: number;
-  isFoldingFloorMat?: boolean;
   closedPivotPos?: THREE.Vector3;
-  stowedPivotOffset?: THREE.Vector3;
-  linkedDrawerId?: string;
   partnerDoorId?: string;
   onStateChange?: (isOpen: boolean) => void;
   bargeSwingSign?: -1 | 1;
@@ -61,9 +58,9 @@ export function createHingedDoorState(
   };
 }
 
-/** Click-toggle speed for a door (mat and overhead doors travel more slowly). */
+/** Click-toggle speed for a door (overhead doors travel more slowly). */
 export function getClickToggleSpeed(door: HingedDoorState): number {
-  return door.isFoldingFloorMat ? 0.95 : door.overheadTrackZ !== undefined ? 1.55 : 2.8;
+  return door.overheadTrackZ !== undefined ? 1.55 : 2.8;
 }
 
 /** Applies the overhead-track rearward glide of an up-and-over garage door for `angle`. */
@@ -114,7 +111,6 @@ export function getDefaultDoorOpenAngle(
   const pivotChainLower = `${door.pivot.name} ${door.pivot.children[0]?.name ?? ""}`.toLowerCase();
   if (
     door.overheadTrackZ !== undefined ||
-    door.isFoldingFloorMat ||
     door.pivot.userData?.pocketRetractOffset !== undefined ||
     door.pivot.userData?.linearSlideOffset !== undefined ||
     pivotChainLower.includes("tvcarrier") ||
@@ -294,9 +290,6 @@ export function describeHingedDoor(
   ) {
     return `${verb} AGA Oven Door`;
   }
-  if (door.isFoldingFloorMat || chainNames.includes('turfmat')) {
-    return `${door.isOpen ? 'Roll Out Flush' : 'Lift & Roll In'} Golf Simulator Mat`;
-  }
   if (door.overheadTrackZ !== undefined) {
     return `${verb} Garage Door`;
   }
@@ -334,7 +327,7 @@ export function describeHingedDoor(
 const tmpDoorSoundPos = new THREE.Vector3();
 
 /**
- * Synthesizes 3D spatial mechanical audio for a hinged door, overhead garage door, or sliding golf mat.
+ * Synthesizes 3D spatial mechanical audio for a hinged door or overhead garage door.
  */
 export function playHingedDoorSound(
   door: HingedDoorState,
@@ -363,20 +356,6 @@ export function playHingedDoorSound(
           freqStart: 92,
           freqEnd: action === 'open' ? 112 : 76,
           gainPeak: 0.055,
-        });
-        return;
-      }
-
-      if (door.isFoldingFloorMat) {
-        tk.noiseBurst({
-          startTime: now,
-          duration: 0.42,
-          filterType: 'bandpass',
-          freqStart: door.isOpen ? 460 : 680,
-          freqEnd: door.isOpen ? 720 : 390,
-          q: 1.8,
-          gainPeak: 0.14,
-          attackSec: 0.04,
         });
         return;
       }

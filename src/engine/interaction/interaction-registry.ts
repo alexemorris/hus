@@ -24,20 +24,21 @@ import {
 import { EMPTY_DOOR_POLICY, type DoorPolicy } from './handlers/door-policy.ts';
 import type { AnimatedInteractable, FirstPersonPoseSample } from './handlers/animated-interactable.ts';
 import { describeFlagInteractable } from './handlers/flag-prompts.ts';
-import {
-  applySlidingGolfMatKinematics,
-  cancelGolfSimulatorShot,
-  collectGolfMatTrackDynamicObjects,
-  collectGolfShotDynamicObjects,
-  createFoldingGolfMat,
-  createGolfSimulatorShotState,
-  getGolfSimulatorPromptLabel,
-  GOLF_SIMULATOR_SHOT_ID,
-  stepGolfSimulatorShot,
-  triggerGolfSimulatorShot,
-  type GolfSimulatorShotConfig,
-  type GolfSimulatorShotState,
-} from './handlers/golf-simulator.ts';
+/** Extensible custom interactable handler registered by a home or prop builder. */
+export interface CustomInteractionHandler {
+  readonly id: string;
+  readonly kind?: InteractableKind;
+  readonly targets: readonly THREE.Object3D[];
+  readonly cutsceneId?: string;
+  readonly label?: string;
+  getPromptLabel(): string;
+  trigger(): boolean;
+  cancel?(): void;
+  isActive?(): boolean;
+  getElapsedSec?(): number | null;
+  step?(dtSeconds: number): boolean | void;
+  collectDynamicObjects?(outSet: Set<THREE.Object3D>): void;
+}
 import { findDescendantCutawayWall, wrapInHingePivot } from './handlers/hinge-pivot.ts';
 import {
   applyHingedDoorPose,
@@ -87,14 +88,13 @@ import {
 export type InteractableKind =
   | 'door'
   | 'garage-door'
-  | 'golf-mat'
   | 'drawer'
   | 'bifold-cupboard'
   | 'toggle'
   | 'pulley-maid'
-  | 'golf-simulator-shot'
   | 'animated'
-  | 'smart';
+  | 'smart'
+  | 'custom';
 
 export interface InteractableInfo {
   /** Stable id (preferred for persistence / manifests). */
@@ -132,7 +132,6 @@ export class InteractionRegistry {
   private readonly toggleCallbacks = new Map<string, ToggleCallbackEntry>();
   private pulleyMaid: PulleyMaidState | null = null;
   private carGatePair: MotorizedCarGatePairState | null = null;
-  private golfSimulatorShot: GolfSimulatorShotState | null = null;
   private nextId = 1;
   private readonly tmpHingeWorld = new THREE.Vector3();
 
@@ -141,6 +140,7 @@ export class InteractionRegistry {
   readonly #manualCloseMs = new Map<string, number>();
   /** Runtime-only (`#private` keeps the snapshot fingerprint of this registry unchanged). */
   readonly #animated = new Map<string, AnimatedInteractable>();
+  readonly #customInteractions = new Map<string, CustomInteractionHandler>();
   #unbatchSubtreeHandler: ((root: THREE.Object3D) => void) | null = null;
   readonly #unbatchedRoots = new Set<THREE.Object3D>();
   readonly #bargeContext: DoorBargeContext;
@@ -268,16 +268,20 @@ export class InteractionRegistry {
       out.push({ id: byLegacy.get(legacyId) ?? legacyId, legacyId, kind });
     };
     for (const door of this.hingedDoors.values()) {
-      add(
-        door.id,
-        door.isFoldingFloorMat ? 'golf-mat' : door.overheadTrackZ !== undefined ? 'garage-door' : 'door'
-      );
+      add(door.id, door.overheadTrackZ !== undefined ? 'garage-door' : 'door');
     }
     for (const dr of this.slidingDrawers.values()) add(dr.id, 'drawer');
     for (const bf of this.bifoldCupboards.values()) add(bf.id, 'bifold-cupboard');
     for (const id of this.toggleCallbacks.keys()) add(id, 'toggle');
     if (this.pulleyMaid) add(this.pulleyMaid.id, 'pulley-maid');
-    if (this.golfSimulatorShot) add(this.golfSimulatorShot.id, 'golf-simulator-shot');
+    for (const custom of this.#customInteractions.values()) {
+      out.push({
+        id: custom.id,
+        legacyId: custom.id,
+        kind: custom.kind ?? 'custom',
+        label: custom.label ?? (custom.getPromptLabel() || custom.id),
+      });
+    }
     for (const device of this.#animated.values()) {
       out.push({ id: device.id, legacyId: device.id, kind: 'animated', label: device.label, aliases: device.aliases });
     }
@@ -559,39 +563,7 @@ export class InteractionRegistry {
     return pivot;
   }
 
-  /**
-   * Registers the track-mounted sliding Golf Simulator front stance mat and links it
-   * with the golf bag (`bagGroup`).
-   */
-  public registerFoldingGolfMat(
-    parent: THREE.Object3D,
-    foldingMatObj: THREE.Object3D,
-    hingeOffsetInParent: THREE.Vector3,
-    bagGroup: THREE.Group,
-    bagStowedDelta: THREE.Vector3,
-    _openAngle = Math.PI * 0.994,
-    onStateChange?: (isFolded: boolean) => void
-  ): { readonly matPivot: THREE.Group; readonly matDoorId: string; readonly bagDrawerId: string } {
-    const matDoorId = this.allocateId('door');
-    const bagDrawerId = this.allocateId('drawer');
-    const { matPivot, door, bag } = createFoldingGolfMat(
-      matDoorId,
-      bagDrawerId,
-      parent,
-      foldingMatObj,
-      hingeOffsetInParent,
-      bagGroup,
-      bagStowedDelta,
-      onStateChange
-    );
-    this.registerClickableObject(matPivot, { interactableId: matDoorId });
-    matPivot.userData = { ...matPivot.userData, doorRole: 'pivot' };
-    this.registerClickableObject(bagGroup, { interactableId: bagDrawerId });
-    bagGroup.userData = { ...bagGroup.userData, drawerRole: 'group' };
-    this.hingedDoors.set(matDoorId, door);
-    this.slidingDrawers.set(bagDrawerId, bag);
-    return { matPivot, matDoorId, bagDrawerId };
-  }
+
 
   /**
    * Registers a 2-leaf folding bi-fold cupboard door pair (such as the upper Pantry doors)
@@ -692,16 +664,42 @@ export class InteractionRegistry {
   }
 
   /**
-   * Registers the golf simulator active club swing, 3D ball launch,
-   * screen fabric ripple, and live projected trajectory animation.
+   * Registers a custom interactable handler (owned by a home or prop builder).
+   * Click targets get `interactableId = handler.id`, and clicks, prompts, per-frame
+   * updates, cutscenes, and dynamic-object collection route to `handler`.
    */
-  public registerGolfSimulatorShot(config: GolfSimulatorShotConfig): string {
-    const id = GOLF_SIMULATOR_SHOT_ID;
-    for (const target of config.clickableTargets) {
-      this.registerClickableObject(target, { interactableId: id, isGolfSimulatorShot: true });
+  public registerCustomInteraction(handler: CustomInteractionHandler): void {
+    this.#customInteractions.set(handler.id, handler);
+    for (const target of handler.targets) {
+      this.registerClickableObject(target, { interactableId: handler.id, isCustomInteraction: true });
     }
-    this.golfSimulatorShot = createGolfSimulatorShotState(config);
-    return id;
+  }
+
+  public getCustomInteraction(id: string): CustomInteractionHandler | undefined {
+    return this.#customInteractions.get(id);
+  }
+
+  public triggerCustomInteraction(id: string): boolean {
+    const handler = this.#customInteractions.get(id);
+    if (!handler) return false;
+    if (handler.collectDynamicObjects) {
+      const tmp = new Set<THREE.Object3D>();
+      handler.collectDynamicObjects(tmp);
+      this.#ensureUnbatchedSet(tmp);
+    }
+    return handler.trigger();
+  }
+
+  public getCustomInteractionElapsedSec(id: string): number | null {
+    return this.#customInteractions.get(id)?.getElapsedSec?.() ?? null;
+  }
+
+  public getCustomInteractionPromptLabel(id: string): string {
+    return this.#customInteractions.get(id)?.getPromptLabel() ?? '';
+  }
+
+  public getCustomInteractionCutsceneId(id: string): string | undefined {
+    return this.#customInteractions.get(id)?.cutsceneId;
   }
 
   /**
@@ -748,11 +746,6 @@ export class InteractionRegistry {
 
   #ensureUnbatchedDoor(door: HingedDoorState): void {
     this.#ensureUnbatched(door.pivot);
-    if (door.isFoldingFloorMat) {
-      const tmp = new Set<THREE.Object3D>();
-      collectGolfMatTrackDynamicObjects(door, tmp);
-      this.#ensureUnbatchedSet(tmp);
-    }
   }
 
   public setCarGatesOpen(isOpen: boolean): void {
@@ -772,47 +765,7 @@ export class InteractionRegistry {
     return this.carGatePair?.progress ?? 0;
   }
 
-  /**
-   * Returns true when the Barn Golf Simulator folding hitting mat is stowed away
-   * (or currently stowing away) so the golf bag is hidden and the simulator is put away.
-   */
-  public isGolfSimulatorStowed(): boolean {
-    const gs = this.golfSimulatorShot;
-    if (!gs || !gs.matDoorId) return false;
-    const matDoor = this.hingedDoors.get(gs.matDoorId);
-    if (!matDoor) return false;
-    return matDoor.isOpen || matDoor.progress > 0.05;
-  }
 
-  /**
-   * Triggers a full golf simulator shot sequence. Does not trigger when the golf
-   * simulator hitting mat is stowed away.
-   */
-  public triggerGolfSimulatorShot(): boolean {
-    const gs = this.golfSimulatorShot;
-    if (!gs) return false;
-    const tmp = new Set<THREE.Object3D>();
-    collectGolfShotDynamicObjects(gs, tmp);
-    this.#ensureUnbatchedSet(tmp);
-    return triggerGolfSimulatorShot(gs, this.isGolfSimulatorStowed());
-  }
-
-  public isGolfSimulatorShotPlaying(): boolean {
-    return this.golfSimulatorShot?.isPlaying ?? false;
-  }
-
-  public getGolfSimulatorShotElapsedSec(): number | null {
-    const gs = this.golfSimulatorShot;
-    return gs && gs.isPlaying ? gs.elapsedSec : null;
-  }
-
-  public getGolfSimulatorPromptLabel(): string {
-    return getGolfSimulatorPromptLabel(this.golfSimulatorShot, this.isGolfSimulatorStowed());
-  }
-
-  #cancelGolfShot(): void {
-    if (this.golfSimulatorShot) cancelGolfSimulatorShot(this.golfSimulatorShot);
-  }
 
   #closeConflictingDoors(openedId: string): void {
     const stable = this.#stableIdOf(openedId);
@@ -843,11 +796,8 @@ export class InteractionRegistry {
     }
   }
 
-  /**
-   * Sets a door's open target (plus its linked partner leaf). `syncLinkedDrawer` mirrors the
-   * target onto a linked drawer (golf bag) as a direct click does.
-   */
-  #setDoorTarget(door: HingedDoorState, isOpen: boolean, speed: number, syncLinkedDrawer: boolean): void {
+  /** Sets a door's open target (plus its linked partner leaf). */
+  #setDoorTarget(door: HingedDoorState, isOpen: boolean, speed: number): void {
     this.#ensureUnbatchedDoor(door);
     const changed = door.isOpen !== isOpen;
     door.fromAngle = undefined;
@@ -861,16 +811,7 @@ export class InteractionRegistry {
         playHingedDoorSound(door, isOpen ? 'open' : 'close');
       }
     }
-    if (door.isFoldingFloorMat && door.isOpen) {
-      this.#cancelGolfShot();
-    }
-    if (syncLinkedDrawer && door.linkedDrawerId) {
-      const linkedDrawer = this.slidingDrawers.get(door.linkedDrawerId);
-      if (linkedDrawer) {
-        this.#ensureUnbatched(linkedDrawer.group);
-        linkedDrawer.isOpen = door.isOpen;
-      }
-    }
+
     const partnerChanged = door.partnerDoorId ? (this.hingedDoors.get(door.partnerDoorId)?.isOpen !== door.isOpen) : false;
     this.#afterDoorTargetChanged(door, changed);
     if (door.partnerDoorId) {
@@ -891,7 +832,7 @@ export class InteractionRegistry {
     if (garageDoors.length === 0) return false;
     const open = garageDoors.some((d) => !d.isOpen);
     for (const door of garageDoors) {
-      if (door.isOpen !== open) this.#setDoorTarget(door, open, getClickToggleSpeed(door), true);
+      if (door.isOpen !== open) this.#setDoorTarget(door, open, getClickToggleSpeed(door));
     }
     return true;
   }
@@ -907,8 +848,11 @@ export class InteractionRegistry {
     }
     const id = this.resolveInteractableId(interactableId);
 
-    if (this.golfSimulatorShot && this.golfSimulatorShot.id === id) {
-      return this.triggerGolfSimulatorShot();
+    if (this.#customInteractions.has(interactableId)) {
+      return this.triggerCustomInteraction(interactableId);
+    }
+    if (this.#customInteractions.has(id)) {
+      return this.triggerCustomInteraction(id);
     }
 
     const animated = this.#animated.get(id);
@@ -939,7 +883,7 @@ export class InteractionRegistry {
 
     const door = this.hingedDoors.get(id);
     if (door) {
-      this.#setDoorTarget(door, !door.isOpen, getClickToggleSpeed(door), true);
+      this.#setDoorTarget(door, !door.isOpen, getClickToggleSpeed(door));
       return true;
     }
 
@@ -965,19 +909,7 @@ export class InteractionRegistry {
       } else {
         playSlidingDrawerSound(drawer);
       }
-      if (drawer.linkedDoorId) {
-        const linkedDoor = this.hingedDoors.get(drawer.linkedDoorId);
-        if (linkedDoor) {
-          this.#ensureUnbatchedDoor(linkedDoor);
-          linkedDoor.fromAngle = undefined;
-          linkedDoor.isOpen = drawer.isOpen;
-          linkedDoor.speed = 1.55;
-          if (linkedDoor.isFoldingFloorMat && linkedDoor.isOpen) {
-            this.#cancelGolfShot();
-          }
-          linkedDoor.onStateChange?.(linkedDoor.isOpen);
-        }
-      }
+
       return true;
     }
 
@@ -1020,7 +952,7 @@ export class InteractionRegistry {
   public setHingedDoorOpen(interactableId: string, isOpen: boolean): boolean {
     const door = this.hingedDoors.get(this.resolveInteractableId(interactableId));
     if (!door) return false;
-    this.#setDoorTarget(door, isOpen, 2.8, false);
+    this.#setDoorTarget(door, isOpen, 2.8);
     return true;
   }
 
@@ -1033,6 +965,10 @@ export class InteractionRegistry {
    * is open or mid-animation (progress > 0.01). Used by PortalVisibilitySolver.
    */
   public isInteractableOpenOrMoving(interactableId: string): boolean {
+    const custom = this.#customInteractions.get(interactableId);
+    if (custom) {
+      return custom.isActive?.() ?? false;
+    }
     const legacyId = this.resolveInteractableId(interactableId);
     const door = this.hingedDoors.get(legacyId);
     if (door) {
@@ -1040,7 +976,6 @@ export class InteractionRegistry {
         door.isOpen ||
         Math.abs(door.progress) > 0.01 ||
         (door.overheadTrackZ === undefined &&
-          !door.isFoldingFloorMat &&
           Math.abs(door.pivot.rotation[door.axis]) > 0.015)
       );
     }
@@ -1117,11 +1052,13 @@ export class InteractionRegistry {
       if (bifoldCup) {
         return `${bifoldCup.isOpen ? 'Close' : 'Open'} Pantry Bi-Fold Doors`;
       }
+      const custom =
+        (data.interactableId ? this.#customInteractions.get(data.interactableId) : undefined) ?? this.#customInteractions.get(id);
+      if (custom) {
+        return custom.getPromptLabel();
+      }
       const drawer = this.slidingDrawers.get(id);
       if (drawer) {
-        if (drawer.linkedDoorId) {
-          return `${drawer.isOpen ? 'Roll Out Flush' : 'Lift & Roll In'} Golf Simulator Mat`;
-        }
         return `${drawer.isOpen ? 'Close' : 'Open'} Drawer`;
       }
       if (this.pulleyMaid && this.pulleyMaid.id === id) {
@@ -1129,9 +1066,6 @@ export class InteractionRegistry {
       }
       if (this.toggleCallbacks.has(id)) {
         return 'Extend / Retract Table';
-      }
-      if (this.golfSimulatorShot && this.golfSimulatorShot.id === id) {
-        return this.getGolfSimulatorPromptLabel();
       }
       const animated = this.#animated.get(id);
       if (animated) {
@@ -1145,7 +1079,6 @@ export class InteractionRegistry {
     return describeFlagInteractable(data, {
       isBifoldsOpen,
       isCarGatesOpen: this.isCarGatesOpen(),
-      golfPrompt: () => this.getGolfSimulatorPromptLabel(),
     });
   }
 
@@ -1161,9 +1094,6 @@ export class InteractionRegistry {
     }
     for (const door of this.hingedDoors.values()) {
       door.pivot.traverse((c) => outSet.add(c));
-      if (door.isFoldingFloorMat) {
-        collectGolfMatTrackDynamicObjects(door, outSet);
-      }
     }
     for (const bf of this.bifoldCupboards.values()) {
       bf.outerPivot.traverse((c) => outSet.add(c));
@@ -1179,8 +1109,8 @@ export class InteractionRegistry {
       this.carGatePair.northPivot.traverse((c) => outSet.add(c));
       this.carGatePair.southPivot.traverse((c) => outSet.add(c));
     }
-    if (this.golfSimulatorShot) {
-      collectGolfShotDynamicObjects(this.golfSimulatorShot, outSet);
+    for (const custom of this.#customInteractions.values()) {
+      custom.collectDynamicObjects?.(outSet);
     }
     for (const device of this.#animated.values()) {
       device.collectDynamicObjects(outSet);
@@ -1306,8 +1236,8 @@ export class InteractionRegistry {
       anyChanged = true;
     }
 
-    if (this.golfSimulatorShot && stepGolfSimulatorShot(this.golfSimulatorShot, dtSeconds)) {
-      anyChanged = true;
+    for (const custom of this.#customInteractions.values()) {
+      if (custom.step?.(dtSeconds)) anyChanged = true;
     }
 
     for (const device of this.#animated.values()) {
@@ -1356,7 +1286,6 @@ export class InteractionRegistry {
       const probeDist = 0.85;
 
       for (const [legacyId, door] of this.hingedDoors.entries()) {
-        if (door.isFoldingFloorMat) continue;
         const isOverhead = door.overheadTrackZ !== undefined;
         if (!isOverhead && !isWalkthroughDoorState(door, this.tmpHingeWorld)) continue;
 
@@ -1452,11 +1381,7 @@ export class InteractionRegistry {
     const step = dtSeconds * door.speed;
     door.progress =
       door.progress < target ? Math.min(1, door.progress + step) : Math.max(0, door.progress - step);
-    if (door.isFoldingFloorMat) {
-      applySlidingGolfMatKinematics(door, this.golfSimulatorShot);
-    } else {
-      applyHingedDoorPose(door, this.#effectiveOpenAngle(door));
-    }
+    applyHingedDoorPose(door, this.#effectiveOpenAngle(door));
     if (door.progress === 0) {
       door.bargeSwingSign = undefined;
       door.fromAngle = undefined;
