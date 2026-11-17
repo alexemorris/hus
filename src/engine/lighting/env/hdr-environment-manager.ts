@@ -276,6 +276,18 @@ export class HdrEnvironmentManager {
     };
   }
 
+  public setHorizonFog(color: THREE.Color, strength: number, height: number): void {
+    this.dualGraph.setHorizonFog(color, strength, height);
+  }
+
+  public getHorizonFogState(): {
+    readonly color: THREE.Color;
+    readonly strength: number;
+    readonly height: number;
+  } {
+    return this.dualGraph.getHorizonFogState();
+  }
+
   public getActiveHorizonGround(fallbackBucket: TimeOfDay): THREE.Color {
     if (this.activeCellId) {
       return this.activeHorizonGround;

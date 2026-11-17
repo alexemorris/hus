@@ -59,6 +59,12 @@ const COLOR_OVERCAST_FOG = new THREE.Color(0xb7c4d3);
 const COLOR_STORM_FOG = new THREE.Color(0x6d7b8c);
 const COLOR_MIST_FOG = new THREE.Color(0xcbd5df);
 const COLOR_SNOW_FOG = new THREE.Color(0xdce5f0);
+const COLOR_DUSK_OVERCAST_FOG = new THREE.Color(0x9b867d);
+const COLOR_DUSK_STORM_FOG = new THREE.Color(0x6b5c5b);
+const COLOR_DUSK_MIST_FOG = new THREE.Color(0xb29886);
+const COLOR_DUSK_SNOW_FOG = new THREE.Color(0xa99ea4);
+const COLOR_NIGHT_FOG = new THREE.Color(0x0d1422);
+const COLOR_NIGHT_SNOW_FOG = new THREE.Color(0x162030);
 const COLOR_DAYLIGHT_GI_CLEAR = new THREE.Color(1.0, 0.98, 0.94);
 const COLOR_DAYLIGHT_GI_OVERCAST = new THREE.Color(0.90, 0.95, 1.02);
 
@@ -88,6 +94,7 @@ export class AtmosphereEphemerisSolver {
   private readonly nightPresetState: EnvLightingState = stateFromPreset(ENV_PRESETS.night);
   private readonly horizonScratch = new THREE.Color();
   private readonly colorScratch = new THREE.Color();
+  private readonly fogTargetScratch = new THREE.Color();
 
   public constructor(
     location?: HouseLocation,
@@ -355,16 +362,41 @@ export class AtmosphereEphemerisSolver {
     const activeFogBlur = weatherState.fogEnabled ? fogStrength * 0.28 : 0;
     target.bgBlurriness = Math.min(0.48, target.bgBlurriness + activeFogBlur);
 
+    const duskWarmth = this.computeFogDuskWarmth(nightFactor);
+    const harmonizeFogTarget = (
+      dayColor: THREE.Color,
+      duskColor: THREE.Color,
+      nightColor: THREE.Color
+    ): THREE.Color => {
+      this.fogTargetScratch.copy(dayColor);
+      if (duskWarmth > 0.001) {
+        this.fogTargetScratch.lerp(duskColor, duskWarmth * 0.88);
+      }
+      if (nightFactor > 0.001) {
+        this.fogTargetScratch.lerp(nightColor, nightFactor * 0.92);
+      }
+      return this.fogTargetScratch;
+    };
+
     target.fogColor.lerp(
-      COLOR_OVERCAST_FOG,
+      harmonizeFogTarget(COLOR_OVERCAST_FOG, COLOR_DUSK_OVERCAST_FOG, COLOR_NIGHT_FOG),
       Math.min(0.82, partlyBlend * 0.18 + overcastBlend * 0.56)
     );
     if (condition === 'snow') {
-      target.fogColor.lerp(COLOR_SNOW_FOG, Math.max(0.45, fogStrength * 0.75));
+      target.fogColor.lerp(
+        harmonizeFogTarget(COLOR_SNOW_FOG, COLOR_DUSK_SNOW_FOG, COLOR_NIGHT_SNOW_FOG),
+        Math.max(0.45, fogStrength * 0.75)
+      );
     } else if (stormDarkening > 0.12) {
-      target.fogColor.lerp(COLOR_STORM_FOG, Math.min(0.8, stormDarkening * 0.85));
+      target.fogColor.lerp(
+        harmonizeFogTarget(COLOR_STORM_FOG, COLOR_DUSK_STORM_FOG, COLOR_NIGHT_FOG),
+        Math.min(0.8, stormDarkening * 0.85)
+      );
     } else if (manualFogScale > 0.05) {
-      target.fogColor.lerp(COLOR_MIST_FOG, Math.min(0.75, manualFogScale * 0.75));
+      target.fogColor.lerp(
+        harmonizeFogTarget(COLOR_MIST_FOG, COLOR_DUSK_MIST_FOG, COLOR_NIGHT_FOG),
+        Math.min(0.75, manualFogScale * 0.75)
+      );
     }
 
     target.fogDensity =
@@ -432,6 +464,72 @@ export class AtmosphereEphemerisSolver {
     this.activeHdrBucket = this.currentMode;
     copyEnvState(this.getCachedPresetState(this.currentMode), out);
     return this.applyWeatherModulationToState(out, weather);
+  }
+
+  private computeFogDuskWarmth(nightFactor: number): number {
+    const golden = this.computeGoldenFactor();
+    if (!this.isContinuousSolarMode) {
+      return this.currentMode === 'dusk' ? Math.max(golden, 0.85) : golden;
+    }
+    const alt = this.latestSolar.altitudeDeg;
+    const lowSunBand = (1 - nightFactor) * (1 - THREE.MathUtils.smoothstep(alt, 6, 22));
+    return Math.max(golden, lowSunBand);
+  }
+
+  /**
+   * Computes horizon fog blend parameters for the skybox TSL graph so the 3D terrain edge
+   * dissolves seamlessly into the HDRI background across clear, overcast, rain, fog, and snow.
+   */
+  public computeHorizonFogParams(
+    fogDensity: number,
+    weather: WeatherController
+  ): { readonly strength: number; readonly height: number } {
+    if (fogDensity <= 1e-6) {
+      return { strength: 0, height: 0.04 };
+    }
+    const coupling = weather.getAtmosphereCoupling();
+    const weatherState = weather.getState();
+    const manualFog = weatherState.fogEnabled
+      ? THREE.MathUtils.clamp(weatherState.fogIntensity, 0, 1)
+      : 0;
+    const precip =
+      weatherState.precipType !== 'none'
+        ? THREE.MathUtils.clamp(weatherState.precipIntensity, 0, 1)
+        : 0;
+    const isSnow = weatherState.precipType === 'snow' || coupling.condition === 'snow';
+    const densityFactor = THREE.MathUtils.clamp((fogDensity - 0.0014) / 0.011, 0, 1);
+    const weatherHaze = THREE.MathUtils.clamp(
+      Math.max(
+        coupling.fogStrength,
+        manualFog,
+        precip * (isSnow ? 0.76 : 0.72),
+        coupling.rainDarkening * 0.68,
+        THREE.MathUtils.smoothstep(coupling.effCloudCover, 0.35, 0.98) * 0.42
+      ),
+      0,
+      1
+    );
+    const combinedHaze = THREE.MathUtils.clamp(
+      Math.max(weatherHaze, densityFactor * 0.45),
+      0,
+      1
+    );
+    const strength = THREE.MathUtils.clamp(
+      THREE.MathUtils.lerp(0.78, 1.0, Math.pow(combinedHaze, 0.65)),
+      0,
+      1
+    );
+    const height = THREE.MathUtils.clamp(
+      0.055 +
+        densityFactor * 0.025 +
+        coupling.effCloudCover * 0.03 +
+        coupling.rainDarkening * 0.10 +
+        precip * (isSnow ? 0.14 : 0.11) +
+        manualFog * 0.24,
+      0.05,
+      0.42
+    );
+    return { strength, height };
   }
 
   public computeModulatedGroundHorizon(

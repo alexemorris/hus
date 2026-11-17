@@ -1118,7 +1118,7 @@ describe('8K Ultra-HDR detail resolution, maxDetailWidth clamping & worldAnchore
       return { texture: tex, dispose: vi.fn() };
     };
     (env as unknown as { hdrLoader: { load: () => void } }).hdrLoader = { load: () => {} };
-    env.bakeProceduralEnvironments(fakeRenderer);
+    env.bakeProceduralEnvironments(fakeRenderer, { deferHdr: true });
 
     const expectedTheta = environmentRotationForTrueNorth(90, 0);
     for (const civilHour of [5.1, 7.0, 12.5, 20.4, 23.8]) {
@@ -1461,5 +1461,76 @@ describe('Startup active-only procedural bake & 1-at-a-time idle HDR drain', () 
     expect(pmremBakes).toBe(3);
 
     mgr.dispose();
+  });
+});
+
+describe("Seamless HDRI horizon fog blend & time-of-day fog harmonization", () => {
+  it("syncs horizon fog uniforms in-place across Day/Dusk/Night and Clear/Rain/Fog/Snow without recompiling backgroundNode", () => {
+    const scene = new THREE.Scene();
+    const fakeRenderer = {
+      isWebGPURenderer: true,
+      toneMappingExposure: 1,
+    } as unknown as WebGPURenderer;
+    const env = new EnvironmentLighting(scene, fakeRenderer);
+    (
+      env as unknown as {
+        bakeEquirectPmremTarget: () => { texture: THREE.Texture; dispose: () => void };
+      }
+    ).bakeEquirectPmremTarget = () => {
+      const rt = new THREE.RenderTarget(2, 2);
+      (rt.texture as unknown as { isPMREMTexture: boolean }).isPMREMTexture = true;
+      return rt;
+    };
+
+    env.bakeProceduralEnvironments(fakeRenderer, { deferHdr: true });
+    env.setTimeOfDay("day", { animate: false });
+    const sceneNodes = scene as unknown as { backgroundNode: unknown };
+    const initialBgNode = sceneNodes.backgroundNode;
+    expect(initialBgNode).toBeTruthy();
+
+    const clearDay = { ...env.getHorizonFogState(), color: env.getHorizonFogState().color.clone() };
+    expect(clearDay.strength).toBeGreaterThan(0.7);
+    expect(clearDay.strength).toBeLessThan(0.92);
+    expect(clearDay.height).toBeGreaterThan(0.04);
+    expect(clearDay.height).toBeLessThan(0.12);
+
+    // Rain raises horizon fog strength & height without replacing backgroundNode
+    env.weather.applyPreset("light_rain");
+    const rainDay = { ...env.getHorizonFogState(), color: env.getHorizonFogState().color.clone() };
+    expect(sceneNodes.backgroundNode).toBe(initialBgNode);
+    expect(rainDay.strength).toBeGreaterThan(clearDay.strength);
+    expect(rainDay.height).toBeGreaterThan(clearDay.height);
+
+    // Fog raises horizon fog veil even further
+    env.weather.applyPreset("morning_mist");
+    const fogDay = { ...env.getHorizonFogState(), color: env.getHorizonFogState().color.clone() };
+    expect(sceneNodes.backgroundNode).toBe(initialBgNode);
+    expect(fogDay.strength).toBeGreaterThanOrEqual(rainDay.strength);
+    expect(fogDay.height).toBeGreaterThan(rainDay.height);
+
+    // Snow in winter lifts horizon fog strength & height smoothly
+    env.setSeason("winter", { animate: false });
+    env.weather.applyPreset("winter_snow");
+    const snowDay = { ...env.getHorizonFogState(), color: env.getHorizonFogState().color.clone() };
+    expect(sceneNodes.backgroundNode).toBe(initialBgNode);
+    expect(snowDay.strength).toBeGreaterThan(clearDay.strength);
+    expect(snowDay.height).toBeGreaterThan(clearDay.height);
+
+    // Dusk + Rain harmonizes fog hue warm rather than cold daytime blue-grey
+    env.setSeason("summer", { animate: false });
+    env.setTimeOfDay("dusk", { animate: false });
+    env.weather.applyPreset("light_rain");
+    const rainDusk = env.getHorizonFogState().color.clone();
+    expect(sceneNodes.backgroundNode).toBe(initialBgNode);
+    expect(rainDusk.r).toBeGreaterThan(rainDusk.b);
+
+    // Night + Fog stays dark moonlit navy rather than glowing daytime mist
+    env.setTimeOfDay("night", { animate: false });
+    env.weather.applyPreset("morning_mist");
+    const fogNight = env.getHorizonFogState().color.clone();
+    expect(sceneNodes.backgroundNode).toBe(initialBgNode);
+    expect(Math.max(fogNight.r, fogNight.g, fogNight.b)).toBeLessThan(0.08);
+
+    env.dispose();
   });
 });

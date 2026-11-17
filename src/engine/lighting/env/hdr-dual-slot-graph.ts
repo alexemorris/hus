@@ -1,9 +1,13 @@
 import * as THREE from 'three';
 import {
+  backgroundIntensity,
   equirectUV,
+  float,
+  max,
   mix,
   pmremTexture,
   positionWorldDirection,
+  smoothstep,
   texture,
   uniform,
   vec3,
@@ -142,6 +146,27 @@ export class HdrDualSlotGraph {
   private readonly uRotSinB = uniform(0);
   private readonly uBgBlend = uniform(0);
   private readonly uEnvBlend = uniform(0);
+  private readonly uHorizonFogColor = uniform(new THREE.Color(ENV_PRESETS.dusk.fogColor));
+  private readonly uHorizonFogStrength = uniform(0);
+  private readonly uHorizonFogHeight = uniform(0.06);
+
+  public setHorizonFog(color: THREE.Color, strength: number, height: number): void {
+    this.uHorizonFogColor.value.copy(color);
+    this.uHorizonFogStrength.value = THREE.MathUtils.clamp(strength, 0, 1);
+    this.uHorizonFogHeight.value = THREE.MathUtils.clamp(height, 0.005, 0.85);
+  }
+
+  public getHorizonFogState(): {
+    readonly color: THREE.Color;
+    readonly strength: number;
+    readonly height: number;
+  } {
+    return {
+      color: this.uHorizonFogColor.value,
+      strength: this.uHorizonFogStrength.value,
+      height: this.uHorizonFogHeight.value,
+    };
+  }
 
   public isInstalled(): boolean {
     return this.installed;
@@ -165,7 +190,13 @@ export class HdrDualSlotGraph {
 
     this.bgTexNodeA = texture(this.fallbackBgTexA, equirectUV(rotDirA), 0);
     this.bgTexNodeB = texture(this.fallbackBgTexB, equirectUV(rotDirB), 0);
-    const dualBgNode = mix(this.bgTexNodeA, this.bgTexNodeB, this.uBgBlend);
+    const rawBgRgb = mix(this.bgTexNodeA, this.bgTexNodeB, this.uBgBlend).rgb;
+    const horizonProfile = float(1).sub(
+      smoothstep(float(0), max(this.uHorizonFogHeight, float(0.005)), max(dir.y, float(0)))
+    );
+    const horizonBlend = horizonProfile.mul(horizonProfile).mul(this.uHorizonFogStrength);
+    const fogTargetRgb = this.uHorizonFogColor.div(max(backgroundIntensity, float(1e-4)));
+    const dualBgNode = mix(rawBgRgb, fogTargetRgb, horizonBlend);
 
     this.pmremNodeA = pmremTexture(this.fallbackPmremTexA);
     this.pmremNodeB = pmremTexture(this.fallbackPmremTexB);

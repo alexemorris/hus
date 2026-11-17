@@ -408,6 +408,8 @@ export class EnvironmentLighting {
 
     this.uFogColor.value.copy(s.fogColor);
     this.uFogDensity.value = s.fogDensity;
+    const horizonFog = this.solver.computeHorizonFogParams(s.fogDensity, this.weather);
+    this.hdrManager.setHorizonFog(s.fogColor, horizonFog.strength, horizonFog.height);
     if (this.scene.background instanceof THREE.Color) {
       this.scene.background.copy(s.fogColor);
     }
@@ -921,6 +923,10 @@ export class EnvironmentLighting {
     for (const l of this.skyListeners) {
       l(snap);
     }
+  }
+
+  public getHorizonFogState() {
+    return this.hdrManager.getHorizonFogState();
   }
 
   public getHdrDualSlotState() {
