@@ -64,6 +64,136 @@ export function buildSafeRequiredWebGpuLimits(
   return out;
 }
 
+
+const WEBGPU_TEXTURE_GUARD_KEY = Symbol("husjsWebGpuTextureUploadGuard");
+const warnedInvalidTextureUuids = new Set<string>();
+
+/**
+ * Returns true when a WebGPU external image source (canvas, img, ImageBitmap, video)
+ * cannot be uploaded via `GPUQueue.copyExternalImageToTexture` (e.g. 0x0 canvas,
+ * broken/incomplete HTMLImageElement, closed ImageBitmap, or unready video).
+ */
+export function isInvalidWebGpuExternalImage(img: unknown): boolean {
+  if (!img || typeof img !== "object") return false;
+  const maybeCanvas = img as { getContext?: unknown; width?: number; height?: number };
+  if (
+    typeof maybeCanvas.getContext === "function" &&
+    (Number(maybeCanvas.width) <= 0 || Number(maybeCanvas.height) <= 0)
+  ) {
+    return true;
+  }
+  if (
+    typeof HTMLImageElement !== "undefined" &&
+    img instanceof HTMLImageElement &&
+    (!img.complete || img.naturalWidth <= 0 || img.naturalHeight <= 0)
+  ) {
+    return true;
+  }
+  if (
+    typeof ImageBitmap !== "undefined" &&
+    img instanceof ImageBitmap &&
+    (img.width <= 0 || img.height <= 0)
+  ) {
+    return true;
+  }
+  if (
+    typeof HTMLVideoElement !== "undefined" &&
+    img instanceof HTMLVideoElement &&
+    (img.readyState < 2 || img.videoWidth <= 0 || img.videoHeight <= 0)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+interface GuardedTexturesManager {
+  [WEBGPU_TEXTURE_GUARD_KEY]?: boolean;
+  get?: (texture: THREE.Texture) => {
+    initialized?: boolean;
+    isDefaultTexture?: boolean;
+    version?: number;
+  };
+  updateTexture?: (texture: THREE.Texture, options?: Record<string, unknown>) => void;
+}
+
+interface GuardedWebGpuBackend {
+  isWebGPUBackend?: boolean;
+  createSampler?: (texture: THREE.Texture) => void;
+  createDefaultTexture?: (texture: THREE.Texture) => void;
+}
+
+/**
+ * Installs an idempotent WebGPU texture-upload guard on `renderer._textures.updateTexture`
+ * so no invalid external image (0x0 canvas, failed/broken HTMLImageElement, closed ImageBitmap)
+ * can ever reach `GPUQueue.copyExternalImageToTexture` and throw `OperationError`.
+ */
+export function installWebGpuTextureUploadGuard(renderer: WebGPURenderer): void {
+  const internal = renderer as unknown as {
+    backend?: GuardedWebGpuBackend;
+    _textures?: GuardedTexturesManager;
+  };
+  const backend = internal.backend;
+  const textures = internal._textures;
+  if (!backend?.isWebGPUBackend || !textures || typeof textures.updateTexture !== "function") {
+    return;
+  }
+  if (textures[WEBGPU_TEXTURE_GUARD_KEY]) return;
+  textures[WEBGPU_TEXTURE_GUARD_KEY] = true;
+
+  const origUpdateTexture = textures.updateTexture.bind(textures);
+  textures.updateTexture = (texture: THREE.Texture, options?: Record<string, unknown>): void => {
+    if (texture && texture.version > 0) {
+      const t = texture as THREE.Texture & {
+        isDataTexture?: boolean;
+        isRenderTargetTexture?: boolean;
+        isDepthTexture?: boolean;
+        isFramebufferTexture?: boolean;
+        isStorageTexture?: boolean;
+        isExternalTexture?: boolean;
+        isCompressedTexture?: boolean;
+        isCompressedArrayTexture?: boolean;
+        isCubeTexture?: boolean;
+        images?: unknown[];
+      };
+      const skip =
+        t.isDataTexture ||
+        t.isRenderTargetTexture ||
+        t.isDepthTexture ||
+        t.isFramebufferTexture ||
+        t.isStorageTexture ||
+        t.isExternalTexture ||
+        t.isCompressedTexture ||
+        t.isCompressedArrayTexture;
+      if (!skip) {
+        const invalid = t.isCubeTexture
+          ? Array.isArray(t.images) && t.images.some((face) => isInvalidWebGpuExternalImage(face))
+          : isInvalidWebGpuExternalImage(t.image);
+        if (invalid) {
+          const texData = textures.get?.(texture);
+          if (texData && texData.initialized !== true) {
+            backend.createSampler?.(texture);
+            backend.createDefaultTexture?.(texture);
+            texData.initialized = true;
+            texData.isDefaultTexture = true;
+            texData.version = texture.version;
+          } else if (texData) {
+            texData.version = texture.version;
+          }
+          if (!warnedInvalidTextureUuids.has(texture.uuid)) {
+            warnedInvalidTextureUuids.add(texture.uuid);
+            console.warn(
+              "[husjs] Skipped WebGPU texture upload for invalid external image:",
+              texture.name || texture.uuid
+            );
+          }
+          return;
+        }
+      }
+    }
+    origUpdateTexture(texture, options);
+  };
+}
+
 async function configureAdapterRequiredLimits(
   renderer: WebGPURenderer,
   isMobile: boolean
@@ -172,6 +302,7 @@ export class ViewerRenderer implements RenderInvalidator {
             this.disposeInitializedBackend();
             return;
           }
+          installWebGpuTextureUploadGuard(this.renderer);
           this.initialized = true;
           this.needsRender = true;
           this.shadowsDirty = true;

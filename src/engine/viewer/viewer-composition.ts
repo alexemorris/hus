@@ -53,7 +53,7 @@ import { StaticSceneService } from './services/static-scene-service.ts';
 import { TradeViewService } from './services/trade-view-service.ts';
 import { AssetInspectorController } from '../assets/asset-inspector-controller.ts';
 import { TerrainSculptController } from '../terrain/terrain-sculpt-controller.ts';
-import { ViewerRenderer } from './services/viewer-renderer.ts';
+import { isInvalidWebGpuExternalImage, ViewerRenderer } from './services/viewer-renderer.ts';
 import { createViewerWalkthrough } from './services/viewer-walkthrough.ts';
 
 /**
@@ -1613,11 +1613,38 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
       collectTex(tex);
     }
 
+    const visitedNodes = new WeakSet<object>();
+    const collectFromNodeOrValue = (val: unknown, depth: number): void => {
+      if (!val || typeof val !== "object" || depth > 8) return;
+      if ((val as THREE.Texture).isTexture) {
+        collectTex(val);
+        return;
+      }
+      if (visitedNodes.has(val)) return;
+      if ((val as { isNode?: boolean }).isNode) {
+        visitedNodes.add(val);
+        const rec = val as Record<string, unknown>;
+        for (const k of Object.keys(rec)) {
+          collectFromNodeOrValue(rec[k], depth + 1);
+        }
+      }
+    };
+
     const collectMaterialTextures = (rawMat: THREE.Material | null | undefined): void => {
       const mat = rawMat as unknown as Record<string, unknown> | null | undefined;
       if (!mat) return;
       for (const key of Object.keys(mat)) {
-        collectTex(mat[key]);
+        const val = mat[key];
+        collectTex(val);
+        if (val && typeof val === "object" && (val as { isNode?: boolean }).isNode) {
+          collectFromNodeOrValue(val, 0);
+        }
+      }
+      const uniforms = mat.uniforms as Record<string, { value?: unknown }> | undefined;
+      if (uniforms && typeof uniforms === "object") {
+        for (const u of Object.values(uniforms)) {
+          if (u && typeof u === "object") collectTex(u.value);
+        }
       }
     };
 
@@ -1644,6 +1671,22 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
     this.staticScene.batchOptimizer.forEachDormantMaterial((mat) => {
       collectMaterialTextures(mat);
     });
+    for (const group of this.variations.getGroups()) {
+      for (const opt of group.options) {
+        for (const rootObj of opt.objects) {
+          rootObj.traverse((obj) => {
+            if (
+              obj instanceof THREE.Mesh ||
+              obj instanceof THREE.Sprite ||
+              obj instanceof THREE.Points ||
+              obj instanceof THREE.Line
+            ) {
+              collectMeshTextures(obj as THREE.Mesh);
+            }
+          });
+        }
+      }
+    }
 
     const pendingImageLoads: Promise<void>[] = [];
     for (const tex of uniqueTextures) {
@@ -1671,31 +1714,14 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
     }
 
     const uploadedTextures = new Set<THREE.Texture>();
-    const isInvalidExternalImage = (img: unknown): boolean => {
-      if (!img || typeof img !== 'object') return false;
-      const maybeCanvas = img as { getContext?: unknown; width?: number; height?: number };
-      if (
-        typeof maybeCanvas.getContext === 'function' &&
-        (Number(maybeCanvas.width) <= 0 || Number(maybeCanvas.height) <= 0)
-      ) {
-        return true;
-      }
-      if (
-        typeof HTMLImageElement !== 'undefined' &&
-        img instanceof HTMLImageElement &&
-        (!img.complete || img.naturalWidth <= 0 || img.naturalHeight <= 0)
-      ) {
-        return true;
-      }
-      return false;
-    };
+
 
     const texArray = Array.from(uniqueTextures);
     const total = Math.max(1, texArray.length);
     for (let i = 0; i < texArray.length; i++) {
       if (this.disposed) return uploadedTextures;
       const tex = texArray[i]!;
-      if (isInvalidExternalImage(tex.image)) {
+      if (isInvalidWebGpuExternalImage(tex.image)) {
         continue;
       }
       if (
@@ -1753,11 +1779,37 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
         retainedCanvases.add(img);
       }
     };
+    const visitedRetainNodes = new WeakSet<object>();
+    const retainNodeCanvases = (val: unknown, depth: number): void => {
+      if (!val || typeof val !== "object" || depth > 8) return;
+      if ((val as THREE.Texture).isTexture) {
+        retainTextureCanvas(val);
+        return;
+      }
+      if (visitedRetainNodes.has(val)) return;
+      if ((val as { isNode?: boolean }).isNode) {
+        visitedRetainNodes.add(val);
+        const rec = val as Record<string, unknown>;
+        for (const k of Object.keys(rec)) {
+          retainNodeCanvases(rec[k], depth + 1);
+        }
+      }
+    };
     const retainMaterialCanvases = (rawMat: THREE.Material | null | undefined): void => {
       const mat = rawMat as unknown as Record<string, unknown> | null | undefined;
       if (!mat) return;
       for (const key of Object.keys(mat)) {
-        retainTextureCanvas(mat[key]);
+        const val = mat[key];
+        retainTextureCanvas(val);
+        if (val && typeof val === "object" && (val as { isNode?: boolean }).isNode) {
+          retainNodeCanvases(val, 0);
+        }
+      }
+      const uniforms = mat.uniforms as Record<string, { value?: unknown }> | undefined;
+      if (uniforms && typeof uniforms === "object") {
+        for (const u of Object.values(uniforms)) {
+          if (u && typeof u === "object") retainTextureCanvas(u.value);
+        }
       }
     };
 
@@ -1771,7 +1823,30 @@ export class ViewerComposition<TSecurity extends SecurityOverlay3D = SecurityOve
     });
     collectCachedTextureCanvases(retainedCanvases);
 
-    this.scene.traverse((obj) => {
+    for (const group of this.variations.getGroups()) {
+      for (const opt of group.options) {
+        for (const rootObj of opt.objects) {
+          rootObj.traverse((obj) => {
+            if (
+              !(
+                obj instanceof THREE.Mesh ||
+                obj instanceof THREE.Sprite ||
+                obj instanceof THREE.Points ||
+                obj instanceof THREE.Line
+              )
+            ) {
+              return;
+            }
+            const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+            for (let i = 0; i < mats.length; i++) {
+              retainMaterialCanvases(mats[i]);
+            }
+          });
+        }
+      }
+    }
+
+        this.scene.traverse((obj) => {
       if (
         !(
           obj instanceof THREE.Mesh ||

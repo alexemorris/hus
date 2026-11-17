@@ -26,6 +26,7 @@ const propTextureCache = new Map<string, unknown>();
 const scalarDataCache = new Map<string, { readonly data: Uint8Array; readonly width: number; readonly height: number }>();
 let rgbaDataCache = new WeakMap<HTMLCanvasElement, Map<string, { readonly data: Uint8Array; readonly width: number; readonly height: number }>>();
 const statefulRecordingKeys = new Set<string>();
+const convertedCanvases = new Set<HTMLCanvasElement>();
 
 let downsampleScratchCanvas: HTMLCanvasElement | null = null;
 let cachedIsSnapshotRecordingEnv: boolean | null = null;
@@ -422,6 +423,7 @@ export function createScalarDataTextureFromCanvas(
   tex.minFilter = THREE.LinearMipmapLinearFilter;
   tex.generateMipmaps = true;
   tex.needsUpdate = true;
+  convertedCanvases.add(sourceCanvas);
   return tex;
 }
 
@@ -659,6 +661,7 @@ export function createRgbaDataTextureFromCanvas(
   tex.minFilter = THREE.LinearMipmapLinearFilter;
   tex.generateMipmaps = true;
   tex.needsUpdate = true;
+  convertedCanvases.add(sourceCanvas);
   return tex;
 }
 
@@ -812,12 +815,14 @@ export function releaseUploadedStaticCanvases(
   let released = 0;
   for (const canvas of candidates) {
     if (!canvas || isRecordingCanvasStub(canvas)) continue;
+    if (!convertedCanvases.has(canvas)) continue;
     if (retainedCanvases?.has(canvas)) continue;
     if (canvas.width > 0 || canvas.height > 0) {
       canvas.width = 0;
       canvas.height = 0;
       released++;
     }
+    convertedCanvases.delete(canvas);
   }
 
   if (downsampleScratchCanvas && !isRecordingCanvasStub(downsampleScratchCanvas)) {
@@ -856,6 +861,7 @@ export function clearTextureRegistryCache(): void {
   propTextureCache.clear();
   scalarDataCache.clear();
   statefulRecordingKeys.clear();
+  convertedCanvases.clear();
   downsampleScratchCanvas = null;
   cachedIsSnapshotRecordingEnv = null;
 }

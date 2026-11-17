@@ -3,7 +3,18 @@ import { describe, expect, it } from 'vitest';
 import { RoomLodController } from '../lod/lod-manager.ts';
 import { createPropertySceneLayers } from '../viewer/scene-content.ts';
 import { SceneBatchOptimizer } from './scene-batch-optimizer.ts';
-import { collectCachedTextureCanvases, getOrCreateCachedCanvas, getOrCreateCachedTexture, releaseUploadedStaticCanvases } from '../textures/texture-registry.ts';
+import {
+  clearTextureRegistryCache,
+  collectCachedTextureCanvases,
+  createRgbaDataTextureFromCanvas,
+  getOrCreateCachedCanvas,
+  getOrCreateCachedTexture,
+  releaseUploadedStaticCanvases,
+} from '../textures/texture-registry.ts';
+import {
+  installWebGpuTextureUploadGuard,
+  isInvalidWebGpuExternalImage,
+} from '../viewer/services/viewer-renderer.ts';
 type OptimizerDeps = ConstructorParameters<typeof SceneBatchOptimizer>[0];
 
 function makeOptimizerHarness() {
@@ -824,5 +835,93 @@ describe('BatchRestorationStore & texture-registry WebGPU canvas retention', () 
       releaseUploadedStaticCanvases(undefined, retained);
       expect((tex.image as HTMLCanvasElement).width).toBe(32);
     }
+  });
+
+  it("never zeros unconverted CanvasTexture canvases in releaseUploadedStaticCanvases while still freeing converted DataTexture canvases", () => {
+    clearTextureRegistryCache();
+    const makeFakeCanvas = (w: number, h: number) => ({
+      width: w,
+      height: h,
+      getContext: () => ({
+        getImageData: () => ({ data: new Uint8ClampedArray(w * h * 4), width: w, height: h }),
+      }),
+    }) as unknown as HTMLCanvasElement;
+
+    const unconvertedCanvas = makeFakeCanvas(64, 64);
+    const convertedCanvas = makeFakeCanvas(64, 64);
+    const convertedRetainedCanvas = makeFakeCanvas(64, 64);
+
+    // Simulate a DataTexture conversion on convertedCanvas and convertedRetainedCanvas
+    const dt1 = createRgbaDataTextureFromCanvas("test:conv1", convertedCanvas);
+    const dt2 = createRgbaDataTextureFromCanvas("test:conv2", convertedRetainedCanvas);
+    expect(dt1).not.toBeNull();
+    expect(dt2).not.toBeNull();
+
+    const retained = new Set<HTMLCanvasElement>([convertedRetainedCanvas]);
+    const released = releaseUploadedStaticCanvases(
+      [unconvertedCanvas, convertedCanvas, convertedRetainedCanvas],
+      retained
+    );
+
+    // Only the converted, unretained canvas is zeroed
+    expect(released).toBe(1);
+    expect(convertedCanvas.width).toBe(0);
+    expect(convertedCanvas.height).toBe(0);
+    // Unconverted CanvasTexture backing store must NEVER be zeroed even if not in retainedCanvases
+    expect(unconvertedCanvas.width).toBe(64);
+    expect(unconvertedCanvas.height).toBe(64);
+    // Converted canvas still referenced by a live CanvasTexture must remain intact
+    expect(convertedRetainedCanvas.width).toBe(64);
+    expect(convertedRetainedCanvas.height).toBe(64);
+    clearTextureRegistryCache();
+  });
+
+  it("installWebGpuTextureUploadGuard skips 0x0 canvases and broken images without throwing and resumes once valid", () => {
+    const zeroCanvas = { width: 0, height: 0, getContext: () => ({}) } as unknown as HTMLCanvasElement;
+    const validCanvas = { width: 32, height: 32, getContext: () => ({}) } as unknown as HTMLCanvasElement;
+    expect(isInvalidWebGpuExternalImage(zeroCanvas)).toBe(true);
+    expect(isInvalidWebGpuExternalImage(validCanvas)).toBe(false);
+
+    const texDataMap = new WeakMap<THREE.Texture, { initialized?: boolean; isDefaultTexture?: boolean; version?: number }>();
+    let origCalls = 0;
+    let defaultCreates = 0;
+    const fakeRenderer = {
+      backend: {
+        isWebGPUBackend: true,
+        createSampler: () => {},
+        createDefaultTexture: () => {
+          defaultCreates++;
+        },
+      },
+      _textures: {
+        get: (tex: THREE.Texture) => {
+          let d = texDataMap.get(tex);
+          if (!d) {
+            d = {};
+            texDataMap.set(tex, d);
+          }
+          return d;
+        },
+        updateTexture: (_tex: THREE.Texture) => {
+          origCalls++;
+        },
+      },
+    };
+
+    installWebGpuTextureUploadGuard(fakeRenderer as unknown as Parameters<typeof installWebGpuTextureUploadGuard>[0]);
+
+    const tex = new THREE.CanvasTexture(zeroCanvas);
+    tex.needsUpdate = true;
+    fakeRenderer._textures.updateTexture(tex);
+    expect(origCalls).toBe(0);
+    expect(defaultCreates).toBe(1);
+    expect(texDataMap.get(tex)?.isDefaultTexture).toBe(true);
+
+    // Once the canvas is restored to valid dimensions and marked needsUpdate, upload proceeds
+    (zeroCanvas as unknown as { width: number; height: number }).width = 64;
+    (zeroCanvas as unknown as { width: number; height: number }).height = 64;
+    tex.needsUpdate = true;
+    fakeRenderer._textures.updateTexture(tex);
+    expect(origCalls).toBe(1);
   });
 });
