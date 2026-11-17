@@ -5,7 +5,7 @@ import {
   type HeritageClampRect2D,
   type HeritageWallImperfectionOptions,
 } from './heritage-masonry.ts';
-import { addCasedArchitravePortal, buildMitredWallSkirtingGeometry } from './swept-moulding.ts';
+import { addCasedArchitravePortal, buildMitredWallSkirtingGeometry, type WallSkirtingProfilePreset } from './swept-moulding.ts';
 import { createTimberBoxGeometry, hashTimberSeed, type TimberGrainAxis } from './timber-piece-uvs.ts';
 
 /**
@@ -43,6 +43,18 @@ export interface WallPortalOpening {
   readonly backArchitraveMaterial?: THREE.Material;
   /** Whether to emit 3-sided reveal lining + architraves (defaults to `true`). */
   readonly includeArchitrave?: boolean;
+  /** Which faces of the portal emit moulded architraves and plinth blocks ('both' | 'front' | 'back' | 'none'; defaults to 'both'). */
+  readonly architraveFaces?: 'both' | 'front' | 'back' | 'none';
+  /** Whether to include the +normal (`front`) face architrave (defaults to `true`). */
+  readonly includeFrontArchitrave?: boolean;
+  /** Whether to include the -normal (`back`) face architrave (defaults to `true`). */
+  readonly includeBackArchitrave?: boolean;
+  /** Whether to include 168mm pedestal plinth blocks beneath architrave legs (defaults to `true`). */
+  readonly includePlinthBlocks?: boolean;
+  /** Optional outward clearance between wall face and architrave/plinth back face in metres (defaults to `0`). */
+  readonly archWallClear?: number;
+  /** Optional vertical clearance between face floor datum and plinth/architrave base in metres (defaults to `0`). */
+  readonly archFloorClear?: number;
   /** Optional architrave moulding width (defaults to `0.092`). */
   readonly architraveWidth?: number;
   /** Optional ripped/scribed architrave width on the -u (`left`) leg. */
@@ -112,6 +124,8 @@ export interface AngledWallSegmentConfig {
   readonly skipCapRanges?: readonly (readonly [number, number])[];
   /** Skirting board material (`skirtingMat`). */
   readonly skirtingMaterial?: THREE.Material;
+  /** Skirting moulding profile preset (defaults to `'torus'`). */
+  readonly skirtingProfile?: WallSkirtingProfilePreset;
   readonly addFrontSkirting?: boolean;
   readonly addBackSkirting?: boolean;
   /** Optional u-intervals `[u0, u1]` where front (`+normal`) skirting is suppressed (e.g. behind chimney breasts/wardrobes or at corners). */
@@ -425,6 +439,7 @@ export function buildAngledWallSegment(
             ];
       const skirtGeo = buildMitredWallSkirtingGeometry(skirtPath, floorY, {
         material: config.skirtingMaterial,
+        skirtingProfile: config.skirtingProfile ?? 'torus',
         seed: [config.start[0], config.start[1], config.end[0], config.end[1], zSign, segA, segB],
       });
       const skirt = new THREE.Mesh(skirtGeo, config.skirtingMaterial);
@@ -703,13 +718,22 @@ export function buildAngledWallSegment(
     const opLeft = op.uCenter - op.width / 2;
     const opRight = op.uCenter + op.width / 2;
     const hasArchitrave = op.includeArchitrave !== false;
+    const opFaces = op.architraveFaces ?? 'both';
+    const hasFrontArch =
+      hasArchitrave &&
+      (opFaces === 'both' || opFaces === 'front') &&
+      op.includeFrontArchitrave !== false;
+    const hasBackArch =
+      hasArchitrave &&
+      (opFaces === 'both' || opFaces === 'back') &&
+      op.includeBackArchitrave !== false;
     const fullArchW = op.architraveWidth ?? 0.092;
     const fLeftW = op.frontLeftArchitraveWidth ?? op.leftArchitraveWidth ?? fullArchW;
     const fRightW = op.frontRightArchitraveWidth ?? op.rightArchitraveWidth ?? fullArchW;
     const bLeftW = op.backLeftArchitraveWidth ?? op.leftArchitraveWidth ?? fullArchW;
     const bRightW = op.backRightArchitraveWidth ?? op.rightArchitraveWidth ?? fullArchW;
-    const curFrontLeftTrim = hasArchitrave ? computePlinthTrim(fLeftW, fullArchW) : 0;
-    const curBackLeftTrim = hasArchitrave ? computePlinthTrim(bLeftW, fullArchW) : 0;
+    const curFrontLeftTrim = hasFrontArch ? computePlinthTrim(fLeftW, fullArchW) : 0;
+    const curBackLeftTrim = hasBackArch ? computePlinthTrim(bLeftW, fullArchW) : 0;
     if (opLeft > cursorU) {
       addWallPier(
         cursorU,
@@ -801,6 +825,12 @@ buildWallPierOrLintelGeo(opLeft, opRight, headBottomY, config.topY, config.thick
         backRightArchitraveWidth: op.backRightArchitraveWidth,
         frontTopArchitraveWidth: op.frontTopArchitraveWidth,
         backTopArchitraveWidth: op.backTopArchitraveWidth,
+        architraveFaces: op.architraveFaces,
+        includeFrontArchitrave: op.includeFrontArchitrave,
+        includeBackArchitrave: op.includeBackArchitrave,
+        includePlinthBlocks: op.includePlinthBlocks,
+        archWallClear: op.archWallClear,
+        archFloorClear: op.archFloorClear,
         includeDoorStop: op.kind === 'hinged-door',
         doorStopHingeFace: swingsFront ? 'front' : 'back',
         frontArchitraveMaterial: op.frontArchitraveMaterial,
@@ -1103,8 +1133,8 @@ buildWallPierOrLintelGeo(opLeft, opRight, headBottomY, config.topY, config.thick
     }
 
     cursorU = opRight;
-    prevFrontRightTrim = hasArchitrave ? computePlinthTrim(fRightW, fullArchW) : 0;
-    prevBackRightTrim = hasArchitrave ? computePlinthTrim(bRightW, fullArchW) : 0;
+    prevFrontRightTrim = hasFrontArch ? computePlinthTrim(fRightW, fullArchW) : 0;
+    prevBackRightTrim = hasBackArch ? computePlinthTrim(bRightW, fullArchW) : 0;
   }
 
   if (cursorU < frame.length) {

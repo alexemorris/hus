@@ -10,7 +10,7 @@ import {
 
 export type RoomSide = 'left' | 'right';
 export type SkirtingProfilePreset = 'ogee' | 'torus' | 'lambs-tongue' | 'chamfered';
-export type SkirtingEndCap = 'butt' | 'selfReturn' | 'miter';
+export type SkirtingEndCap = 'butt' | 'selfReturn' | 'return' | 'miter';
 
 export interface SkirtingProfilePoint {
   readonly u: number;
@@ -1209,6 +1209,10 @@ export function createMeshAccumulator(): MeshAccumulator {
   return { positions: [], normals: [], uvs: [], indices: [] };
 }
 
+function isReturnEndCap(cap: SkirtingEndCap | null | undefined): boolean {
+  return cap === 'selfReturn' || cap === 'return';
+}
+
 export function emitOrientedTri(
   acc: MeshAccumulator,
   i0: number,
@@ -1216,15 +1220,15 @@ export function emitOrientedTri(
   i2: number,
   expectedNormal: THREE.Vector3
 ): void {
-  const p0x = acc.positions[i0 * 3]!;
-  const p0y = acc.positions[i0 * 3 + 1]!;
-  const p0z = acc.positions[i0 * 3 + 2]!;
-  const e1x = acc.positions[i1 * 3]! - p0x;
-  const e1y = acc.positions[i1 * 3 + 1]! - p0y;
-  const e1z = acc.positions[i1 * 3 + 2]! - p0z;
-  const e2x = acc.positions[i2 * 3]! - p0x;
-  const e2y = acc.positions[i2 * 3 + 1]! - p0y;
-  const e2z = acc.positions[i2 * 3 + 2]! - p0z;
+  const p0x = Math.fround(acc.positions[i0 * 3]!);
+  const p0y = Math.fround(acc.positions[i0 * 3 + 1]!);
+  const p0z = Math.fround(acc.positions[i0 * 3 + 2]!);
+  const e1x = Math.fround(acc.positions[i1 * 3]!) - p0x;
+  const e1y = Math.fround(acc.positions[i1 * 3 + 1]!) - p0y;
+  const e1z = Math.fround(acc.positions[i1 * 3 + 2]!) - p0z;
+  const e2x = Math.fround(acc.positions[i2 * 3]!) - p0x;
+  const e2y = Math.fround(acc.positions[i2 * 3 + 1]!) - p0y;
+  const e2z = Math.fround(acc.positions[i2 * 3 + 2]!) - p0z;
   const cx = e1y * e2z - e1z * e2y;
   const cy = e1z * e2x - e1x * e2z;
   const cz = e1x * e2y - e1y * e2x;
@@ -1290,6 +1294,90 @@ interface PreparedProfileEdge {
   readonly faceNu: number;
   readonly faceNv: number;
   readonly isHiddenEdge: boolean;
+}
+
+function triangulateSimpleProfilePolygon(
+  profile: readonly SkirtingProfilePoint[]
+): [number, number, number][] {
+  const n = profile.length;
+  if (n < 3) return [];
+  const idx = Array.from({ length: n }, (_, i) => i);
+  const tris: [number, number, number][] = [];
+
+  const cross2D = (ia: number, ib: number, ic: number): number => {
+    const a = profile[ia]!;
+    const b = profile[ib]!;
+    const c = profile[ic]!;
+    return (b.u - a.u) * (c.v - a.v) - (b.v - a.v) * (c.u - a.u);
+  };
+
+  const pointInTri = (ip: number, ia: number, ib: number, ic: number): boolean => {
+    return (
+      cross2D(ia, ib, ip) >= -1e-12 &&
+      cross2D(ib, ic, ip) >= -1e-12 &&
+      cross2D(ic, ia, ip) >= -1e-12
+    );
+  };
+
+  let guard = n * n;
+  while (idx.length > 3 && guard-- > 0) {
+    const m = idx.length;
+    let bestPos = -1;
+    let bestScore = -1;
+
+    for (let k = 0; k < m; k++) {
+      const ia = idx[(k + m - 1) % m]!;
+      const ib = idx[k]!;
+      const ic = idx[(k + 1) % m]!;
+      const area2 = cross2D(ia, ib, ic);
+      if (area2 <= 1e-12) continue;
+
+      let containsOther = false;
+      for (let j = 0; j < m; j++) {
+        const ip = idx[j]!;
+        if (ip === ia || ip === ib || ip === ic) continue;
+        if (pointInTri(ip, ia, ib, ic)) {
+          containsOther = true;
+          break;
+        }
+      }
+      if (containsOther) continue;
+
+      const a = profile[ia]!;
+      const b = profile[ib]!;
+      const c = profile[ic]!;
+      const perimSq =
+        (b.u - a.u) ** 2 +
+        (b.v - a.v) ** 2 +
+        (c.u - b.u) ** 2 +
+        (c.v - b.v) ** 2 +
+        (a.u - c.u) ** 2 +
+        (a.v - c.v) ** 2;
+      const score = area2 / Math.max(1e-18, perimSq);
+      if (score > bestScore) {
+        bestScore = score;
+        bestPos = k;
+      }
+    }
+
+    if (bestPos < 0) break;
+    const m2 = idx.length;
+    tris.push([idx[(bestPos + m2 - 1) % m2]!, idx[bestPos]!, idx[(bestPos + 1) % m2]!]);
+    idx.splice(bestPos, 1);
+  }
+
+  if (idx.length === 3 && cross2D(idx[0]!, idx[1]!, idx[2]!) > 1e-14) {
+    tris.push([idx[0]!, idx[1]!, idx[2]!]);
+    return tris;
+  }
+
+  const contourV2 = profile.map((p) => new THREE.Vector2(p.u, p.v));
+  const rawTris = THREE.ShapeUtils.triangulateShape(contourV2, []);
+  const reversed =
+    contourV2.length === n &&
+    Math.hypot(contourV2[0]!.x - profile[0]!.u, contourV2[0]!.y - profile[0]!.v) > 1e-8;
+  const mapIdx = (k: number): number => (reversed ? n - 1 - k : k);
+  return rawTris.map((tri) => [mapIdx(tri[0]!), mapIdx(tri[1]!), mapIdx(tri[2]!)]);
 }
 
 function prepareProfileEdges(
@@ -1386,17 +1474,7 @@ function prepareProfileEdges(
     });
   }
 
-  const contourV2 = profile.map((p) => new THREE.Vector2(p.u, p.v));
-  const rawTris = THREE.ShapeUtils.triangulateShape(contourV2, []);
-  const reversed =
-    contourV2.length === n &&
-    Math.hypot(contourV2[0]!.x - profile[0]!.u, contourV2[0]!.y - profile[0]!.v) > 1e-8;
-  const mapIdx = (k: number): number => (reversed ? n - 1 - k : k);
-  const capTriangles: [number, number, number][] = rawTris.map((tri) => [
-    mapIdx(tri[0]!),
-    mapIdx(tri[1]!),
-    mapIdx(tri[2]!),
-  ]);
+  const capTriangles = triangulateSimpleProfilePolygon(profile);
 
   return { edges, maxU, minV, maxV, capTriangles };
 }
@@ -1539,6 +1617,45 @@ function emitSweptRingPair(
     const b1 = endRing[edge.i1]!;
     const a1 = startRing[edge.i1]!;
 
+    const collapsed0 = a0.distanceToSquared(b0) <= 1e-16;
+    const collapsed1 = a1.distanceToSquared(b1) <= 1e-16;
+    if (collapsed0 && collapsed1) {
+      continue;
+    }
+
+    const uA0 = (arcStart + startShifts[edge.i0]!) * uvScale * uvTransform.uSign + uvTransform.uOffset;
+    const uB0 = (arcEnd + endShifts[edge.i0]!) * uvScale * uvTransform.uSign + uvTransform.uOffset;
+    const uB1 = (arcEnd + endShifts[edge.i1]!) * uvScale * uvTransform.uSign + uvTransform.uOffset;
+    const uA1 = (arcStart + startShifts[edge.i1]!) * uvScale * uvTransform.uSign + uvTransform.uOffset;
+    const v0 = edge.arc0 * uvScale * uvTransform.vSign + uvTransform.vOffset;
+    const v1 = edge.arc1 * uvScale * uvTransform.vSign + uvTransform.vOffset;
+
+    if (collapsed0) {
+      const base = acc.positions.length / 3;
+      acc.positions.push(a0.x, a0.y, a0.z, b1.x, b1.y, b1.z, a1.x, a1.y, a1.z);
+      acc.normals.push(nA0.x, nA0.y, nA0.z, nB1.x, nB1.y, nB1.z, nA1.x, nA1.y, nA1.z);
+      if (uvTransform.texAxis === 'u') {
+        acc.uvs.push(uA0, v0, uB1, v1, uA1, v1);
+      } else {
+        acc.uvs.push(v0, uA0, v1, uB1, v1, uA1);
+      }
+      emitOrientedTri(acc, base, base + 1, base + 2, faceNormal);
+      continue;
+    }
+
+    if (collapsed1) {
+      const base = acc.positions.length / 3;
+      acc.positions.push(a0.x, a0.y, a0.z, b0.x, b0.y, b0.z, b1.x, b1.y, b1.z);
+      acc.normals.push(nA0.x, nA0.y, nA0.z, nB0.x, nB0.y, nB0.z, nB1.x, nB1.y, nB1.z);
+      if (uvTransform.texAxis === 'u') {
+        acc.uvs.push(uA0, v0, uB0, v0, uB1, v1);
+      } else {
+        acc.uvs.push(v0, uA0, v0, uB0, v1, uB1);
+      }
+      emitOrientedTri(acc, base, base + 1, base + 2, faceNormal);
+      continue;
+    }
+
     const base = acc.positions.length / 3;
     acc.positions.push(
       a0.x, a0.y, a0.z,
@@ -1552,13 +1669,6 @@ function emitSweptRingPair(
       nB1.x, nB1.y, nB1.z,
       nA1.x, nA1.y, nA1.z
     );
-
-    const uA0 = (arcStart + startShifts[edge.i0]!) * uvScale * uvTransform.uSign + uvTransform.uOffset;
-    const uB0 = (arcEnd + endShifts[edge.i0]!) * uvScale * uvTransform.uSign + uvTransform.uOffset;
-    const uB1 = (arcEnd + endShifts[edge.i1]!) * uvScale * uvTransform.uSign + uvTransform.uOffset;
-    const uA1 = (arcStart + startShifts[edge.i1]!) * uvScale * uvTransform.uSign + uvTransform.uOffset;
-    const v0 = edge.arc0 * uvScale * uvTransform.vSign + uvTransform.vOffset;
-    const v1 = edge.arc1 * uvScale * uvTransform.vSign + uvTransform.vOffset;
     if (uvTransform.texAxis === 'u') {
       acc.uvs.push(uA0, v0, uB0, v0, uB1, v1, uA1, v1);
     } else {
@@ -1723,7 +1833,7 @@ function emitScribedStepPieceIntoAccumulator(
     uvTransform
   );
 
-  if (piece.startCap === 'butt') {
+  if (piece.startCap !== null) {
     emitPlanarProfileCap(
       acc,
       upperProfile,
@@ -1734,7 +1844,7 @@ function emitScribedStepPieceIntoAccumulator(
       uvTransform
     );
   }
-  if (piece.endCap === 'butt') {
+  if (piece.endCap !== null) {
     emitPlanarProfileCap(
       acc,
       upperProfile,
@@ -1883,7 +1993,7 @@ function emitScribedStepPieceIntoAccumulator(
     }
 
     // End cap at start of span (either butt open end or vertical riser notch step)
-    if (atPieceStart && piece.startCap === 'butt') {
+    if (atPieceStart && piece.startCap !== null) {
       const bBotA = worldAtSUY(sBackA, 0, yBotA);
       const bTopA = worldAtSUY(sBackA, 0, yTopBackA);
       emitQuad3D(
@@ -1918,7 +2028,7 @@ function emitScribedStepPieceIntoAccumulator(
       }
     }
 
-    if (atPieceEnd && piece.endCap === 'butt') {
+    if (atPieceEnd && piece.endCap !== null) {
       const bBotB = worldAtSUY(sBackB, 0, yBotB);
       const bTopB = worldAtSUY(sBackB, 0, yTopBackB);
       emitQuad3D(
@@ -2003,7 +2113,7 @@ function emitPieceIntoAccumulator(
       );
       startRing.push(res.point);
       startShifts.push(res.shift);
-    } else if (piece.startCap === 'selfReturn' || piece.startCap === 'miter') {
+    } else if (isReturnEndCap(piece.startCap) || piece.startCap === 'miter') {
       const shift = Math.max(
         0,
         (profileInfo.maxU - pt.u) * (returnDepth / Math.max(1e-6, profileInfo.maxU))
@@ -2037,7 +2147,7 @@ function emitPieceIntoAccumulator(
       );
       endRing.push(res.point);
       endShifts.push(res.shift);
-    } else if (piece.endCap === 'selfReturn' || piece.endCap === 'miter') {
+    } else if (isReturnEndCap(piece.endCap) || piece.endCap === 'miter') {
       const shift = -Math.max(
         0,
         (profileInfo.maxU - pt.u) * (returnDepth / Math.max(1e-6, profileInfo.maxU))
@@ -2081,6 +2191,9 @@ function emitPieceIntoAccumulator(
     uvTransform
   );
 
+  const maxUSafe = Math.max(1e-6, profileInfo.maxU);
+  const returnRatio = returnDepth / maxUSafe;
+
   if (piece.startCap === 'butt') {
     emitPlanarProfileCap(
       acc,
@@ -2092,14 +2205,14 @@ function emitPieceIntoAccumulator(
       uvTransform
     );
   } else if (piece.startCap === 'miter') {
-    const miterOut = new THREE.Vector3().subVectors(uVec, tVec).normalize();
+    const miterOut = new THREE.Vector3()
+      .addScaledVector(tVec, -1)
+      .addScaledVector(uVec, -returnRatio)
+      .normalize();
     emitPlanarProfileCap(acc, profile, profileInfo.capTriangles, startRing, miterOut, uvScale, uvTransform);
-  } else if (piece.startCap === 'selfReturn') {
+  } else if (isReturnEndCap(piece.startCap)) {
     const wallReturnRing = profile.map((pt) => {
-      const shift = Math.max(
-        0,
-        (profileInfo.maxU - pt.u) * (returnDepth / Math.max(1e-6, profileInfo.maxU))
-      );
+      const shift = Math.max(0, (profileInfo.maxU - pt.u) * returnRatio);
       return piece.p0
         .clone()
         .addScaledVector(tVec, shift)
@@ -2123,21 +2236,33 @@ function emitPieceIntoAccumulator(
       piece.arcStart - returnDepth,
       piece.arcStart,
       includeHiddenFaces,
-      uvScale
+      uvScale,
+      uvTransform
     );
+    if (includeHiddenFaces) {
+      emitPlanarProfileCap(
+        acc,
+        profile,
+        profileInfo.capTriangles,
+        wallReturnRing,
+        uVec.clone().negate(),
+        uvScale,
+        uvTransform
+      );
+    }
   }
 
   if (piece.endCap === 'butt') {
-    emitPlanarProfileCap(acc, profile, profileInfo.capTriangles, endRing, tVec, uvScale);
+    emitPlanarProfileCap(acc, profile, profileInfo.capTriangles, endRing, tVec, uvScale, uvTransform);
   } else if (piece.endCap === 'miter') {
-    const miterOut = new THREE.Vector3().addVectors(tVec, uVec).normalize();
-    emitPlanarProfileCap(acc, profile, profileInfo.capTriangles, endRing, miterOut, uvScale);
-  } else if (piece.endCap === 'selfReturn') {
+    const miterOut = new THREE.Vector3()
+      .addScaledVector(tVec, 1)
+      .addScaledVector(uVec, -returnRatio)
+      .normalize();
+    emitPlanarProfileCap(acc, profile, profileInfo.capTriangles, endRing, miterOut, uvScale, uvTransform);
+  } else if (isReturnEndCap(piece.endCap)) {
     const wallReturnRing = profile.map((pt) => {
-      const shift = -Math.max(
-        0,
-        (profileInfo.maxU - pt.u) * (returnDepth / Math.max(1e-6, profileInfo.maxU))
-      );
+      const shift = -Math.max(0, (profileInfo.maxU - pt.u) * returnRatio);
       return piece.p1
         .clone()
         .addScaledVector(tVec, shift)
@@ -2161,8 +2286,20 @@ function emitPieceIntoAccumulator(
       piece.arcEnd,
       piece.arcEnd + returnDepth,
       includeHiddenFaces,
-      uvScale
+      uvScale,
+      uvTransform
     );
+    if (includeHiddenFaces) {
+      emitPlanarProfileCap(
+        acc,
+        profile,
+        profileInfo.capTriangles,
+        wallReturnRing,
+        uVec.clone().negate(),
+        uvScale,
+        uvTransform
+      );
+    }
   }
 }
 

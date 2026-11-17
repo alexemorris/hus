@@ -1,11 +1,13 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import type { CutawayWallDescriptor } from '../../core/types/scene.ts';
+import { createWallSkirtingBoardProfile } from '../../engine/geometry/swept-moulding.ts';
 import {
   createMouldingPath,
   createSkirtingProfile,
   createSkirtingRun,
   mouldingPath,
+  type SkirtingEndCap,
   type SkirtingProfilePreset,
 } from './skirting-run.ts';
 
@@ -328,5 +330,132 @@ describe('skirting-run', () => {
       .sort((a, b) => a[0]! - b[0]!);
     expect(spans[0]).toEqual([0, 3]);
     expect(spans[1]).toEqual([3, 6]);
+  });
+  it('emits closed watertight manifold end-caps with outward-facing normals for butt, return, selfReturn, and miter', () => {
+    const presets: readonly SkirtingProfilePreset[] = ['ogee', 'torus', 'lambs-tongue', 'chamfered'];
+    const caps: readonly SkirtingEndCap[] = ['butt', 'return', 'selfReturn', 'miter'];
+
+    for (const profile of presets) {
+      for (const cap of caps) {
+        const run = createSkirtingRun({
+          points: [
+            [0, 0],
+            [3, 0],
+            [3, 2],
+          ],
+          roomSide: 'right',
+          profile,
+          height: 0.146,
+          thickness: 0.022,
+          gaps: [{ startDist: 1.0, endDist: 1.8, cap }],
+          startCap: cap,
+          endCap: cap,
+          includeHiddenBackAndBottomFaces: true,
+          material: paintMat,
+        });
+
+        const geo = run.interiorMeshes[0]!.geometry;
+        const pos = geo.getAttribute('position');
+        const norm = geo.getAttribute('normal');
+        const idx = geo.getIndex()!;
+        expect(idx).not.toBeNull();
+
+        const canonMap = new Map<string, number>();
+        let nextVid = 0;
+        const vid = (i: number): number => {
+          const k = `${pos.getX(i).toFixed(6)},${pos.getY(i).toFixed(6)},${pos.getZ(i).toFixed(6)}`;
+          let id = canonMap.get(k);
+          if (id === undefined) {
+            id = nextVid++;
+            canonMap.set(k, id);
+          }
+          return id;
+        };
+
+        const undirEdges = new Map<string, number>();
+        const dirEdges = new Map<string, number>();
+        let signedVol6 = 0;
+        const p0 = new THREE.Vector3();
+        const p1 = new THREE.Vector3();
+        const p2 = new THREE.Vector3();
+        const vn = new THREE.Vector3();
+
+        for (let t = 0; t < idx.count / 3; t++) {
+          const i0 = idx.getX(t * 3);
+          const i1 = idx.getX(t * 3 + 1);
+          const i2 = idx.getX(t * 3 + 2);
+          p0.fromBufferAttribute(pos, i0);
+          p1.fromBufferAttribute(pos, i1);
+          p2.fromBufferAttribute(pos, i2);
+
+          const fn = new THREE.Vector3()
+            .subVectors(p1, p0)
+            .cross(new THREE.Vector3().subVectors(p2, p0));
+          expect(fn.length() * 0.5).toBeGreaterThan(1e-10);
+          fn.normalize();
+
+          vn.fromBufferAttribute(norm, i0)
+            .add(new THREE.Vector3().fromBufferAttribute(norm, i1))
+            .add(new THREE.Vector3().fromBufferAttribute(norm, i2))
+            .normalize();
+          expect(fn.dot(vn)).toBeGreaterThan(0);
+
+          signedVol6 += p0.dot(new THREE.Vector3().crossVectors(p1, p2));
+
+          const v0 = vid(i0);
+          const v1 = vid(i1);
+          const v2 = vid(i2);
+          for (const [a, b] of [
+            [v0, v1],
+            [v1, v2],
+            [v2, v0],
+          ] as const) {
+            const dk = `${a}->${b}`;
+            dirEdges.set(dk, (dirEdges.get(dk) ?? 0) + 1);
+            const uk = a < b ? `${a}-${b}` : `${b}-${a}`;
+            undirEdges.set(uk, (undirEdges.get(uk) ?? 0) + 1);
+          }
+        }
+
+        let boundaryEdges = 0;
+        let nonManifoldEdges = 0;
+        let sameDirShared = 0;
+        for (const [, c] of undirEdges) {
+          if (c === 1) boundaryEdges++;
+          else if (c > 2) nonManifoldEdges++;
+        }
+        for (const [, c] of dirEdges) {
+          if (c > 1) sameDirShared++;
+        }
+
+        expect(boundaryEdges).toBe(0);
+        expect(nonManifoldEdges).toBe(0);
+        expect(sameDirShared).toBe(0);
+        expect(signedVol6 / 6).toBeGreaterThan(0);
+      }
+    }
+  });
+  it('matches createWallSkirtingBoardProfile (default torus, 146x22mm) 1:1 with createSkirtingProfile across all presets', () => {
+    const defaultWallPts = createWallSkirtingBoardProfile().extractPoints(1).shape;
+    const torusRunPts = createSkirtingProfile('torus', { height: 0.146, thickness: 0.022 });
+    // THREE.Shape.closePath appends closing duplicate of first vertex if not equal
+    const trimmedDefault =
+      defaultWallPts.length === torusRunPts.length + 1 ? defaultWallPts.slice(0, -1) : defaultWallPts;
+    expect(trimmedDefault).toHaveLength(torusRunPts.length);
+    for (let i = 0; i < torusRunPts.length; i++) {
+      expect(trimmedDefault[i]!.x).toBeCloseTo(torusRunPts[i]!.v, 8);
+      expect(trimmedDefault[i]!.y).toBeCloseTo(torusRunPts[i]!.u, 8);
+    }
+
+    for (const preset of ['torus', 'ogee', 'lambs-tongue', 'chamfered'] as const) {
+      const wallPts = createWallSkirtingBoardProfile(preset, { height: 0.146, thickness: 0.022 }).extractPoints(1).shape;
+      const runPts = createSkirtingProfile(preset, { height: 0.146, thickness: 0.022 });
+      const trimmed = wallPts.length === runPts.length + 1 ? wallPts.slice(0, -1) : wallPts;
+      expect(trimmed).toHaveLength(runPts.length);
+      for (let i = 0; i < runPts.length; i++) {
+        expect(trimmed[i]!.x).toBeCloseTo(runPts[i]!.v, 8);
+        expect(trimmed[i]!.y).toBeCloseTo(runPts[i]!.u, 8);
+      }
+    }
   });
 });

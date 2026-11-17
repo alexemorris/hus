@@ -13,7 +13,15 @@ import {
   sweepMouldingAlongPath,
   transformFrame2DPoint,
 } from './cad-primitives.ts';
-import { buildMitredArchitraveSegments } from './swept-moulding.ts';
+import { detectZFighting } from '../diagnostics/z-fighting-detector.ts';
+import { SceneInteractionManager } from '../interaction/interaction-manager.ts';
+import { buildAngledWallSegment, buildPolygonalFloorSlab } from './period-house-primitives.ts';
+import {
+  addCasedArchitravePortal,
+  buildMitredArchitraveSegments,
+  buildMitredWallSkirtingGeometry,
+  createWallSkirtingBoardProfile,
+} from './swept-moulding.ts';
 import { applyTimberPieceUVs, createTimberBoxGeometry } from './timber-piece-uvs.ts';
 
 function verifyEveryTriangleMatchesVertexNormals(geo: THREE.BufferGeometry): number {
@@ -475,6 +483,156 @@ describe('cad-primitives', () => {
         legMaxU = Math.max(legMaxU, legUv.getX(i));
       }
       expect(legMaxU - legMinU).toBeGreaterThan(0.95);
+    });
+  });
+  describe('finish carpentry flush seating & portal face control', () => {
+    it('seats createWallSkirtingBoardProfile and buildMitredWallSkirtingGeometry flush on FFL (0..0.146 m) and wall (0..0.022 m)', () => {
+      const profile = createWallSkirtingBoardProfile();
+      const pts = profile.getPoints(16);
+      const ys = pts.map((p) => p.x);
+      const ds = pts.map((p) => p.y);
+      expect(Math.min(...ys)).toBeCloseTo(0, 6);
+      expect(Math.max(...ys)).toBeCloseTo(0.146, 6);
+      expect(Math.min(...ds)).toBeCloseTo(0, 6);
+      expect(Math.max(...ds)).toBeCloseTo(0.022, 6);
+
+      const floorY = 0.35;
+      const geo = buildMitredWallSkirtingGeometry(
+        [
+          [0, 0.12],
+          [2.4, 0.12],
+        ],
+        floorY
+      );
+      geo.computeBoundingBox();
+      const bb = geo.boundingBox!;
+      expect(bb.min.y).toBeCloseTo(floorY, 6);
+      expect(bb.max.y).toBeCloseTo(floorY + 0.146, 6);
+      expect(bb.min.z).toBeCloseTo(0.12, 6);
+      expect(bb.max.z).toBeCloseTo(0.12 + 0.022, 6);
+    });
+
+    it('seats addCasedArchitravePortal plinth blocks & architraves flush at faceFloorY (0 mm float) and respects architraveFaces', () => {
+      const trimMat = new THREE.MeshStandardMaterial({ color: 0xf4f1ea });
+      const worldBoxOf = (root: THREE.Object3D, predicate: (m: THREE.Mesh) => boolean): THREE.Box3 => {
+        root.updateMatrixWorld(true);
+        const box = new THREE.Box3();
+        root.traverse((o) => {
+          if (o instanceof THREE.Mesh && predicate(o)) {
+            box.expandByObject(o);
+          }
+        });
+        return box;
+      };
+
+      const bothParent = new THREE.Group();
+      addCasedArchitravePortal(bothParent, {
+        axis: 'x',
+        wallCoord: 0,
+        wallThickness: 0.24,
+        openingCenter: 1.5,
+        openingWidth: 0.9,
+        frontFloorY: 0.25,
+        headY: 2.30,
+        material: trimMat,
+      });
+
+      const plinthMeshes: THREE.Mesh[] = [];
+      const archMeshes: THREE.Mesh[] = [];
+      bothParent.traverse((o) => {
+        if (o instanceof THREE.Mesh) {
+          if (o.name.includes('PlinthBlock')) plinthMeshes.push(o);
+          if (o.name.includes('Architrave')) archMeshes.push(o);
+        }
+      });
+      expect(plinthMeshes).toHaveLength(4);
+      expect(archMeshes).toHaveLength(2);
+
+      const frontPlinthBox = worldBoxOf(bothParent, (m) => m.name.includes('frontPlinthBlock'));
+      expect(frontPlinthBox.min.y).toBeCloseTo(0.25, 6);
+      expect(frontPlinthBox.max.y).toBeCloseTo(0.25 + 0.168, 6);
+      expect(frontPlinthBox.min.z).toBeCloseTo(0.12, 6);
+      expect(frontPlinthBox.max.z).toBeCloseTo(0.12 + 0.026, 6);
+
+      const frontArchBox = worldBoxOf(bothParent, (m) => m.name.includes('frontArchitrave'));
+      expect(frontArchBox.min.y).toBeCloseTo(0.25 + 0.168, 6);
+      expect(frontArchBox.min.z).toBeCloseTo(0.12, 6);
+
+      // Single-face exterior doorway: architraveFaces: "front" suppresses back architrave & back plinths
+      const frontOnlyParent = new THREE.Group();
+      addCasedArchitravePortal(frontOnlyParent, {
+        axis: 'x',
+        wallCoord: 0,
+        wallThickness: 0.24,
+        openingCenter: 1.5,
+        openingWidth: 0.9,
+        frontFloorY: 0,
+        headY: 2.05,
+        architraveFaces: 'front',
+        material: trimMat,
+      });
+      const frontOnlyNames: string[] = [];
+      frontOnlyParent.traverse((o) => {
+        if (o instanceof THREE.Mesh) frontOnlyNames.push(o.name);
+      });
+      expect(frontOnlyNames.some((n) => n.includes('frontArchitrave'))).toBe(true);
+      expect(frontOnlyNames.some((n) => n.includes('frontPlinthBlock'))).toBe(true);
+      expect(frontOnlyNames.some((n) => n.includes('backArchitrave'))).toBe(false);
+      expect(frontOnlyNames.some((n) => n.includes('backPlinthBlock'))).toBe(false);
+
+      // Single-face exterior doorway: architraveFaces: "back" suppresses front architrave & front plinths
+      const backOnlyParent = new THREE.Group();
+      addCasedArchitravePortal(backOnlyParent, {
+        axis: 'x',
+        wallCoord: 0,
+        wallThickness: 0.24,
+        openingCenter: 1.5,
+        openingWidth: 0.9,
+        frontFloorY: 0,
+        headY: 2.05,
+        architraveFaces: 'back',
+        material: trimMat,
+      });
+      const backOnlyNames: string[] = [];
+      backOnlyParent.traverse((o) => {
+        if (o instanceof THREE.Mesh) backOnlyNames.push(o.name);
+      });
+      expect(backOnlyNames.some((n) => n.includes('backArchitrave'))).toBe(true);
+      expect(backOnlyNames.some((n) => n.includes('backPlinthBlock'))).toBe(true);
+      expect(backOnlyNames.some((n) => n.includes('frontArchitrave'))).toBe(false);
+      expect(backOnlyNames.some((n) => n.includes('frontPlinthBlock'))).toBe(false);
+
+      // Flush seating against buildAngledWallSegment + buildPolygonalFloorSlab introduces 0 Z-fighting
+      const scene = new THREE.Group();
+      const wallMat = new THREE.MeshStandardMaterial({ color: 0xeae5dc });
+      const floorMat = new THREE.MeshStandardMaterial({ color: 0x7b5c43 });
+      const capMat = new THREE.MeshStandardMaterial({ color: 0x2a2826, side: THREE.DoubleSide });
+      buildPolygonalFloorSlab(scene, [[-1, -2], [5, -2], [5, 2], [-1, 2]], 0, 0.2, floorMat);
+      buildAngledWallSegment(scene, new SceneInteractionManager([]), {
+        start: [0, 0],
+        end: [4, 0],
+        thickness: 0.24,
+        topY: 2.8,
+        frontFloorY: 0,
+        backFloorY: 0,
+        wallMaterial: wallMat,
+        capMaterial: capMat,
+        skirtingMaterial: trimMat,
+        addFrontSkirting: true,
+        addBackSkirting: false,
+        openings: [
+          {
+            kind: 'cased-opening',
+            uCenter: 2.0,
+            width: 0.9,
+            doorHeight: 2.05,
+            lowerFloorY: 0,
+            architraveMaterial: trimMat,
+            architraveFaces: 'front',
+          },
+        ],
+      });
+      expect(detectZFighting(scene)).toEqual([]);
     });
   });
 });

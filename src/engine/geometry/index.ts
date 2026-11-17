@@ -85,6 +85,8 @@ export {
   createWallSkirtingBoardProfile,
   type SolidOakWindowTrimOptions,
   type SweptMouldingUvOptions,
+  type WallSkirtingProfileOptions,
+  type WallSkirtingProfilePreset,
 } from './swept-moulding.ts';
 export {
   applyTimberPieceUVs,

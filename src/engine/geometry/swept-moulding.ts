@@ -6,12 +6,20 @@ import {
   type TimberSeedInput,
 } from './timber-piece-uvs.ts';
 
+export type WallSkirtingProfilePreset = 'torus' | 'ogee' | 'lambs-tongue' | 'chamfered';
+
+export interface WallSkirtingProfileOptions {
+  readonly height?: number;
+  readonly thickness?: number;
+}
+
 export interface SweptMouldingUvOptions {
   readonly scalePerMetre?: number;
   readonly crossScalePerMetre?: number;
   readonly material?: THREE.Material | null;
   readonly materialGrainAxis?: 'u' | 'v';
   readonly seed?: TimberSeedInput;
+  readonly skirtingProfile?: WallSkirtingProfilePreset;
 }
 
 /**
@@ -209,37 +217,95 @@ export function createProfiledSkirtingCapGeometry(
 }
 
 /**
- * Full-height 146mm antique oak ogee/torus skirting board cross-section in `(y, h)`:
+ * Full-height 146 x 22 mm skirting board cross-section in `(y, h)`, seated dead flush at `(0, 0)`:
  * - `y` (first coordinate `d` in `buildSweptMouldingGeometry`) is vertical height above the floor (`0..0.146m`),
  * - `h` (second coordinate `h` in `buildSweptMouldingGeometry`) is horizontal projection out from the wall (`0..0.022m`).
+ *
+ * Defaults to `'torus'` (flat plinth + quirk groove + single rounded torus bead + top fillet), matching
+ * `createSkirtingProfile(kind, { height: 0.146, thickness: 0.022 })` 1:1 across all four presets.
  */
-export function createWallSkirtingBoardProfile(): THREE.Shape {
-  const s = new THREE.Shape();
-  const backGap = 0.004;
-  s.moveTo(0.004, backGap);
-  s.lineTo(0.004, backGap + 0.020);
-  // Flat lower plinth face (4mm .. 95mm)
-  s.lineTo(0.095, backGap + 0.020);
-  // Crisp 4.5mm quirk step at 95mm height
-  s.lineTo(0.097, backGap + 0.0155);
-  s.lineTo(0.101, backGap + 0.0155);
-  // Swept cyma reversa ogee curve (101mm .. 120mm)
-  s.quadraticCurveTo(0.107, backGap + 0.0175, 0.113, backGap + 0.0135);
-  s.quadraticCurveTo(0.117, backGap + 0.0095, 0.120, backGap + 0.0115);
-  // Projecting upper torus roll (120mm .. 135mm)
-  s.lineTo(0.121, backGap + 0.0145);
-  s.quadraticCurveTo(0.128, backGap + 0.0185, 0.135, backGap + 0.0145);
-  // Upper cavetto neck & top chamfered wall-return fillet (135mm .. 146mm)
-  s.quadraticCurveTo(0.139, backGap + 0.009, 0.143, backGap + 0.0075);
-  s.lineTo(0.146, backGap + 0.004);
-  s.lineTo(0.146, backGap);
-  s.closePath();
-  return s;
+export function createWallSkirtingBoardProfile(
+  kind: WallSkirtingProfilePreset = 'torus',
+  options: WallSkirtingProfileOptions = {}
+): THREE.Shape {
+  const H = Math.max(0.03, options.height ?? 0.146);
+  const T = Math.max(0.006, options.thickness ?? 0.022);
+  const pts: Array<readonly [number, number]> = [];
+
+  if (kind === 'chamfered') {
+    const bevelH = Math.min(H * 0.2, T * 0.85);
+    const topFilletU = T * 0.25;
+    pts.push([0, 0], [0, T], [H - bevelH, T], [H, topFilletU], [H, 0]);
+  } else if (kind === 'torus') {
+    const plinthH = H * 0.62;
+    const quirkH = H * 0.645;
+    const quirkU = T * 0.72;
+    const torusBot = H * 0.66;
+    const torusTop = H * 0.90;
+    const torusCenterV = (torusBot + torusTop) * 0.5;
+    const torusRadiusV = (torusTop - torusBot) * 0.5;
+    const neckU = T * 0.44;
+    pts.push(
+      [0, 0],
+      [0, T],
+      [plinthH, T],
+      [plinthH + (quirkH - plinthH) * 0.5, quirkU],
+      [torusBot, quirkU]
+    );
+    const arcSamples = 9;
+    for (let i = 0; i <= arcSamples; i++) {
+      const theta = -Math.PI * 0.5 + (Math.PI * i) / arcSamples;
+      const u = neckU + (T - neckU) * Math.max(0, Math.cos(theta));
+      const v = torusCenterV + torusRadiusV * Math.sin(theta);
+      pts.push([v, u]);
+    }
+    pts.push([H * 0.96, neckU * 0.85], [H, T * 0.3], [H, 0]);
+  } else if (kind === 'lambs-tongue') {
+    const plinthH = H * 0.58;
+    const mouldTop = H * 0.94;
+    const topFilletU = T * 0.32;
+    pts.push([0, 0], [0, T], [plinthH, T]);
+    const samples = 10;
+    for (let i = 1; i <= samples; i++) {
+      const s = i / samples;
+      const ease = 0.5 - 0.5 * Math.cos(Math.PI * s);
+      const bulge = Math.sin(Math.PI * 2 * s) * (T * 0.08);
+      const u = T - (T - topFilletU) * ease + bulge;
+      const v = plinthH + (mouldTop - plinthH) * s;
+      pts.push([v, Math.max(topFilletU * 0.85, Math.min(T, u))]);
+    }
+    pts.push([H, topFilletU], [H, 0]);
+  } else {
+    const plinthH = H * 0.63;
+    const quirkU = T * 0.78;
+    const ogeeStartV = H * 0.655;
+    const ogeeEndV = H * 0.95;
+    const topFilletU = T * 0.34;
+    pts.push([0, 0], [0, T], [plinthH, T], [ogeeStartV, quirkU]);
+    const samples = 10;
+    for (let i = 1; i <= samples; i++) {
+      const s = i / samples;
+      const baseU = quirkU + (topFilletU - quirkU) * s;
+      const wave = Math.sin(Math.PI * 2 * s) * (T * 0.16);
+      const u = Math.max(T * 0.22, Math.min(T, baseU + wave));
+      const v = ogeeStartV + (ogeeEndV - ogeeStartV) * s;
+      pts.push([v, u]);
+    }
+    pts.push([H, topFilletU], [H, 0]);
+  }
+
+  const shape = new THREE.Shape();
+  shape.moveTo(pts[0]![0], pts[0]![1]);
+  for (let i = 1; i < pts.length; i++) {
+    shape.lineTo(pts[i]![0], pts[i]![1]);
+  }
+  shape.closePath();
+  return shape;
 }
 
 /**
- * Sweeps a 146mm-tall antique-profiled skirting board along a horizontal floor-plan polyline `path`
- * of `[x, z]` wall points (ordered so the room interior lies to the left of each segment tangent
+ * Sweeps a 146mm-tall moulded skirting board (default `'torus'`) along a horizontal floor-plan polyline
+ * `path` of `[x, z]` wall points (ordered so the room interior lies to the left of each segment tangent
  * `(dx, dz)`, i.e. outward normal `(-dz, dx)` points into the room), with true 45° mitred joints at
  * every internal and external corner.
  */
@@ -249,7 +315,7 @@ export function buildMitredWallSkirtingGeometry(
   uvOptions?: SweptMouldingUvOptions
 ): THREE.BufferGeometry {
   return buildSweptMouldingGeometry(
-    createWallSkirtingBoardProfile(),
+    createWallSkirtingBoardProfile(uvOptions?.skirtingProfile ?? 'torus'),
     path,
     (x, z, y) => new THREE.Vector3(x, floorY + y, z),
     8,
@@ -258,8 +324,8 @@ export function buildMitredWallSkirtingGeometry(
 }
 
 /**
- * Sweeps a 146mm-tall Ogee/Torus moulded skirting board along a horizontal floor-plan polyline `path`
- * of `[x, z]` wall points (ordered clockwise around the room interior so `(-dz, dx)` points into the room)
+ * Sweeps a 146mm-tall moulded skirting board (default `'torus'`) along a horizontal floor-plan polyline
+ * `path` of `[x, z]` wall points (ordered clockwise around the room interior so `(-dz, dx)` points into the room)
  * and returns one `THREE.BufferGeometry` per segment `i` (`path[i] -> path[i + 1]`), with true 45° mitred
  * joints at every shared vertex between consecutive segments.
  */
@@ -272,7 +338,7 @@ export function buildMitredWallSkirtingSegments(
   const scaleAlong = uvOptions?.scalePerMetre ?? 1 / 2.2;
   const scaleAcross = uvOptions?.crossScalePerMetre ?? scaleAlong;
   const texAxis = resolveMaterialTextureGrainAxis(uvOptions?.material, uvOptions?.materialGrainAxis);
-  const profile = createWallSkirtingBoardProfile();
+  const profile = createWallSkirtingBoardProfile(uvOptions?.skirtingProfile ?? 'torus');
   const toSpace = (x: number, z: number, y: number): THREE.Vector3 =>
     new THREE.Vector3(x, floorY + y, z);
 
@@ -587,10 +653,16 @@ export interface CasedArchitravePortalOptions {
   doorCenterOffsetN?: number;
   /** Closed door leaf thickness used to position the planted door-stop rebate cleanly (defaults to `0.046`). */
   doorLeafThickness?: number;
+  /** Which faces of the portal emit moulded architraves and plinth blocks ('both' | 'front' | 'back' | 'none'; defaults to 'both'). */
+  architraveFaces?: 'both' | 'front' | 'back' | 'none';
   /** Whether to include the +normal face architrave (defaults to `true`). */
   includeFrontArchitrave?: boolean;
   /** Whether to include the -normal face architrave (defaults to `true`). */
   includeBackArchitrave?: boolean;
+  /** Outward clearance between wall face and architrave/plinth back face in metres (defaults to `0` for flush seating). */
+  archWallClear?: number;
+  /** Vertical clearance between face floor datum and plinth/architrave base in metres (defaults to `0` for flush FFL seating). */
+  archFloorClear?: number;
   /** Extra outward offset from `wallThickness / 2` on the +normal face (e.g. `0.014` for wall cladding). */
   frontFaceOffset?: number;
   /** Extra outward offset from `-wallThickness / 2` on the -normal face (e.g. `0.014` for wall cladding). */
@@ -862,11 +934,11 @@ function buildPedestalPlinthBlockGeometry(
   normalSign: 1 | -1,
   slopeXPerZ: number
 ): THREE.BufferGeometry {
-  // Cross-section in (d, y): d = 0..0.024m proud of archWallClear (so +4..+28mm off raw wall face,
-  // standing proud of 24mm skirtings and 26mm architraves), tapering over the top 8mm (0.160..0.168m)
-  // via a crisp chamfered ogee shoulder from 28mm -> 25.5mm so the 26mm architrave lands cleanly!
-  const maxD = 0.024;
-  const topD = 0.0215;
+  // Cross-section in (d, y): d = 0..0.026m seated flush against the wall face, standing proud of
+  // 22mm skirtings and 22mm architraves, tapering over the top 8mm (0.160..0.168m) via a crisp
+  // chamfered ogee shoulder from 26mm -> 22.5mm so the 22mm architrave lands cleanly on the top table.
+  const maxD = 0.026;
+  const topD = 0.0225;
   const shoulderH = Math.min(0.008, plinthH * 0.2);
   const bodyH = Math.max(0.01, plinthH - shoulderH);
 
@@ -1123,9 +1195,9 @@ export function addCasedArchitravePortal(
     }
   }
 
-  const archWallClear = 0.004;
-  const archFloorClear = 0.004;
-  const plinthH = 0.168; // Y = floorY + 0.004 .. floorY + 0.172m
+  const archWallClear = options.archWallClear ?? 0;
+  const archFloorClear = options.archFloorClear ?? 0;
+  const plinthH = 0.168; // Y = floorY .. floorY + 0.168m when seated flush on FFL
   const maxArchT = 0.022;
 
   const emitPortalFace = (
@@ -1221,7 +1293,13 @@ export function addCasedArchitravePortal(
     parent.add(archMesh);
   };
 
-  if (options.includeFrontArchitrave !== false) {
+  const archFaces = options.architraveFaces ?? 'both';
+  const emitFrontFace =
+    (archFaces === 'both' || archFaces === 'front') && options.includeFrontArchitrave !== false;
+  const emitBackFace =
+    (archFaces === 'both' || archFaces === 'back') && options.includeBackArchitrave !== false;
+
+  if (emitFrontFace) {
     const frontLeftW =
       options.frontLeftArchitraveWidth ?? options.leftArchitraveWidth ?? width;
     const frontRightW =
@@ -1230,7 +1308,7 @@ export function addCasedArchitravePortal(
     emitPortalFace(1, frontWallN, frontFloorY, frontMat, frontLeftW, frontRightW, frontTopW, 'front');
   }
 
-  if (options.includeBackArchitrave !== false) {
+  if (emitBackFace) {
     const backLeftW =
       options.backLeftArchitraveWidth ?? options.leftArchitraveWidth ?? width;
     const backRightW =
