@@ -56,3 +56,22 @@ describe('tools/check-boundaries.mjs layer boundary rules', () => {
     expect(engineHouseZoneViolation[0]?.reason).toContain('engine file references house-specific zone ID');
   });
 });
+
+// @ts-expect-error .mjs module imported directly under Vitest
+import { husVitePlugin } from "./husjs-vite.mjs";
+
+describe("tools/husjs-vite.mjs Three.js WebGPU deduplication", () => {
+  it("pre-bundles and dedupes three, three/webgpu, and three/tsl together so WebGPU LightsNode shares one three.core instance", () => {
+    const plugins = husVitePlugin({ devServerProxy: false });
+    const corePlugin = plugins.find((entry) => entry && entry.name === "husjs-vite-plugin");
+    expect(corePlugin).toBeTruthy();
+    const cfg = corePlugin.config();
+    expect(cfg.optimizeDeps.exclude).toContain("husjs");
+    expect(cfg.optimizeDeps.include).toEqual(
+      expect.arrayContaining(["three", "three/webgpu", "three/tsl"])
+    );
+    expect(cfg.resolve.dedupe).toEqual(
+      expect.arrayContaining(["three", "three/webgpu", "three/tsl"])
+    );
+  });
+});

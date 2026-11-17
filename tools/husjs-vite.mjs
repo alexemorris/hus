@@ -151,10 +151,20 @@ export function husVitePlugin(options = {}) {
           },
           optimizeDeps: {
             exclude: ['husjs'],
-            include: ['three', 'three/examples/jsm/loaders/HDRLoader.js', 'preact', '@preact/signals'],
+            include: [
+              'three',
+              'three/webgpu',
+              'three/tsl',
+              'three/examples/jsm/loaders/HDRLoader.js',
+              'three/examples/jsm/controls/OrbitControls.js',
+              'three/examples/jsm/geometries/RoundedBoxGeometry.js',
+              'three/examples/jsm/utils/BufferGeometryUtils.js',
+              'preact',
+              '@preact/signals',
+            ],
           },
           resolve: {
-            dedupe: ['three', 'preact', '@preact/signals'],
+            dedupe: ['three', 'three/webgpu', 'three/tsl', 'preact', '@preact/signals'],
           },
           worker: {
             format: 'es',
